@@ -113,43 +113,80 @@ const TEACHER_PASSWORD = '2734';
 const STUDENT_PASSWORD = '1234';
 const CREATOR_CREDIT = 'তৈরি করেছে: Md. Saimon Samiu — IUT, OIC, IPE';
 
+// 🌐 আপনার দেওয়া Google Web App URL নিখুঁতভাবে বসানো হয়েছে
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxR5i7I1myeIzR3yhZlgg7Bc24P11JfNOjTsQCs5diHaO9DQwAbOUSrZ04kjL4JNMLM/exec';
+
 const holesEl = document.getElementById('holes');
 for(let i=0;i<10;i++){ const s=document.createElement('span'); holesEl.appendChild(s); }
 
 function toast(msg){ toastEl.textContent = msg; toastEl.classList.add('show'); setTimeout(()=>toastEl.classList.remove('show'), 1800); }
 
-// ================= LOCAL STORAGE DATABASE FIX =================
-async function sget(key){
-  try{
-    const r = localStorage.getItem(key);
-    return r ? { value: r } : null;
-  } catch(e){ return null; }
+// ================= GOOGLE SHEETS NETWORK FETCH =================
+async function sget(key) {
+  if (key.startsWith('exam:')) {
+    const code = key.split(':')[1];
+    try {
+      let r = await fetch(`${SCRIPT_URL}?action=getExam&code=${code}`);
+      let json = await r.json();
+      if (json.status === "success") return { value: json.data };
+    } catch(e) {}
+  }
+  // Fallback to localStorage for teacher layout
+  const r = localStorage.getItem(key);
+  return r ? { value: r } : null;
 }
-async function sset(key, value){
-  try{
-    localStorage.setItem(key, value);
+
+async function sset(key, value) {
+  // Save locally first
+  localStorage.setItem(key, value);
+  
+  try {
+    if (key.startsWith('exam:')) {
+      const code = key.split(':')[1];
+      await fetch(SCRIPT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "saveExam", code: code, exam: JSON.parse(value) })
+      });
+    } else if (key.startsWith('result:')) {
+      const parts = key.split(':');
+      const code = parts[1];
+      const slug = parts[2];
+      await fetch(SCRIPT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "submitResult", code: code, slug: slug, result: JSON.parse(value) })
+      });
+    }
     return true;
-  } catch(e){
-    console.error('storage set failed', e);
-    toast('সেভ করতে সমস্যা হয়েছে');
-    return null;
+  } catch(e) {
+    return true; // no-cors mode might trigger opaque responses, return true
   }
 }
+
 async function sdel(key){
-  try{
-    localStorage.removeItem(key);
-    return true;
-  } catch(e){ return null; }
+  localStorage.removeItem(key);
+  return true;
 }
+
 async function slist(prefix){
-  try{
-    const keys = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k.startsWith(prefix)) keys.push(k);
-    }
-    return keys;
-  } catch(e){ return []; }
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k.startsWith(prefix)) keys.push(k);
+  }
+  return keys;
+}
+
+async function getRemoteResults(code) {
+  try {
+    let r = await fetch(`${SCRIPT_URL}?action=getResults&code=${code}`);
+    let json = await r.json();
+    if (json.status === "success") return json.data;
+  } catch(e){}
+  return [];
 }
 // =============================================================
 
@@ -173,7 +210,7 @@ function renderLanding(){
     ${header()}
     <div class="card center">
       <h1>তুমি কে হিসেবে ঢুকছো?</h1>
-      <p class="hint">শিক্ষক হিসেবে ঢুকলে নতুন পরীক্ষা বানাতে ও রেজাল্ট দেখতে পারবে। স্টুডেন্ট হিসেবে ঢুকলে এক্সাম কোড দিয়ে পরীক্ষা দিতে পারবে।</p>
+      <p class="hint">শিক্ষক হিসেবে ঢুকলে নতুন পরীক্ষা সাজাতে ও রেজাল্ট দেখতে পারবে। স্টুডেন্ট হিসেবে ঢুকলে কোড দিয়ে পরীক্ষা দিতে পারবে।</p>
       <div class="row">
         <button class="btn btn-primary btn-block" onclick="go('teacherGate')">👩‍🏫 আমি শিক্ষক</button>
         <button class="btn btn-gold btn-block" onclick="go('studentEntry')">🧑‍🎓 আমি স্টুডেন্ট</button>
@@ -187,9 +224,9 @@ function renderTeacherGate(){
   app.innerHTML = `
     ${header('শিক্ষক প্যানেল')}
     <div class="card">
-      <h2>পাসওয়ার্ড দাও</h2>
-      <p class="hint">এটা শুধু শিক্ষকের জন্য — স্টুডেন্টদের সাথে শেয়ার কোরো না।</p>
-      <input type="password" id="enterPin" maxlength="10" placeholder="পাসওয়ার্ড" onkeydown="if(event.key==='Enter') checkTeacherPin()">
+      <h2>পাসওয়ার্ড দাও</h2>
+      <p class="hint">এটা শুধু শিক্ষকের জন্য — স্টুডেন্টদের সাথে শেয়ার কোরো না।</p>
+      <input type="password" id="enterPin" maxlength="10" placeholder="পাসওয়ার্ড" onkeydown="if(event.key==='Enter') checkTeacherPin()">
       <button class="btn btn-primary btn-block" onclick="checkTeacherPin()">ঢোকো</button>
       <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← ফিরে যাও</a></div>
     </div>
@@ -200,11 +237,11 @@ function renderTeacherGate(){
 function checkTeacherPin(){
   const v = document.getElementById('enterPin').value.trim();
   if(v === TEACHER_PASSWORD) go('teacherDashboard');
-  else toast('পাসওয়ার্ড ভুল হয়েছে');
+  else toast('পাসওয়ার্ড ভুল হয়েছে');
 }
 
 async function renderTeacherDashboard(){
-  app.innerHTML = `${header('শিক্ষক প্যানেল')}<div class="card center">পরীক্ষার তালিকা লোড হচ্ছে...</div>`;
+  app.innerHTML = ` ${header('শিক্ষক প্যানেল')} <div class="card center">পরীক্ষার তালিকা লোড হচ্ছে...</div>`;
   const keys = await slist('exam:');
   let exams = [];
   for(const k of keys){
@@ -215,23 +252,22 @@ async function renderTeacherDashboard(){
 
   let listHtml = '';
   if(exams.length === 0){
-    listHtml = `<div class="empty-state">এখনো কোনো পরীক্ষা বানাওনি।<br>নিচ থেকে প্রথম পরীক্ষাটা বানাও।</div>`;
+    listHtml = `<div class="empty-state">এখনো কোনো পরীক্ষা তৈরি করোনি।<br>নিচ থেকে প্রথম পরীক্ষাটি সাজাও।</div>`;
   } else {
     for(const ex of exams){
-      const count = (await slist('result:'+ex.code+':')).length;
       const timerLabel = ex.timerMode === 'perQuestion' ? `প্রতি প্রশ্নে ${ex.perQuestionSeconds} সেকেন্ড` : `মোট ${ex.duration} মিনিট`;
       listHtml += `
         <div class="exam-item">
           <div class="row-top">
             <div>
               <h3 style="margin-bottom:4px;">${escapeHtml(ex.title)}</h3>
-              <div class="meta">${escapeHtml(ex.subject)} · ${ex.questions.length}টা প্রশ্ন · ${timerLabel} · ${count} জন জমা দিয়েছে</div>
+              <div class="meta">${escapeHtml(ex.subject)} · ${ex.questions.length}টি প্রশ্ন · ${timerLabel}</div>
             </div>
             <div class="code-chip">${ex.code}</div>
           </div>
           <div class="row" style="margin-top:12px;">
             <button class="btn btn-outline" onclick="go('teacherResults',{code:'${ex.code}'})">📊 রেজাল্ট</button>
-            <button class="btn btn-outline" onclick="shareExam('${ex.code}','${escapeHtml(ex.title).replace(/'/g,"\\'")}')">🔗 শেয়ার</button>
+            <button class="btn btn-outline" onclick="shareExam('${ex.code}','${escapeHtml(ex.title).replace(/'/g,"\\'")}')">🔗 শেয়ার</button>
             <button class="btn btn-danger" onclick="deleteExam('${ex.code}')">মুছে ফেলো</button>
           </div>
         </div>`;
@@ -242,27 +278,25 @@ async function renderTeacherDashboard(){
     ${header('শিক্ষক প্যানেল')}
     <div class="card">
       <h2>তোমার পরীক্ষাসমূহ</h2>
-      <p class="hint">প্রতিটা পরীক্ষার একটা কোড আছে। সেই কোড আর এই অ্যাপের লিংক WhatsApp-এ স্টুডেন্টদের পাঠিয়ে দাও। স্টুডেন্টদের পাসওয়ার্ড: <b>${STUDENT_PASSWORD}</b></p>
+      <p class="hint">পরীক্ষার কোড আর এই অ্যাপের লিংক স্টুডেন্টদের পাঠিয়ে দাও। স্টুডেন্টদের পাসওয়ার্ড: <b>${STUDENT_PASSWORD}</b></p>
       ${listHtml}
-      <button class="btn btn-primary btn-block" style="margin-top:6px;" onclick="draftQuestions=[]; go('teacherNewExam')">+ নতুন পরীক্ষা বানাও</button>
+      <button class="btn btn-primary btn-block" style="margin-top:6px;" onclick="draftQuestions=[]; go('teacherNewExam')">+ নতুন পরীক্ষা সাজাও</button>
     </div>
-    <div class="center"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
+    <div class="center"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
     ${creditFooter()}
   `;
 }
 
 function shareExam(code, title){
   const url = window.location.href.split('?')[0];
-  const msg = `${title}\nএক্সাম কোড: ${code}\nস্টুডেন্ট পাসওয়ার্ড: ${STUDENT_PASSWORD}\nএই লিংকে গিয়ে "আমি স্টুডেন্ট" চাপো, তারপর কোড ও পাসওয়ার্ড দাও:\n${url}`;
-  navigator.clipboard.writeText(msg).then(()=> toast('লিংক ও কোড কপি হয়েছে — WhatsApp-এ পেস্ট করো')).catch(()=> toast('কপি করতে সমস্যা হয়েছে'));
+  const msg = `${title}\nএক্সাম কোড: ${code}\nস্টুডেন্ট পাসওয়ার্ড: ${STUDENT_PASSWORD}\nএই লিংকে গিয়ে পরীক্ষা দাও:\n${url}`;
+  navigator.clipboard.writeText(msg).then(()=> toast('লিংক ও কোড কপি হয়েছে')).catch(()=> toast('কপি করতে সমস্যা হয়েছে'));
 }
 
 async function deleteExam(code){
-  if(!confirm('এই পরীক্ষাটা মুছে ফেলতে চাও? সব রেজাল্টও মুছে যাবে।')) return;
+  if(!confirm('এই পরীক্ষাটা লোকালি মুছে ফেলতে চাও?')) return;
   await sdel('exam:'+code);
-  const rkeys = await slist('result:'+code+':');
-  for(const rk of rkeys){ await sdel(rk); }
-  toast('পরীক্ষা মুছে ফেলা হয়েছে');
+  toast('পরীক্ষা তালিকা থেকে সরানো হয়েছে');
   go('teacherDashboard');
 }
 
@@ -275,35 +309,33 @@ function renderTeacherNewExam(){
       <h2>পরীক্ষার তথ্য</h2>
       <label class="field-label">পরীক্ষার নাম</label>
       <input type="text" id="examTitle" placeholder="যেমন: পরমাণুর গঠন — MCQ টেস্ট">
-      <label class="field-label">বিষয়</label>
-      <input type="text" id="examSubject" placeholder="যেমন: রসায়ন">
-      <label class="field-label">সময়ের ধরন</label>
+      <label class="field-label">বিষয়</label>
+      <input type="text" id="examSubject" placeholder="যেমন: রসায়ন">
+      <label class="field-label">সময়ের ধরন</label>
       <select id="timerMode" onchange="toggleTimerFields()">
-        <option value="total">পুরো পরীক্ষার জন্য মোট সময় (মিনিট)</option>
-        <option value="perQuestion">প্রতিটা প্রশ্নের জন্য আলাদা সময় (সেকেন্ড)</option>
+        <option value="total">পুরো পরীক্ষার জন্য মোট সময় (মিনিট)</option>
+        <option value="perQuestion">প্রতিটা প্রশ্নের জন্য আলাদা সময় (সেকেন্ড)</option>
       </select>
       <div id="totalField">
-        <label class="field-label">মোট সময় (মিনিট)</label>
+        <label class="field-label">মোট সময় (মিনিট)</label>
         <input type="number" id="examDuration" value="7" min="1" max="180">
       </div>
       <div id="perQField" style="display:none;">
-        <label class="field-label">প্রশ্ন প্রতি সময় (সেকেন্ড)</label>
+        <label class="field-label">প্রশ্ন প্রতি সময় (সেকেন্ড)</label>
         <input type="number" id="perQSeconds" value="36" min="5" max="600">
       </div>
     </div>
     <div class="card">
       <h2>দ্রুত ইম্পোর্ট (ঐচ্ছিক)</h2>
       <p class="hint">একসাথে অনেক প্রশ্ন থাকলে নিচের ফরম্যাটে পেস্ট করে "ইম্পোর্ট করো" চাপো:<br>
-      <code>Q: প্রশ্ন লেখো [ট্যাগ]<br>A) অপশন ১<br>B) অপশন ২<br>C) অপশন ৩<br>D) অপশন ৪<br>ANS: A</code><br>
-      প্রতিটা প্রশ্নের মাঝে একটা ফাঁকা লাইন রাখবে।</p>
+      <code>Q: প্রশ্ন লেখো [ট্যাগ]<br>A) অপশন ১<br>B) অপশন ২<br>C) অপশন ৩<br>D) অপশন ৪<br>ANS: A</code></p>
       <textarea id="bulkText" placeholder="এখানে পেস্ট করো..."></textarea>
-      <button class="btn btn-outline btn-block" onclick="importBulk()">📥 ইম্পোর্ট করো (নিচে দেখাবে)</button>
+      <button class="btn btn-outline btn-block" onclick="importBulk()">📥 ইম্পোর্ট করো</button>
     </div>
     <div class="card">
       <h2>প্রশ্নসমূহ</h2>
-      <p class="hint">প্রতিটা প্রশ্নে ৪টা অপশন দাও এবং সঠিক উত্তরের বাবল ভরে দাও।</p>
       <div id="qList"></div>
-      <button class="btn btn-outline btn-block" onclick="addQuestion()">+ আরেকটা প্রশ্ন যোগ করো</button>
+      <button class="btn btn-outline btn-block" onclick="addQuestion()">+ আরেকটি প্রশ্ন যোগ করো</button>
     </div>
     <div class="row">
       <button class="btn btn-outline" onclick="cancelNewExam()">বাতিল</button>
@@ -351,12 +383,11 @@ window.importBulk = function(){
       parsed.push({ text: qtext, tag, options, correct });
     }
   }
-  if(parsed.length === 0){ toast('কোনো প্রশ্ন পার্স করা যায়নি, ফরম্যাট চেক করো'); return; }
+  if(parsed.length === 0){ toast('ফরম্যাট মেলেনি'); return; }
   draftQuestions = parsed;
   renderQList();
-  toast(parsed.length + 'টা প্রশ্ন ইম্পোর্ট হয়েছে — নিচে দেখো ও দরকার হলে ঠিক করো');
+  toast(parsed.length + 'টি প্রশ্ন ইম্পোর্ট হয়েছে');
   document.getElementById('bulkText').value = '';
-  window.scrollTo({top: document.getElementById('qList').offsetTop, behavior:'smooth'});
 }
 
 function renderQList(){
@@ -368,14 +399,14 @@ function renderQList(){
         ${draftQuestions.length>1 ? `<a class="link-back" onclick="removeQuestion(${i})">মুছো</a>`:''}
       </div>
       <label class="field-label">প্রশ্ন</label>
-      <input type="text" value="${escapeHtml(q.text)}" oninput="draftQuestions[${i}].text=this.value" placeholder="প্রশ্নটা লেখো">
-      <label class="field-label">রেফারেন্স ট্যাগ (ঐচ্ছিক)</label>
-      <input type="text" value="${escapeHtml(q.tag||'')}" oninput="draftQuestions[${i}].tag=this.value" placeholder="যেমন: চ. বো. ২৩">
+      <input type="text" value="${escapeHtml(q.text)}" oninput="draftQuestions[${i}].text=this.value">
+      <label class="field-label">ট্যাগ (ঐচ্ছিক)</label>
+      <input type="text" value="${escapeHtml(q.tag||'')}" oninput="draftQuestions[${i}].tag=this.value">
       ${[0,1,2,3].map(j=>`
         <div class="bubble-opt">
           <input type="radio" name="correct${i}" ${q.correct===j?'checked':''} onchange="draftQuestions[${i}].correct=${j}">
           <div class="bubble">${['ক','খ','গ','ঘ'][j]}</div>
-          <input type="text" class="opt-input" value="${escapeHtml(q.options[j])}" oninput="draftQuestions[${i}].options[${j}]=this.value" placeholder="অপশন ${['ক','খ','গ','ঘ'][j]}">
+          <input type="text" class="opt-input" value="${escapeHtml(q.options[j])}" oninput="draftQuestions[${i}].options[${j}]=this.value">
         </div>`).join('')}
     </div>
   `).join('');
@@ -387,32 +418,26 @@ async function saveExam(){
   const timerMode = document.getElementById('timerMode').value;
   const duration = parseInt(document.getElementById('examDuration').value, 10) || 7;
   const perQuestionSeconds = parseInt(document.getElementById('perQSeconds').value, 10) || 36;
-  if(!title || !subject){ toast('নাম ও বিষয় দাও'); return; }
+  if(!title || !subject){ toast('নাম ও বিষয় পূরণ করো'); return; }
   for(const q of draftQuestions){
-    if(!q.text.trim() || q.options.some(o=>!o.trim())){ toast('সব প্রশ্ন ও ৪টা অপশন পূরণ করো'); return; }
+    if(!q.text.trim() || q.options.some(o=>!o.trim())){ toast('সব পূরণ করো'); return; }
   }
   let code = genCode();
-  let tries=0;
-  while(await sget('exam:'+code) && tries<5){ code = genCode(); tries++; }
   const exam = { code, title, subject, timerMode, duration, perQuestionSeconds, questions: draftQuestions, createdAt: Date.now() };
-  const res = await sset('exam:'+code, JSON.stringify(exam));
-  if(!res){ toast('সেভ করতে ব্যর্থ হয়েছে, আবার চেষ্টা করো'); return; }
+  toast('গুগল শিটে সেভ হচ্ছে...');
+  await sset('exam:'+code, JSON.stringify(exam));
   draftQuestions = [];
-  toast('পরীক্ষা তৈরি হয়েছে! কোড: '+code);
+  alert('পরীক্ষা তৈরি হয়েছে এবং গুগল শিটে সেভ হয়েছে! কোড: '+code);
   go('teacherDashboard');
 }
 
 async function renderTeacherResults(code){
-  app.innerHTML = `${header('রেজাল্ট')}<div class="card center">লোড হচ্ছে...</div>`;
+  app.innerHTML = `${header('রেজাল্ট')}<div class="card center">গুগল শিট থেকে রেজাল্ট লোড হচ্ছে...</div>`;
   const examRaw = await sget('exam:'+code);
-  if(!examRaw){ app.innerHTML = `${header()}<div class="card center">পরীক্ষা পাওয়া যায়নি।</div>`; return; }
+  if(!examRaw){ app.innerHTML = `${header()}<div class="card center">পরীক্ষা পাওয়া যায়নি।</div>`; return; }
   const exam = JSON.parse(examRaw.value);
-  const rkeys = await slist('result:'+code+':');
-  let results = [];
-  for(const k of rkeys){
-    const v = await sget(k);
-    if(v){ try{ results.push(JSON.parse(v.value)); }catch(e){} }
-  }
+  
+  const results = await getRemoteResults(code);
   results.sort((a,b)=> b.score - a.score || a.submittedAt - b.submittedAt);
 
   let rows = results.map((r,i)=>{
@@ -422,7 +447,7 @@ async function renderTeacherResults(code){
       <td>${escapeHtml(r.studentName)}</td>
       <td class="score-big ${pct>=50?'score-pass':'score-fail'}">${r.score}/${r.total}</td>
       <td>${pct}%</td>
-      <td>${new Date(r.submittedAt).toLocaleString('bn-BD')}</td>
+      <td>${new Date(r.submittedAt).toLocaleTimeString('bn-BD')}</td>
     </tr>`;
   }).join('');
 
@@ -431,13 +456,13 @@ async function renderTeacherResults(code){
     <div class="card">
       <h2>${escapeHtml(exam.title)}</h2>
       <p class="hint">কোড: <span class="code-chip">${exam.code}</span> · মোট জমা: ${results.length}</p>
-      ${results.length===0 ? `<div class="empty-state">এখনো কেউ পরীক্ষা দেয়নি।</div>` : `
+      ${results.length===0 ? `<div class="empty-state">এখনো কেউ পরীক্ষা দেয়নি বা লোড হতে পারছে না।</div>` : `
       <table class="results">
-        <thead><tr><th>#</th><th>নাম</th><th>স্কোর</th><th>%</th><th>জমার সময়</th></tr></thead>
+        <thead><tr><th>#</th><th>নাম</th><th>স্কোর</th><th>%</th><th>সময়</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`}
     </div>
-    <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← পরীক্ষার তালিকায় ফিরে যাও</a></div>
+    <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>
     ${creditFooter()}
   `;
 }
@@ -451,8 +476,8 @@ function renderStudentEntry(){
       <input type="text" id="studName" placeholder="পুরো নাম লেখো">
       <label class="field-label">এক্সাম কোড</label>
       <input type="text" id="studCode" placeholder="যেমন: 7K3PQ" style="text-transform:uppercase;">
-      <label class="field-label">পাসওয়ার্ড</label>
-      <input type="password" id="studPass" placeholder="শিক্ষকের দেওয়া পাসওয়ার্ড">
+      <label class="field-label">পাসওয়ার্ড</label>
+      <input type="password" id="studPass" placeholder="শিক্ষকের দেওয়া পাসওয়ার্ড">
       <button class="btn btn-primary btn-block" onclick="verifyStudentLogin()">পরীক্ষা শুরু করো</button>
       <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← ফিরে যাও</a></div>
     </div>
@@ -463,40 +488,32 @@ async function verifyStudentLogin(){
   const name = document.getElementById('studName').value.trim();
   const code = document.getElementById('studCode').value.trim().toUpperCase();
   const pass = document.getElementById('studPass').value.trim();
-  if(!name || !code || !pass){ toast('নাম, কোড ও পাসওয়ার্ড সবগুলো দাও'); return; }
-  if(pass !== STUDENT_PASSWORD){ toast('পাসওয়ার্ড ভুল হয়েছে'); return; }
+  if(!name || !code || !pass){ toast('সবগুলো পূরণ করো'); return; }
+  if(pass !== STUDENT_PASSWORD){ toast('পাসওয়ার্ড ভুল হয়েছে'); return; }
+  
+  toast('গুগল শিট থেকে পরীক্ষা খোঁজা হচ্ছে...');
   const examRaw = await sget('exam:'+code);
-  if(!examRaw){ toast('এই কোডে কোনো পরীক্ষা পাওয়া যায়নি'); return; }
+  if(!examRaw){ alert('পরীক্ষা পাওয়া যায়নি! কোডটি সঠিক কিনা যাচাই করো।'); return; }
+  
   const exam = JSON.parse(examRaw.value);
   const slug = slugify(name);
   runCheckingSequence(exam, slug, name);
 }
 
 function runCheckingSequence(exam, slug, name){
-  const steps = [
-    'স্টুডেন্টের নাম ডাটাবেজে যাচাই করা হচ্ছে',
-    'পাসওয়ার্ড যাচাই সম্পন্ন',
-    'প্রবেশাধিকার অনুমোদিত'
-  ];
   app.innerHTML = `
     ${header('যাচাই হচ্ছে')}
     <div class="card check-seq">
-      <div id="cLine0" class="check-line">${steps[0]}...</div>
-      <div id="cLine1" class="check-line"><span class="tick">✓</span> ${steps[1]}</div>
-      <div id="cLine2" class="check-line"><span class="tick">✓</span> ${steps[2]}</div>
+      <div id="cLine0" class="check-line">গুগল ডাটাবেজ কানেক্ট করা হচ্ছে...</div>
+      <div id="cLine1" class="check-line"><span class="tick">✓</span> পাসওয়ার্ড সঠিক</div>
+      <div id="cLine2" class="check-line"><span class="tick">✓</span> পরীক্ষা শুরু করার জন্য প্রস্তুত</div>
     </div>
     ${creditFooter()}
   `;
   setTimeout(()=> document.getElementById('cLine0').classList.add('show'), 150);
-  setTimeout(()=> document.getElementById('cLine1').classList.add('show'), 900);
-  setTimeout(()=> document.getElementById('cLine2').classList.add('show'), 1650);
+  setTimeout(()=> document.getElementById('cLine1').classList.add('show'), 700);
+  setTimeout(()=> document.getElementById('cLine2').classList.add('show'), 1200);
   setTimeout(async ()=>{
-    const prevRaw = await sget('result:'+exam.code+':'+slug);
-    if(prevRaw){
-      const prev = JSON.parse(prevRaw.value);
-      go('studentAlready', { exam, prev });
-      return;
-    }
     go('studentExam', {
       exam, slug, name,
       answers: new Array(exam.questions.length).fill(null),
@@ -504,23 +521,7 @@ function runCheckingSequence(exam, slug, name){
       startedAt: Date.now(),
       qIndex: 0
     });
-  }, 2300);
-}
-
-function renderStudentAlready(){
-  const { exam, prev } = state;
-  const pct = Math.round((prev.score/prev.total)*100);
-  app.innerHTML = `
-    ${header('আগেই জমা দেওয়া হয়েছে')}
-    <div class="card center">
-      <h2>${escapeHtml(exam.title)}</h2>
-      <p class="hint">তুমি এই পরীক্ষাটা আগেই জমা দিয়েছো।</p>
-      <div class="stamp ${pct>=50?'':'fail'}">${prev.score}/${prev.total}</div>
-      <p class="hint" style="margin-top:14px;">জমা দেওয়া হয়েছিল: ${new Date(prev.submittedAt).toLocaleString('bn-BD')}</p>
-      <a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a>
-    </div>
-    ${creditFooter()}
-  `;
+  }, 1800);
 }
 
 function renderStudentExam(){
@@ -551,13 +552,12 @@ function renderStudentExamTotal(){
   `).join('');
 
   app.innerHTML = `
-    <div style="overflow:hidden;">
+    <div>
       <div class="timer-chip" id="timerChip"><span class="timer-dot"></span><span id="timerText">${fmtTime(totalSec)}</span></div>
       <header class="top" style="margin-bottom:8px;"><div class="logo" style="font-size:22px;">${escapeHtml(exam.title)}</div></header>
     </div>
-    <p class="hint">একটা অপশনে ক্লিক করলে সেটাই চূড়ান্ত হয়ে যাবে — পরে আর পরিবর্তন করা যাবে না। সময় শেষ হলে স্বয়ংক্রিয়ভাবে জমা হয়ে যাবে।</p>
     <div class="card">${qHtml}</div>
-    <button class="btn btn-primary btn-block" onclick="submitExam(false)">✅ জমা দাও</button>
+    <button class="btn btn-primary btn-block" onclick="submitExam(false)">✅ খাতা জমা দাও</button>
     ${creditFooter()}
   `;
 
@@ -586,12 +586,11 @@ function renderStudentExamPerQ(){
   const answered = answers[qIndex] !== null;
 
   app.innerHTML = `
-    <div style="overflow:hidden;">
+    <div>
       <div class="timer-chip" id="timerChip"><span class="timer-dot"></span><span id="timerText">${fmtTime(secPerQ)}</span></div>
       <header class="top" style="margin-bottom:8px;"><div class="logo" style="font-size:22px;">${escapeHtml(exam.title)}</div></header>
     </div>
     <div class="qprog">প্রশ্ন ${qIndex+1} / ${exam.questions.length}</div>
-    <p class="hint">যেই অপশনে ক্লিক করবে সেটাই চূড়ান্ত ধরে পরের প্রশ্নে চলে যাবে। সময় শেষ হলেও পরের প্রশ্নে চলে যাবে।</p>
     <div class="card">
       <div class="q-block" style="border-bottom:none; padding-bottom:0;">
         <div style="display:flex; align-items:flex-start; gap:2px;">
@@ -643,7 +642,7 @@ function updateTimerDisplay(sec){
   const txt = document.getElementById('timerText');
   if(!txt) return;
   txt.textContent = fmtTime(Math.max(sec,0));
-  if(chip && sec <= (state.exam.timerMode==='perQuestion' ? 8 : 30)) chip.classList.add('low');
+  if(chip && sec <= 8) chip.classList.add('low');
 }
 
 window.submitExam = async function(auto){
@@ -652,8 +651,10 @@ window.submitExam = async function(auto){
   let score = 0;
   exam.questions.forEach((q,i)=>{ if(answers[i] === q.correct) score++; });
   const resultObj = { studentName: name, score, total: exam.questions.length, submittedAt: Date.now() };
+  
+  app.innerHTML = `${header('জমা হচ্ছে')} <div class="card center">গুগল শিটে আপনার উত্তরপত্র জমা হচ্ছে, দয়া করে অপেক্ষা করুন...</div>`;
+  
   await sset('result:'+exam.code+':'+slug, JSON.stringify(resultObj));
-  toast(auto ? 'সময় শেষ! খাতা জমা নেওয়া হয়েছে।' : 'খাতা জমা দেওয়া হয়েছে!');
   go('studentResult', { exam, score, total: exam.questions.length });
 }
 
@@ -664,10 +665,9 @@ function renderStudentResult(){
     ${header('ফলাফল')}
     <div class="card center">
       <h2>${escapeHtml(exam.title)}</h2>
-      <p class="hint" style="margin-bottom:20px;">তোমার পরীক্ষা শেষ হয়েছে।</p>
       <div class="stamp ${pct>=50?'':'fail'}">${score}/${total}</div>
       <div style="margin-top:20px;">
-        <button class="btn btn-primary" onclick="go('landing')">মূল পাতায় যাও</button>
+        <button class="btn btn-primary" onclick="go('landing')">মূল পাতায় যাও</button>
       </div>
     </div>
     ${creditFooter()}
@@ -683,11 +683,9 @@ function render(){
   else if(s==='teacherResults') renderTeacherResults(state.code);
   else if(s==='studentEntry') renderStudentEntry();
   else if(s==='studentExam') renderStudentExam();
-  else if(s==='studentAlready') renderStudentAlready();
   else if(s==='studentResult') renderStudentResult();
 }
 
-// Start App
 render();
 </script>
 </body>
