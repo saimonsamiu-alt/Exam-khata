@@ -113,7 +113,6 @@ const TEACHER_PASSWORD = '2734';
 const STUDENT_PASSWORD = '1234';
 const CREATOR_CREDIT = 'তৈরি করেছে: Md. Saimon Samiu — IUT, OIC, IPE';
 
-// 🌐 আপনার দেওয়া Google Web App URL নিখুঁতভাবে বসানো হয়েছে
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxR5i7I1myeIzR3yhZlgg7Bc24P11JfNOjTsQCs5diHaO9DQwAbOUSrZ04kjL4JNMLM/exec';
 
 const holesEl = document.getElementById('holes');
@@ -121,48 +120,40 @@ for(let i=0;i<10;i++){ const s=document.createElement('span'); holesEl.appendChi
 
 function toast(msg){ toastEl.textContent = msg; toastEl.classList.add('show'); setTimeout(()=>toastEl.classList.remove('show'), 1800); }
 
-// ================= GOOGLE SHEETS NETWORK FETCH =================
+// ================= CORS-FREE GET NETWORK FETCH =================
 async function sget(key) {
   if (key.startsWith('exam:')) {
     const code = key.split(':')[1];
     try {
       let r = await fetch(`${SCRIPT_URL}?action=getExam&code=${code}`);
       let json = await r.json();
-      if (json.status === "success") return { value: json.data };
+      if (json.status === "success") {
+        localStorage.setItem(key, JSON.stringify(json.data)); // local sync
+        return { value: JSON.stringify(json.data) };
+      }
     } catch(e) {}
   }
-  // Fallback to localStorage for teacher layout
   const r = localStorage.getItem(key);
   return r ? { value: r } : null;
 }
 
 async function sset(key, value) {
-  // Save locally first
   localStorage.setItem(key, value);
-  
   try {
     if (key.startsWith('exam:')) {
       const code = key.split(':')[1];
-      await fetch(SCRIPT_URL, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "saveExam", code: code, exam: JSON.parse(value) })
-      });
+      const encodedData = encodeURIComponent(value);
+      await fetch(`${SCRIPT_URL}?action=saveExam&code=${code}&exam=${encodedData}`);
     } else if (key.startsWith('result:')) {
       const parts = key.split(':');
       const code = parts[1];
       const slug = parts[2];
-      await fetch(SCRIPT_URL, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "submitResult", code: code, slug: slug, result: JSON.parse(value) })
-      });
+      const encodedData = encodeURIComponent(value);
+      await fetch(`${SCRIPT_URL}?action=submitResult&code=${code}&slug=${slug}&result=${encodedData}`);
     }
     return true;
   } catch(e) {
-    return true; // no-cors mode might trigger opaque responses, return true
+    return true;
   }
 }
 
@@ -210,7 +201,7 @@ function renderLanding(){
     ${header()}
     <div class="card center">
       <h1>তুমি কে হিসেবে ঢুকছো?</h1>
-      <p class="hint">শিক্ষক হিসেবে ঢুকলে নতুন পরীক্ষা সাজাতে ও রেজাল্ট দেখতে পারবে। স্টুডেন্ট হিসেবে ঢুকলে কোড দিয়ে পরীক্ষা দিতে পারবে।</p>
+      <p class="hint">শিক্ষক হিসেবে ঢুকলে নতুন পরীক্ষা সাজাতে ও রেজাল্ট দেখতে পারবে। স্টুডেন্ট হিসেবে ঢুকলে কোড দিয়ে পরীক্ষা পারবে।</p>
       <div class="row">
         <button class="btn btn-primary btn-block" onclick="go('teacherGate')">👩‍🏫 আমি শিক্ষক</button>
         <button class="btn btn-gold btn-block" onclick="go('studentEntry')">🧑‍🎓 আমি স্টুডেন্ট</button>
@@ -511,8 +502,8 @@ function runCheckingSequence(exam, slug, name){
     ${creditFooter()}
   `;
   setTimeout(()=> document.getElementById('cLine0').classList.add('show'), 150);
-  setTimeout(()=> document.getElementById('cLine1').classList.add('show'), 700);
-  setTimeout(()=> document.getElementById('cLine2').classList.add('show'), 1200);
+  setTimeout(()=> document.getElementById('cLine1').classList.add('show'), 600);
+  setTimeout(()=> document.getElementById('cLine2').classList.add('show'), 1100);
   setTimeout(async ()=>{
     go('studentExam', {
       exam, slug, name,
@@ -521,7 +512,7 @@ function runCheckingSequence(exam, slug, name){
       startedAt: Date.now(),
       qIndex: 0
     });
-  }, 1800);
+  }, 1600);
 }
 
 function renderStudentExam(){
