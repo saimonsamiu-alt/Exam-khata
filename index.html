@@ -113,14 +113,15 @@ const TEACHER_PASSWORD = '2734';
 const STUDENT_PASSWORD = '1234';
 const CREATOR_CREDIT = 'তৈরি করেছে: Md. Saimon Samiu — IUT, OIC, IPE';
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxR5i7I1myeIzR3yhZlgg7Bc24P11JfNOjTsQCs5diHaO9DQwAbOUSrZ04kjL4JNMLM/exec';
+// ================== YOUR UPDATED WEB APP LINK ==================
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzcEWgsebPTyq2viFk-OyXKevd_vF9rG6SQ5G2mMafQYvUdcjPoPaJiarbASfaN2irS/exec';
 
 const holesEl = document.getElementById('holes');
 for(let i=0;i<10;i++){ const s=document.createElement('span'); holesEl.appendChild(s); }
 
 function toast(msg){ toastEl.textContent = msg; toastEl.classList.add('show'); setTimeout(()=>toastEl.classList.remove('show'), 1800); }
 
-// ================= CORS-FREE GET NETWORK FETCH =================
+// ================= NETWORK FETCH METHODS =================
 async function sget(key) {
   if (key.startsWith('exam:')) {
     const code = key.split(':')[1];
@@ -128,7 +129,7 @@ async function sget(key) {
       let r = await fetch(`${SCRIPT_URL}?action=getExam&code=${code}`);
       let json = await r.json();
       if (json.status === "success") {
-        localStorage.setItem(key, JSON.stringify(json.data)); // local sync
+        localStorage.setItem(key, JSON.stringify(json.data)); 
         return { value: JSON.stringify(json.data) };
       }
     } catch(e) {}
