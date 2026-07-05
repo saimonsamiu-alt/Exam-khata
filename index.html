@@ -113,7 +113,6 @@ const TEACHER_PASSWORD = '2734';
 const STUDENT_PASSWORD = '1234';
 const CREATOR_CREDIT = 'তৈরি করেছে: Md. Saimon Samiu — IUT, OIC, IPE';
 
-// ================== YOUR UPDATED WEB APP LINK ==================
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzcEWgsebPTyq2viFk-OyXKevd_vF9rG6SQ5G2mMafQYvUdcjPoPaJiarbASfaN2irS/exec';
 
 const holesEl = document.getElementById('holes');
@@ -121,18 +120,27 @@ for(let i=0;i<10;i++){ const s=document.createElement('span'); holesEl.appendChi
 
 function toast(msg){ toastEl.textContent = msg; toastEl.classList.add('show'); setTimeout(()=>toastEl.classList.remove('show'), 1800); }
 
-// ================= NETWORK FETCH METHODS =================
 async function sget(key) {
   if (key.startsWith('exam:')) {
     const code = key.split(':')[1];
     try {
       let r = await fetch(`${SCRIPT_URL}?action=getExam&code=${code}`);
-      let json = await r.json();
+      let text = await r.text();
+      
+      // If Google Script returns HTML instead of JSON, it means permission/authorization is missing
+      if(text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
+         alert("গুগল স্ক্রিপ্ট সমস্যা: স্ক্রিপ্টটি সঠিকভাবে ডেপ্লয় করা হয়নি অথবা 'Anyone' অ্যাক্সেস দেওয়া হয়নি।");
+         return null;
+      }
+      
+      let json = JSON.parse(text);
       if (json.status === "success") {
         localStorage.setItem(key, JSON.stringify(json.data)); 
         return { value: JSON.stringify(json.data) };
       }
-    } catch(e) {}
+    } catch(e) {
+      alert("নেটওয়ার্ক বা গুগলের সমস্যা: " + e.message + "\nঅনুগ্রহ করে নিশ্চিত হোন যে আপনার গুগল স্ক্রিপ্ট সচল আছে।");
+    }
   }
   const r = localStorage.getItem(key);
   return r ? { value: r } : null;
@@ -158,11 +166,7 @@ async function sset(key, value) {
   }
 }
 
-async function sdel(key){
-  localStorage.removeItem(key);
-  return true;
-}
-
+async function sdel(key){ localStorage.removeItem(key); return true; }
 async function slist(prefix){
   const keys = [];
   for (let i = 0; i < localStorage.length; i++) {
@@ -180,7 +184,6 @@ async function getRemoteResults(code) {
   } catch(e){}
   return [];
 }
-// =============================================================
 
 function genCode(){ const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let c=''; for(let i=0;i<5;i++) c += chars[Math.floor(Math.random()*chars.length)]; return c; }
 function slugify(name){ return name.trim().toLowerCase().replace(/[^a-z0-9\u0980-\u09FF]+/g,'_').slice(0,40) || 'student'; }
@@ -469,7 +472,7 @@ function renderStudentEntry(){
       <label class="field-label">এক্সাম কোড</label>
       <input type="text" id="studCode" placeholder="যেমন: 7K3PQ" style="text-transform:uppercase;">
       <label class="field-label">পাসওয়ার্ড</label>
-      <input type="password" id="studPass" placeholder="শিক্ষকের দেওয়া পাসওয়ার্ড">
+      <input type="password" id="studPass" placeholder="কমপক্ষে ৪ সংখ্যার পাসওয়ার্ড">
       <button class="btn btn-primary btn-block" onclick="verifyStudentLogin()">পরীক্ষা শুরু করো</button>
       <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← ফিরে যাও</a></div>
     </div>
@@ -485,7 +488,7 @@ async function verifyStudentLogin(){
   
   toast('গুগল শিট থেকে পরীক্ষা খোঁজা হচ্ছে...');
   const examRaw = await sget('exam:'+code);
-  if(!examRaw){ alert('পরীক্ষা পাওয়া যায়নি! কোডটি সঠিক কিনা যাচাই করো।'); return; }
+  if(!examRaw){ alert('পরীক্ষা পাওয়া যায়নি! কোডটি সঠিক কিনা যাচাই করো বা একটি নতুন এক্সাম তৈরি করে ট্রাই করো।'); return; }
   
   const exam = JSON.parse(examRaw.value);
   const slug = slugify(name);
