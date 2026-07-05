@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>পরীক্ষার খাতা</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Noto+Sans+Bengali:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F2F6FB; --paper-edge:#E7EEF6; --rule:#C9D8E8; --margin-red:#BF3A2C;
+    --ink:#1F2A44; --pencil:#5B6472; --gold:#D9A441; --green:#2F7D5A; --red:#BF3A2C;
+    --card-shadow: 0 2px 0 rgba(31,42,68,0.06), 0 8px 24px -12px rgba(31,42,68,0.18);
+    --font-display:'Kalam', cursive; --font-body:'Noto Sans Bengali','Inter',sans-serif; --font-mono:'JetBrains Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:var(--font-body); color:var(--ink);
+    background: repeating-linear-gradient(var(--paper) 0px, var(--paper) 31px, var(--rule) 32px), var(--paper);
+    min-height:100vh; position:relative; padding:0 0 40px 0;
+  }
+  body::before{ content:""; position:fixed; top:0; bottom:0; left:44px; width:2px; background:var(--margin-red); opacity:0.55; z-index:0; }
+  .holes{ position:fixed; left:14px; top:0; bottom:0; display:flex; flex-direction:column; justify-content:space-evenly; z-index:0; pointer-events:none; }
+  .holes span{ width:12px;height:12px;border-radius:50%; background:var(--paper-edge); box-shadow: inset 0 1px 3px rgba(31,42,68,0.25); }
+  .wrap{ position:relative; z-index:1; max-width:640px; margin:0 auto; padding:28px 20px 20px 64px; }
+  header.top{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:22px; flex-wrap:wrap; }
+  .logo{ font-family:var(--font-display); font-weight:700; font-size:30px; color:var(--ink); display:flex; align-items:center; gap:8px; }
+  .logo .dot{ color:var(--margin-red); }
+  .tagline{ font-size:13px; color:var(--pencil); }
+  .card{ background:#fff; border-radius:10px; box-shadow:var(--card-shadow); padding:22px; margin-bottom:18px; border:1px solid var(--paper-edge); }
+  h1,h2,h3{ font-family:var(--font-display); margin:0 0 12px 0; color:var(--ink); font-weight:700; }
+  h1{font-size:26px;} h2{font-size:21px;} h3{font-size:17px;}
+  p.hint{ color:var(--pencil); font-size:13.5px; margin:0 0 14px 0; line-height:1.5; }
+  label.field-label{ display:block; font-size:13px; color:var(--pencil); margin-bottom:6px; font-weight:600; }
+  input[type=text], input[type=number], input[type=password], input[type=tel], select, textarea{
+    width:100%; padding:11px 12px; border-radius:7px; border:1.5px solid var(--rule); background:#FBFDFF;
+    font-family:var(--font-body); font-size:15px; color:var(--ink); margin-bottom:14px; outline:none;
+  }
+  textarea{ font-family:var(--font-mono); font-size:13px; min-height:160px; resize:vertical; }
+  input:focus, textarea:focus, select:focus{ border-color:var(--gold); box-shadow:0 0 0 3px rgba(217,164,65,0.18); }
+  .btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; font-family:var(--font-body); font-weight:600; font-size:14.5px;
+    padding:12px 18px; border-radius:8px; border:none; cursor:pointer; transition:transform .08s ease, box-shadow .08s ease; }
+  .btn:active{ transform:translateY(1px); }
+  .btn-primary{ background:var(--ink); color:#fff; }
+  .btn-primary:hover{ box-shadow:0 4px 14px -4px rgba(31,42,68,0.5); }
+  .btn-gold{ background:var(--gold); color:#3a2a06; }
+  .btn-outline{ background:transparent; color:var(--ink); border:1.5px solid var(--rule); }
+  .btn-danger{ background:transparent; color:var(--red); border:1.5px solid rgba(191,58,44,0.35); }
+  .btn-block{ width:100%; }
+  .btn[disabled]{ opacity:0.5; cursor:not-allowed; }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; }
+  .row > *{ flex:1; }
+  .exam-item{ border:1px solid var(--paper-edge); border-radius:9px; padding:14px 16px; margin-bottom:12px; background:#FCFDFE; }
+  .exam-item .row-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
+  .exam-item .code-chip{ font-family:var(--font-mono); background:var(--ink); color:#fff; padding:4px 9px; border-radius:6px; font-size:13px; letter-spacing:1px; }
+  .meta{ color:var(--pencil); font-size:12.5px; margin-top:4px; }
+  .q-block{ padding:16px 0; border-bottom:1px dashed var(--rule); }
+  .q-block:last-child{ border-bottom:none; }
+  .q-num{ display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; border:2px solid var(--margin-red);
+    color:var(--margin-red); font-family:var(--font-mono); font-weight:700; font-size:13px; margin-inline-end:8px; }
+  .q-tag{ font-family:var(--font-mono); font-size:11px; color:var(--pencil); background:#EEF3F8; padding:2px 7px; border-radius:5px; }
+  .q-text{ font-weight:600; font-size:15.5px; margin-bottom:12px; }
+  .bubble-opt{ display:flex; align-items:center; gap:10px; padding:9px 6px; border-radius:7px; cursor:pointer; }
+  .bubble-opt:hover{ background:#F5F9FE; }
+  .bubble-opt.locked{ opacity:0.65; cursor:default; }
+  .bubble-opt.locked:hover{ background:none; }
+  .bubble{ width:24px; height:24px; min-width:24px; border-radius:50%; border:2px solid var(--pencil); display:flex; align-items:center; justify-content:center;
+    font-family:var(--font-mono); font-size:11px; color:var(--pencil); font-weight:700; transition: all .12s ease; }
+  input[type=radio]{ display:none; }
+  input[type=radio]:checked + .bubble{ background:var(--ink); border-color:var(--ink); color:#fff; }
+  .opt-text{ font-size:14.5px; color:var(--ink); }
+  .opt-input{ flex:1; padding:8px 10px; border-radius:6px; border:1.5px solid var(--rule); font-family:var(--font-body); font-size:14px; margin-bottom:0; }
+  .timer-chip{ position:sticky; top:10px; z-index:5; display:inline-flex; align-items:center; gap:8px; background:var(--ink); color:#fff;
+    font-family:var(--font-mono); font-weight:700; font-size:15px; padding:8px 14px; border-radius:20px; box-shadow:0 4px 14px -4px rgba(31,42,68,0.5); float:right; }
+  .timer-chip.low{ background:var(--red); }
+  .timer-dot{ width:8px; height:8px; border-radius:50%; background:var(--gold); animation:pulse 1s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.25;} }
+  table.results{ width:100%; border-collapse:collapse; font-size:14px; }
+  table.results th{ text-align:start; color:var(--pencil); font-weight:600; padding:8px 6px; border-bottom:2px solid var(--rule); font-size:12.5px; }
+  table.results td{ padding:9px 6px; border-bottom:1px dashed var(--rule); }
+  .rank1{ color:var(--gold); font-weight:700; }
+  .score-big{ font-family:var(--font-mono); font-weight:700; }
+  .score-pass{ color:var(--green); }
+  .score-fail{ color:var(--red); }
+  a.link-back{ color:var(--pencil); font-size:13.5px; cursor:pointer; text-decoration:underline; }
+  .toast{ position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 18px; border-radius:20px;
+    font-size:13.5px; box-shadow:0 6px 20px -6px rgba(0,0,0,0.4); z-index:50; opacity:0; transition:opacity .25s ease; }
+  .toast.show{ opacity:1; }
+  .stamp{ display:inline-block; border:3px solid var(--green); color:var(--green); border-radius:50%; padding:14px 18px;
+    font-family:var(--font-display); font-weight:700; font-size:22px; transform:rotate(-8deg); }
+  .stamp.fail{ border-color:var(--red); color:var(--red); }
+  .center{ text-align:center; }
+  .empty-state{ text-align:center; padding:30px 10px; color:var(--pencil); }
+  .credit{ text-align:center; font-size:11.5px; color:var(--pencil); opacity:0.85; margin-top:6px; letter-spacing:0.2px; }
+  .check-seq{ padding:30px 6px; text-align:center; }
+  .check-line{ display:flex; align-items:center; gap:10px; justify-content:center; padding:9px 0; font-family:var(--font-mono); font-size:14px; color:var(--pencil); opacity:0; transition:opacity .3s ease; }
+  .check-line.show{ opacity:1; }
+  .check-line .tick{ color:var(--green); font-weight:700; }
+  .qprog{ font-family:var(--font-mono); font-size:12.5px; color:var(--pencil); margin-bottom:6px; }
+  ::selection{ background:rgba(217,164,65,0.35); }
+  @media (max-width:480px){ .wrap{ padding:20px 14px 20px 50px; } body::before{ left:34px; } .holes{ left:10px; } }
+</style>
+</head>
+<body>
+<div class="holes" id="holes"></div>
+<div class="wrap" id="app"></div>
+<div class="toast" id="toast"></div>
+<script>
+const app = document.getElementById('app');
+const toastEl = document.getElementById('toast');
+const TEACHER_PASSWORD = '2734';
+const STUDENT_PASSWORD = '1234';
+const CREATOR_CREDIT = 'তৈরি করেছে: Md. Saimon Samiu — IUT, OIC, IPE';
+
+const holesEl = document.getElementById('holes');
+for(let i=0;i<10;i++){ const s=document.createElement('span'); holesEl.appendChild(s); }
+
+function toast(msg){ toastEl.textContent = msg; toastEl.classList.add('show'); setTimeout(()=>toastEl.classList.remove('show'), 1800); }
+async function sget(key){ try{ const r = await window.storage.get(key, true); return r ? r.value : null; } catch(e){ return null; } }
+async function sset(key, value){ try{ return await window.storage.set(key, value, true); } catch(e){ console.error('storage set failed', e); toast('সেভ করতে সমস্যা হয়েছে'); return null; } }
+async function sdel(key){ try{ return await window.storage.delete(key, true); } catch(e){ return null; } }
+async function slist(prefix){ try{ const r = await window.storage.list(prefix, true); return r ? r.keys : []; } catch(e){ return []; } }
+
+function genCode(){ const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let c=''; for(let i=0;i<5;i++) c += chars[Math.floor(Math.random()*chars.length)]; return c; }
+function slugify(name){ return name.trim().toLowerCase().replace(/[^a-z0-9\u0980-\u09FF]+/g,'_').slice(0,40) || 'student'; }
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtTime(totalSec){ const m = Math.floor(totalSec/60), s = totalSec%60; return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'); }
+
+let state = { screen: 'landing' };
+let timerInterval = null;
+function go(screen, data={}){ if(timerInterval){ clearInterval(timerInterval); timerInterval = null; } state = { screen, ...data }; render(); }
+function header(subtitle){ return `
+    <header class="top">
+      <div class="logo">পরীক্ষার <span class="dot">খাতা</span></div>
+      <div class="tagline">${subtitle || 'টিউশনের অনলাইন পরীক্ষা'}</div>
+    </header>`; }
+function creditFooter(){ return `<div class="credit">${CREATOR_CREDIT}</div>`; }
+
+// ================= LANDING =================
+function renderLanding(){
+  app.innerHTML = `
+    ${header()}
+    <div class="card center">
+      <h1>তুমি কে হিসেবে ঢুকছো?</h1>
+      <p class="hint">শিক্ষক হিসেবে ঢুকলে নতুন পরীক্ষা বানাতে ও রেজাল্ট দেখতে পারবে। স্টুডেন্ট হিসেবে ঢুকলে এক্সাম কোড দিয়ে পরীক্ষা দিতে পারবে।</p>
+      <div class="row">
+        <button class="btn btn-primary btn-block" onclick="go('teacherGate')">👩‍🏫 আমি শিক্ষক</button>
+        <button class="btn btn-gold btn-block" onclick="go('studentEntry')">🧑‍🎓 আমি স্টুডেন্ট</button>
+      </div>
+    </div>
+    ${creditFooter()}
+  `;
+}
+
+// ================= TEACHER GATE (fixed password) =================
+function renderTeacherGate(){
+  app.innerHTML = `
+    ${header('শিক্ষক প্যানেল')}
+    <div class="card">
+      <h2>পাসওয়ার্ড দাও</h2>
+      <p class="hint">এটা শুধু শিক্ষকের জন্য — স্টুডেন্টদের সাথে শেয়ার কোরো না।</p>
+      <input type="password" id="enterPin" maxlength="10" placeholder="পাসওয়ার্ড" onkeydown="if(event.key==='Enter') checkTeacherPin()">
+      <button class="btn btn-primary btn-block" onclick="checkTeacherPin()">ঢোকো</button>
+      <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← ফিরে যাও</a></div>
+    </div>
+    ${creditFooter()}
+  `;
+  document.getElementById('enterPin').focus();
+}
+function checkTeacherPin(){
+  const v = document.getElementById('enterPin').value.trim();
+  if(v === TEACHER_PASSWORD) go('teacherDashboard');
+  else toast('পাসওয়ার্ড ভুল হয়েছে');
+}
+
+// ================= TEACHER DASHBOARD =================
+async function renderTeacherDashboard(){
+  app.innerHTML = `${header('শিক্ষক প্যানেল')}<div class="card center">পরীক্ষার তালিকা লোড হচ্ছে...</div>`;
+  const keys = await slist('exam:');
+  let exams = [];
+  for(const k of keys){
+    const val = await sget(k);
+    if(val){ try{ exams.push(JSON.parse(val)); }catch(e){} }
+  }
+  exams.sort((a,b)=> (b.createdAt||0) - (a.createdAt||0));
+
+  let listHtml = '';
+  if(exams.length === 0){
+    listHtml = `<div class="empty-state">এখনো কোনো পরীক্ষা বানাওনি।<br>নিচ থেকে প্রথম পরীক্ষাটা বানাও।</div>`;
+  } else {
+    for(const ex of exams){
+      const count = (await slist('result:'+ex.code+':')).length;
+      const timerLabel = ex.timerMode === 'perQuestion' ? `প্রতি প্রশ্নে ${ex.perQuestionSeconds} সেকেন্ড` : `মোট ${ex.duration} মিনিট`;
+      listHtml += `
+        <div class="exam-item">
+          <div class="row-top">
+            <div>
+              <h3 style="margin-bottom:4px;">${escapeHtml(ex.title)}</h3>
+              <div class="meta">${escapeHtml(ex.subject)} · ${ex.questions.length}টা প্রশ্ন · ${timerLabel} · ${count} জন জমা দিয়েছে</div>
+            </div>
+            <div class="code-chip">${ex.code}</div>
+          </div>
+          <div class="row" style="margin-top:12px;">
+            <button class="btn btn-outline" onclick="go('teacherResults',{code:'${ex.code}'})">📊 রেজাল্ট</button>
+            <button class="btn btn-outline" onclick="shareExam('${ex.code}','${escapeHtml(ex.title).replace(/'/g,"\\'")}')">🔗 শেয়ার</button>
+            <button class="btn btn-danger" onclick="deleteExam('${ex.code}')">মুছে ফেলো</button>
+          </div>
+        </div>`;
+    }
+  }
+
+  app.innerHTML = `
+    ${header('শিক্ষক প্যানেল')}
+    <div class="card">
+      <h2>তোমার পরীক্ষাসমূহ</h2>
+      <p class="hint">প্রতিটা পরীক্ষার একটা কোড আছে। সেই কোড আর এই অ্যাপের লিংক WhatsApp-এ স্টুডেন্টদের পাঠিয়ে দাও। স্টুডেন্টদের পাসওয়ার্ড: <b>${STUDENT_PASSWORD}</b></p>
+      ${listHtml}
+      <button class="btn btn-primary btn-block" style="margin-top:6px;" onclick="draftQuestions=[]; go('teacherNewExam')">+ নতুন পরীক্ষা বানাও</button>
+    </div>
+    <div class="center"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+
+function shareExam(code, title){
+  const url = window.location.href.split('?')[0];
+  const msg = `${title}\nএক্সাম কোড: ${code}\nস্টুডেন্ট পাসওয়ার্ড: ${STUDENT_PASSWORD}\nএই লিংকে গিয়ে "আমি স্টুডেন্ট" চাপো, তারপর কোড ও পাসওয়ার্ড দাও:\n${url}`;
+  navigator.clipboard.writeText(msg).then(()=> toast('লিংক ও কোড কপি হয়েছে — WhatsApp-এ পেস্ট করো')).catch(()=> toast('কপি করতে সমস্যা হয়েছে'));
+}
+
+async function deleteExam(code){
+  if(!confirm('এই পরীক্ষাটা মুছে ফেলতে চাও? সব রেজাল্টও মুছে যাবে।')) return;
+  await sdel('exam:'+code);
+  const rkeys = await slist('result:'+code+':');
+  for(const rk of rkeys){ await sdel(rk); }
+  toast('পরীক্ষা মুছে ফেলা হয়েছে');
+  go('teacherDashboard');
+}
+
+// ================= NEW EXAM =================
+let draftQuestions = [];
+function renderTeacherNewExam(){
+  draftQuestions = draftQuestions.length ? draftQuestions : [ blankQuestion() ];
+  app.innerHTML = `
+    ${header('নতুন পরীক্ষা')}
+    <div class="card">
+      <h2>পরীক্ষার তথ্য</h2>
+      <label class="field-label">পরীক্ষার নাম</label>
+      <input type="text" id="examTitle" placeholder="যেমন: পরমাণুর গঠন — MCQ টেস্ট">
+      <label class="field-label">বিষয়</label>
+      <input type="text" id="examSubject" placeholder="যেমন: রসায়ন">
+      <label class="field-label">সময়ের ধরন</label>
+      <select id="timerMode" onchange="toggleTimerFields()">
+        <option value="total">পুরো পরীক্ষার জন্য মোট সময় (মিনিট)</option>
+        <option value="perQuestion">প্রতিটা প্রশ্নের জন্য আলাদা সময় (সেকেন্ড)</option>
+      </select>
+      <div id="totalField">
+        <label class="field-label">মোট সময় (মিনিট)</label>
+        <input type="number" id="examDuration" value="7" min="1" max="180">
+      </div>
+      <div id="perQField" style="display:none;">
+        <label class="field-label">প্রশ্ন প্রতি সময় (সেকেন্ড)</label>
+        <input type="number" id="perQSeconds" value="36" min="5" max="600">
+      </div>
+    </div>
+    <div class="card">
+      <h2>দ্রুত ইম্পোর্ট (ঐচ্ছিক)</h2>
+      <p class="hint">একসাথে অনেক প্রশ্ন থাকলে নিচের ফরম্যাটে পেস্ট করে "ইম্পোর্ট করো" চাপো:<br>
+      <code>Q: প্রশ্ন লেখো [ট্যাগ]<br>A) অপশন ১<br>B) অপশন ২<br>C) অপশন ৩<br>D) অপশন ৪<br>ANS: A</code><br>
+      প্রতিটা প্রশ্নের মাঝে একটা ফাঁকা লাইন রাখবে।</p>
+      <textarea id="bulkText" placeholder="এখানে পেস্ট করো..."></textarea>
+      <button class="btn btn-outline btn-block" onclick="importBulk()">📥 ইম্পোর্ট করো (নিচে দেখাবে)</button>
+    </div>
+    <div class="card">
+      <h2>প্রশ্নসমূহ</h2>
+      <p class="hint">প্রতিটা প্রশ্নে ৪টা অপশন দাও এবং সঠিক উত্তরের বাবল ভরে দাও।</p>
+      <div id="qList"></div>
+      <button class="btn btn-outline btn-block" onclick="addQuestion()">+ আরেকটা প্রশ্ন যোগ করো</button>
+    </div>
+    <div class="row">
+      <button class="btn btn-outline" onclick="cancelNewExam()">বাতিল</button>
+      <button class="btn btn-primary" onclick="saveExam()">✅ পরীক্ষা সেভ করো</button>
+    </div>
+    ${creditFooter()}
+  `;
+  renderQList();
+}
+function toggleTimerFields(){
+  const mode = document.getElementById('timerMode').value;
+  document.getElementById('totalField').style.display = mode === 'total' ? 'block' : 'none';
+  document.getElementById('perQField').style.display = mode === 'perQuestion' ? 'block' : 'none';
+}
+function blankQuestion(){ return { text:'', tag:'', options:['','','',''], correct:0 }; }
+function addQuestion(){ draftQuestions.push(blankQuestion()); renderQList(); }
+function removeQuestion(i){ draftQuestions.splice(i,1); if(draftQuestions.length===0) draftQuestions.push(blankQuestion()); renderQList(); }
+
+function importBulk(){
+  const raw = document.getElementById('bulkText').value;
+  if(!raw.trim()){ toast('আগে টেক্সট পেস্ট করো'); return; }
+  const blocks = raw.split(/\n\s*\n/).map(b=>b.trim()).filter(Boolean);
+  const parsed = [];
+  const letterMap = {'A':0,'B':1,'C':2,'D':3,'ক':0,'খ':1,'গ':2,'ঘ':3,'a':0,'b':1,'c':2,'d':3};
+  for(const block of blocks){
+    const lines = block.split('\n').map(l=>l.trim()).filter(Boolean);
+    let qtext='', tag='', options=['','','',''], correct=0;
+    for(const line of lines){
+      const qm = line.match(/^Q[:.]?\s*(.*)$/i);
+      const om = line.match(/^([A-Dকখগঘ])[).]\s*(.*)$/i);
+      const am = line.match(/^ANS[:.]?\s*([A-Dকখগঘ])/i);
+      if(qm){
+        let t = qm[1];
+        const tagm = t.match(/\[([^\]]+)\]\s*$/);
+        if(tagm){ tag = tagm[1]; t = t.replace(/\s*\[[^\]]+\]\s*$/,'').trim(); }
+        qtext = t;
+      } else if(om){
+        const realIdx = (om[1] in letterMap) ? letterMap[om[1]] : letterMap[om[1].toUpperCase()];
+        options[realIdx] = om[2].trim();
+      } else if(am){
+        correct = (am[1] in letterMap) ? letterMap[am[1]] : letterMap[am[1].toUpperCase()];
+      }
+    }
+    if(qtext && options.every(o=>o)){
+      parsed.push({ text: qtext, tag, options, correct });
+    }
+  }
+  if(parsed.length === 0){ toast('কোনো প্রশ্ন পার্স করা যায়নি, ফরম্যাট চেক করো'); return; }
+  draftQuestions = parsed;
+  renderQList();
+  toast(parsed.length + 'টা প্রশ্ন ইম্পোর্ট হয়েছে — নিচে দেখো ও দরকার হলে ঠিক করো');
+  document.getElementById('bulkText').value = '';
+  window.scrollTo({top: document.getElementById('qList').offsetTop, behavior:'smooth'});
+}
+
+function renderQList(){
+  const el = document.getElementById('qList');
+  el.innerHTML = draftQuestions.map((q,i)=> `
+    <div class="q-block">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <span class="q-num">${i+1}</span>
+        ${draftQuestions.length>1 ? `<a class="link-back" onclick="removeQuestion(${i})">মুছো</a>`:''}
+      </div>
+      <label class="field-label">প্রশ্ন</label>
+      <input type="text" value="${escapeHtml(q.text)}" oninput="draftQuestions[${i}].text=this.value" placeholder="প্রশ্নটা লেখো">
+      <label class="field-label">রেফারেন্স ট্যাগ (ঐচ্ছিক)</label>
+      <input type="text" value="${escapeHtml(q.tag||'')}" oninput="draftQuestions[${i}].tag=this.value" placeholder="যেমন: চ. বো. ২৩">
+      ${[0,1,2,3].map(j=>`
+        <div class="bubble-opt">
+          <input type="radio" name="correct${i}" ${q.correct===j?'checked':''} onchange="draftQuestions[${i}].correct=${j}">
+          <div class="bubble">${['ক','খ','গ','ঘ'][j]}</div>
+          <input type="text" class="opt-input" value="${escapeHtml(q.options[j])}" oninput="draftQuestions[${i}].options[${j}]=this.value" placeholder="অপশন ${['ক','খ','গ','ঘ'][j]}">
+        </div>`).join('')}
+    </div>
+  `).join('');
+}
+function cancelNewExam(){ draftQuestions = []; go('teacherDashboard'); }
+async function saveExam(){
+  const title = document.getElementById('examTitle').value.trim();
+  const subject = document.getElementById('examSubject').value.trim();
+  const timerMode = document.getElementById('timerMode').value;
+  const duration = parseInt(document.getElementById('examDuration').value, 10) || 7;
+  const perQuestionSeconds = parseInt(document.getElementById('perQSeconds').value, 10) || 36;
+  if(!title || !subject){ toast('নাম ও বিষয় দাও'); return; }
+  for(const q of draftQuestions){
+    if(!q.text.trim() || q.options.some(o=>!o.trim())){ toast('সব প্রশ্ন ও ৪টা অপশন পূরণ করো'); return; }
+  }
+  let code = genCode();
+  let tries=0;
+  while(await sget('exam:'+code) && tries<5){ code = genCode(); tries++; }
+  const exam = { code, title, subject, timerMode, duration, perQuestionSeconds, questions: draftQuestions, createdAt: Date.now() };
+  const res = await sset('exam:'+code, JSON.stringify(exam));
+  if(!res){ toast('সেভ করতে ব্যর্থ হয়েছে, আবার চেষ্টা করো'); return; }
+  draftQuestions = [];
+  toast('পরীক্ষা তৈরি হয়েছে! কোড: '+code);
+  go('teacherDashboard');
+}
+
+// ================= TEACHER RESULTS =================
+async function renderTeacherResults(code){
+  app.innerHTML = `${header('রেজাল্ট')}<div class="card center">লোড হচ্ছে...</div>`;
+  const examRaw = await sget('exam:'+code);
+  if(!examRaw){ app.innerHTML = `${header()}<div class="card center">পরীক্ষা পাওয়া যায়নি।</div>`; return; }
+  const exam = JSON.parse(examRaw);
+  const rkeys = await slist('result:'+code+':');
+  let results = [];
+  for(const k of rkeys){
+    const v = await sget(k);
+    if(v){ try{ results.push(JSON.parse(v)); }catch(e){} }
+  }
+  results.sort((a,b)=> b.score - a.score || a.submittedAt - b.submittedAt);
+
+  let rows = results.map((r,i)=>{
+    const pct = Math.round((r.score/r.total)*100);
+    return `<tr>
+      <td class="${i===0?'rank1':''}">${i+1}</td>
+      <td>${escapeHtml(r.studentName)}</td>
+      <td class="score-big ${pct>=50?'score-pass':'score-fail'}">${r.score}/${r.total}</td>
+      <td>${pct}%</td>
+      <td>${new Date(r.submittedAt).toLocaleString('bn-BD')}</td>
+    </tr>`;
+  }).join('');
+
+  app.innerHTML = `
+    ${header('রেজাল্ট')}
+    <div class="card">
+      <h2>${escapeHtml(exam.title)}</h2>
+      <p class="hint">কোড: <span class="code-chip">${exam.code}</span> · মোট জমা: ${results.length}</p>
+      ${results.length===0 ? `<div class="empty-state">এখনো কেউ পরীক্ষা দেয়নি।</div>` : `
+      <table class="results">
+        <thead><tr><th>#</th><th>নাম</th><th>স্কোর</th><th>%</th><th>জমার সময়</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`}
+    </div>
+    <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← পরীক্ষার তালিকায় ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+
+// ================= STUDENT ENTRY =================
+function renderStudentEntry(){
+  app.innerHTML = `
+    ${header('স্টুডেন্ট')}
+    <div class="card">
+      <h2>পরীক্ষা শুরু করো</h2>
+      <label class="field-label">তোমার নাম</label>
+      <input type="text" id="studName" placeholder="পুরো নাম লেখো">
+      <label class="field-label">এক্সাম কোড</label>
+      <input type="text" id="studCode" placeholder="যেমন: 7K3PQ" style="text-transform:uppercase;">
+      <label class="field-label">পাসওয়ার্ড</label>
+      <input type="password" id="studPass" placeholder="শিক্ষকের দেওয়া পাসওয়ার্ড">
+      <button class="btn btn-primary btn-block" onclick="verifyStudentLogin()">পরীক্ষা শুরু করো</button>
+      <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← ফিরে যাও</a></div>
+    </div>
+    ${creditFooter()}
+  `;
+}
+async function verifyStudentLogin(){
+  const name = document.getElementById('studName').value.trim();
+  const code = document.getElementById('studCode').value.trim().toUpperCase();
+  const pass = document.getElementById('studPass').value.trim();
+  if(!name || !code || !pass){ toast('নাম, কোড ও পাসওয়ার্ড সবগুলো দাও'); return; }
+  if(pass !== STUDENT_PASSWORD){ toast('পাসওয়ার্ড ভুল হয়েছে'); return; }
+  const examRaw = await sget('exam:'+code);
+  if(!examRaw){ toast('এই কোডে কোনো পরীক্ষা পাওয়া যায়নি'); return; }
+  const exam = JSON.parse(examRaw);
+  const slug = slugify(name);
+  runCheckingSequence(exam, slug, name);
+}
+
+function runCheckingSequence(exam, slug, name){
+  const steps = [
+    'স্টুডেন্টের নাম ডাটাবেজে যাচাই করা হচ্ছে',
+    'পাসওয়ার্ড যাচাই সম্পন্ন',
+    'প্রবেশাধিকার অনুমোদিত'
+  ];
+  app.innerHTML = `
+    ${header('যাচাই হচ্ছে')}
+    <div class="card check-seq">
+      <div id="cLine0" class="check-line">${steps[0]}...</div>
+      <div id="cLine1" class="check-line"><span class="tick">✓</span> ${steps[1]}</div>
+      <div id="cLine2" class="check-line"><span class="tick">✓</span> ${steps[2]}</div>
+    </div>
+    ${creditFooter()}
+  `;
+  setTimeout(()=> document.getElementById('cLine0').classList.add('show'), 150);
+  setTimeout(()=> document.getElementById('cLine1').classList.add('show'), 900);
+  setTimeout(()=> document.getElementById('cLine2').classList.add('show'), 1650);
+  setTimeout(async ()=>{
+    const prevRaw = await sget('result:'+exam.code+':'+slug);
+    if(prevRaw){
+      const prev = JSON.parse(prevRaw);
+      go('studentAlready', { exam, prev });
+      return;
+    }
+    go('studentExam', {
+      exam, slug, name,
+      answers: new Array(exam.questions.length).fill(null),
+      locked: new Array(exam.questions.length).fill(false),
+      startedAt: Date.now(),
+      qIndex: 0
+    });
+  }, 2300);
+}
+
+function renderStudentAlready(exam, prev){
+  const pct = Math.round((prev.score/prev.total)*100);
+  app.innerHTML = `
+    ${header('আগেই জমা দেওয়া হয়েছে')}
+    <div class="card center">
+      <h2>${escapeHtml(exam.title)}</h2>
+      <p class="hint">তুমি এই পরীক্ষাটা আগেই জমা দিয়েছো।</p>
+      <div class="stamp ${pct>=50?'':'fail'}">${prev.score}/${prev.total}</div>
+      <p class="hint" style="margin-top:14px;">জমা দেওয়া হয়েছিল: ${new Date(prev.submittedAt).toLocaleString('bn-BD')}</p>
+      <a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a>
+    </div>
+    ${creditFooter()}
+  `;
+}
+
+// ================= STUDENT EXAM: TOTAL-TIME MODE =================
+function renderStudentExamTotal(){
+  const { exam, answers, locked } = state;
+  const totalSec = exam.duration*60;
+  const qHtml = exam.questions.map((q,i)=> `
+    <div class="q-block">
+      <div style="display:flex; align-items:flex-start; gap:2px;">
+        <span class="q-num">${i+1}</span>
+        <div style="margin-inline-start:4px;">
+          <div class="q-text">${escapeHtml(q.text)}</div>
+          ${q.tag ? `<span class="q-tag">${escapeHtml(q.tag)}</span>`:''}
+        </div>
+      </div>
+      ${q.options.map((opt,j)=> `
+        <label class="bubble-opt ${locked[i]?'locked':''}">
+          <input type="radio" name="ans${i}" ${answers[i]===j?'checked':''} ${locked[i]?'disabled':''} onchange="setAnswerTotal(${i},${j})">
+          <div class="bubble">${['ক','খ','গ','ঘ'][j]}</div>
+          <div class="opt-text">${escapeHtml(opt)}</div>
+        </label>
+      `).join('')}
+    </div>
+  `).join('');
+
+  app.innerHTML = `
+    <div style="overflow:hidden;">
+      <div class="timer-chip" id="timerChip"><span class="timer-dot"></span><span id="timerText">${fmtTime(totalSec)}</span></div>
+      <header class="top" style="margin-bottom:8px;"><div class="logo" style="font-size:22px;">${escapeHtml(exam.title)}</div></header>
+    </div>
+    <p class="hint">একটা অপশনে ক্লিক করলে সেটাই চূড়ান্ত হয়ে যাবে — পরে আর পরিবর্তন করা যাবে না। সময় শেষ হলে স্বয়ংক্রিয়ভাবে জমা হয়ে যাবে।</p>
+    <div class="card">${qHtml}</div>
+    <button class="btn btn-primary btn-block" onclick="submitExam(false)">✅ জমা দাও</button>
+    ${creditFooter()}
+  `;
+
+  let remaining = totalSec - Math.floor((Date.now()-state.startedAt)/1000);
+  if(remaining < 0) remaining = 0;
+  updateTimerDisplay(remaining);
+  timerInterval = setInterval(()=>{
+    remaining -= 1;
+    updateTimerDisplay(remaining);
+    if(remaining <= 0){
+      clearInterval(timerInterval); timerInterval = null;
+      submitExam(true);
+    }
+  }, 1000);
+}
+function setAnswerTotal(qi, oi){
+  state.answers[qi] = oi;
+  state.locked[qi] = true;
+  renderStudentExamTotal();
+}
+
+// ================= STUDENT EXAM: PER-QUESTION MODE =================
+function renderStudentExamPerQ(){
+  const { exam, answers, qIndex } = state;
+  const q = exam.questions[qIndex];
+  const secPerQ = exam.perQuestionSeconds;
+  const answered = answers[qIndex] !== null;
+
+  app.innerHTML = `
+    <div style="overflow:hidden;">
+      <div class="timer-chip" id="timerChip"><span class="timer-dot"></span><span id="timerText">${fmtTime(secPerQ)}</span></div>
+      <header class="top" style="margin-bottom:8px;"><div class="logo" style="font-size:22px;">${escapeHtml(exam.title)}</div></header>
+    </div>
+    <div class="qprog">প্রশ্ন ${qIndex+1} / ${exam.questions.length}</div>
+    <p class="hint">যেই অপশনে ক্লিক করবে সেটাই চূড়ান্ত ধরে পরের প্রশ্নে চলে যাবে। সময় শেষ হলেও পরের প্রশ্নে চলে যাবে।</p>
+    <div class="card">
+      <div class="q-block" style="border-bottom:none; padding-bottom:0;">
+        <div style="display:flex; align-items:flex-start; gap:2px;">
+          <span class="q-num">${qIndex+1}</span>
+          <div style="margin-inline-start:4px;">
+            <div class="q-text">${escapeHtml(q.text)}</div>
+            ${q.tag ? `<span class="q-tag">${escapeHtml(q.tag)}</span>`:''}
+          </div>
+        </div>
+        ${q.options.map((opt,j)=> `
+          <label class="bubble-opt ${answered?'locked':''}">
+            <input type="radio" name="ansq" ${answers[qIndex]===j?'checked':''} ${answered?'disabled':''} onchange="setAnswerPerQ(${j})">
+            <div class="bubble">${['ক','খ','গ','ঘ'][j]}</div>
+            <div class="opt-text">${escapeHtml(opt)}</div>
+          </label>
+        `).join('')}
+      </div>
+    </div>
+    ${creditFooter()}
+  `;
+
+  let remaining = secPerQ;
+  updateTimerDisplay(remaining);
+  timerInterval = setInterval(()=>{
+    remaining -= 1;
+    updateTimerDisplay(remaining);
+    if(remaining <= 0){
+      clearInterval(timerInterval); timerInterval = null;
+      advanceQuestion();
+    }
+  }, 1000);
+}
+function setAnswerPerQ(oi){
+  if(timerInterval){ clearInterval(timerInterval); timerInterval = null; }
+  state.answers[state.qIndex] = oi;
+  setTimeout(()=> advanceQuestion(), 450);
+}
+function advanceQuestion(){
+  if(state.qIndex >= state.exam.questions.length - 1){
+    submitExam(false);
+  } else {
+    state.qIndex += 1;
+    render();
+  }
+}
+
+function updateTimerDisplay(sec){
+  const chip = document.getElementById('timerChip');
+  const txt = document.getElementById('timerText');
+  if(!txt) return;
+  txt.textContent = fmtTime(Math.max(sec,0));
+  if(chip && sec <= (state.exam.timerMode==='perQuestion' ? 8 : 30)) chip.classList.add('low');
+}
+
+async function submitExam(auto){
+  if(timerInterval){ clearInterval(timerInterval); timerInterval=null; }
+  const { exam, slug, name, answers } = state;
+  let score = 0;
+  exam.questions.forEach((q,i)=>{ if(answers[i]===q.correct) score++; });
+  const result = {
+    studentName: name, code: exam.code, score, total: exam.questions.length,
+    answers, submittedAt: Date.now(), auto: !!auto
+  };
+  await sset('result:'+exam.code+':'+slug, JSON.stringify(result));
+  go('studentResult', { exam, result, auto });
+}
+
+function renderStudentResult(){
+  const { exam, result, auto } = state;
+  const pct = Math.round((result.score/result.total)*100);
+  const pass = pct >= 50;
+  app.innerHTML = `
+    ${header('রেজাল্ট')}
+    <div class="card center">
+      <h2>${escapeHtml(exam.title)}</h2>
+      ${auto ? `<p class="hint">⏱️ সময় শেষ হয়ে যাওয়ায় স্বয়ংক্রিয়ভাবে জমা হয়েছে।</p>`:''}
+      <div class="stamp ${pass?'':'fail'}">${result.score}/${result.total}</div>
+      <p class="hint" style="margin-top:14px;">তুমি পেয়েছো ${pct}% নম্বর</p>
+      <a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a>
+    </div>
+    ${creditFooter()}
+  `;
+}
+
+// ================= ROUTER =================
+async function render(){
+  switch(state.screen){
+    case 'landing': renderLanding(); break;
+    case 'teacherGate': renderTeacherGate(); break;
+    case 'teacherDashboard': await renderTeacherDashboard(); break;
+    case 'teacherNewExam': renderTeacherNewExam(); break;
+    case 'teacherResults': await renderTeacherResults(state.code); break;
+    case 'studentEntry': renderStudentEntry(); break;
+    case 'studentAlready': renderStudentAlready(state.exam, state.prev); break;
+    case 'studentExam':
+      if(state.exam.timerMode === 'perQuestion') renderStudentExamPerQ();
+      else renderStudentExamTotal();
+      break;
+    case 'studentResult': renderStudentResult(); break;
+    default: renderLanding();
+  }
+}
+
+render();
+</script>
+</body>
+</html>
