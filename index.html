@@ -98,6 +98,13 @@
   .check-line.show{ opacity:1; }
   .check-line .tick{ color:var(--green); font-weight:700; }
   .qprog{ font-family:var(--font-mono); font-size:12.5px; color:var(--pencil); margin-bottom:6px; }
+  .review-block{ padding:12px 0; border-bottom:1px dashed var(--rule); }
+  .review-block:last-child{ border-bottom:none; }
+  .review-ans{ font-size:13.5px; margin-top:4px; }
+  .review-ans.right{ color:var(--green); }
+  .review-ans.wrong{ color:var(--red); }
+  .detail-wrap{ display:none; margin-top:10px; padding-top:10px; border-top:1px dashed var(--rule); }
+  .detail-wrap.open{ display:block; }
   ::selection{ background:rgba(217,164,65,0.35); }
   @media (max-width:480px){ .wrap{ padding:20px 14px 20px 50px; } body::before{ left:34px; } .holes{ left:10px; } }
 </style>
@@ -126,20 +133,17 @@ async function sget(key) {
     try {
       let r = await fetch(`${SCRIPT_URL}?action=getExam&code=${code}`);
       let text = await r.text();
-      
-      // If Google Script returns HTML instead of JSON, it means permission/authorization is missing
       if(text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
-         alert("গুগল স্ক্রিপ্ট সমস্যা: স্ক্রিপ্টটি সঠিকভাবে ডেপ্লয় করা হয়নি অথবা 'Anyone' অ্যাক্সেস দেওয়া হয়নি।");
+         alert("গুগল স্ক্রিপ্ট সমস্যা: স্ক্রিপ্টটি সঠিকভাবে ডেপ্লয় করা হয়নি অথবা 'Anyone' অ্যাক্সেস দেওয়া হয়নি।");
          return null;
       }
-      
       let json = JSON.parse(text);
       if (json.status === "success") {
-        localStorage.setItem(key, JSON.stringify(json.data)); 
+        localStorage.setItem(key, JSON.stringify(json.data));
         return { value: JSON.stringify(json.data) };
       }
     } catch(e) {
-      alert("নেটওয়ার্ক বা গুগলের সমস্যা: " + e.message + "\nঅনুগ্রহ করে নিশ্চিত হোন যে আপনার গুগল স্ক্রিপ্ট সচল আছে।");
+      alert("নেটওয়ার্ক বা গুগলের সমস্যা: " + e.message);
     }
   }
   const r = localStorage.getItem(key);
@@ -205,7 +209,7 @@ function renderLanding(){
     ${header()}
     <div class="card center">
       <h1>তুমি কে হিসেবে ঢুকছো?</h1>
-      <p class="hint">শিক্ষক হিসেবে ঢুকলে নতুন পরীক্ষা সাজাতে ও রেজাল্ট দেখতে পারবে। স্টুডেন্ট হিসেবে ঢুকলে কোড দিয়ে পরীক্ষা পারবে।</p>
+      <p class="hint">শিক্ষক হিসেবে ঢুকলে নতুন পরীক্ষা সাজাতে ও রেজাল্ট দেখতে পারবে। স্টুডেন্ট হিসেবে ঢুকলে কোড দিয়ে পরীক্ষা পারবে।</p>
       <div class="row">
         <button class="btn btn-primary btn-block" onclick="go('teacherGate')">👩‍🏫 আমি শিক্ষক</button>
         <button class="btn btn-gold btn-block" onclick="go('studentEntry')">🧑‍🎓 আমি স্টুডেন্ট</button>
@@ -219,9 +223,9 @@ function renderTeacherGate(){
   app.innerHTML = `
     ${header('শিক্ষক প্যানেল')}
     <div class="card">
-      <h2>পাসওয়ার্ড দাও</h2>
-      <p class="hint">এটা শুধু শিক্ষকের জন্য — স্টুডেন্টদের সাথে শেয়ার কোরো না।</p>
-      <input type="password" id="enterPin" maxlength="10" placeholder="পাসওয়ার্ড" onkeydown="if(event.key==='Enter') checkTeacherPin()">
+      <h2>পাসওয়ার্ড দাও</h2>
+      <p class="hint">এটা শুধু শিক্ষকের জন্য — স্টুডেন্টদের সাথে শেয়ার কোরো না।</p>
+      <input type="password" id="enterPin" maxlength="10" placeholder="পাসওয়ার্ড" onkeydown="if(event.key==='Enter') checkTeacherPin()">
       <button class="btn btn-primary btn-block" onclick="checkTeacherPin()">ঢোকো</button>
       <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← ফিরে যাও</a></div>
     </div>
@@ -232,7 +236,7 @@ function renderTeacherGate(){
 function checkTeacherPin(){
   const v = document.getElementById('enterPin').value.trim();
   if(v === TEACHER_PASSWORD) go('teacherDashboard');
-  else toast('পাসওয়ার্ড ভুল হয়েছে');
+  else toast('পাসওয়ার্ড ভুল হয়েছে');
 }
 
 async function renderTeacherDashboard(){
@@ -262,7 +266,7 @@ async function renderTeacherDashboard(){
           </div>
           <div class="row" style="margin-top:12px;">
             <button class="btn btn-outline" onclick="go('teacherResults',{code:'${ex.code}'})">📊 রেজাল্ট</button>
-            <button class="btn btn-outline" onclick="shareExam('${ex.code}','${escapeHtml(ex.title).replace(/'/g,"\\'")}')">🔗 শেয়ার</button>
+            <button class="btn btn-outline" onclick="shareExam('${ex.code}','${escapeHtml(ex.title).replace(/'/g,"\\'")}')">🔗 শেয়ার</button>
             <button class="btn btn-danger" onclick="deleteExam('${ex.code}')">মুছে ফেলো</button>
           </div>
         </div>`;
@@ -273,25 +277,25 @@ async function renderTeacherDashboard(){
     ${header('শিক্ষক প্যানেল')}
     <div class="card">
       <h2>তোমার পরীক্ষাসমূহ</h2>
-      <p class="hint">পরীক্ষার কোড আর এই অ্যাপের লিংক স্টুডেন্টদের পাঠিয়ে দাও। স্টুডেন্টদের পাসওয়ার্ড: <b>${STUDENT_PASSWORD}</b></p>
+      <p class="hint">পরীক্ষার কোড আর এই অ্যাপের লিংক স্টুডেন্টদের পাঠিয়ে দাও। স্টুডেন্টদের পাসওয়ার্ড: <b>${STUDENT_PASSWORD}</b></p>
       ${listHtml}
       <button class="btn btn-primary btn-block" style="margin-top:6px;" onclick="draftQuestions=[]; go('teacherNewExam')">+ নতুন পরীক্ষা সাজাও</button>
     </div>
-    <div class="center"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
+    <div class="center"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
     ${creditFooter()}
   `;
 }
 
 function shareExam(code, title){
   const url = window.location.href.split('?')[0];
-  const msg = `${title}\nএক্সাম কোড: ${code}\nস্টুডেন্ট পাসওয়ার্ড: ${STUDENT_PASSWORD}\nএই লিংকে গিয়ে পরীক্ষা দাও:\n${url}`;
-  navigator.clipboard.writeText(msg).then(()=> toast('লিংক ও কোড কপি হয়েছে')).catch(()=> toast('কপি করতে সমস্যা হয়েছে'));
+  const msg = `${title}\nএক্সাম কোড: ${code}\nস্টুডেন্ট পাসওয়ার্ড: ${STUDENT_PASSWORD}\nএই লিংকে গিয়ে পরীক্ষা দাও:\n${url}`;
+  navigator.clipboard.writeText(msg).then(()=> toast('লিংক ও কোড কপি হয়েছে')).catch(()=> toast('কপি করতে সমস্যা হয়েছে'));
 }
 
 async function deleteExam(code){
   if(!confirm('এই পরীক্ষাটা লোকালি মুছে ফেলতে চাও?')) return;
   await sdel('exam:'+code);
-  toast('পরীক্ষা তালিকা থেকে সরানো হয়েছে');
+  toast('পরীক্ষা তালিকা থেকে সরানো হয়েছে');
   go('teacherDashboard');
 }
 
@@ -304,19 +308,19 @@ function renderTeacherNewExam(){
       <h2>পরীক্ষার তথ্য</h2>
       <label class="field-label">পরীক্ষার নাম</label>
       <input type="text" id="examTitle" placeholder="যেমন: পরমাণুর গঠন — MCQ টেস্ট">
-      <label class="field-label">বিষয়</label>
-      <input type="text" id="examSubject" placeholder="যেমন: রসায়ন">
-      <label class="field-label">সময়ের ধরন</label>
+      <label class="field-label">বিষয়</label>
+      <input type="text" id="examSubject" placeholder="যেমন: রসায়ন">
+      <label class="field-label">সময়ের ধরন</label>
       <select id="timerMode" onchange="toggleTimerFields()">
-        <option value="total">পুরো পরীক্ষার জন্য মোট সময় (মিনিট)</option>
-        <option value="perQuestion">প্রতিটা প্রশ্নের জন্য আলাদা সময় (সেকেন্ড)</option>
+        <option value="total">পুরো পরীক্ষার জন্য মোট সময় (মিনিট)</option>
+        <option value="perQuestion">প্রতিটা প্রশ্নের জন্য আলাদা সময় (সেকেন্ড)</option>
       </select>
       <div id="totalField">
-        <label class="field-label">মোট সময় (মিনিট)</label>
+        <label class="field-label">মোট সময় (মিনিট)</label>
         <input type="number" id="examDuration" value="7" min="1" max="180">
       </div>
       <div id="perQField" style="display:none;">
-        <label class="field-label">প্রশ্ন প্রতি সময় (সেকেন্ড)</label>
+        <label class="field-label">প্রশ্ন প্রতি সময় (সেকেন্ড)</label>
         <input type="number" id="perQSeconds" value="36" min="5" max="600">
       </div>
     </div>
@@ -381,7 +385,7 @@ window.importBulk = function(){
   if(parsed.length === 0){ toast('ফরম্যাট মেলেনি'); return; }
   draftQuestions = parsed;
   renderQList();
-  toast(parsed.length + 'টি প্রশ্ন ইম্পোর্ট হয়েছে');
+  toast(parsed.length + 'টি প্রশ্ন ইম্পোর্ট হয়েছে');
   document.getElementById('bulkText').value = '';
 }
 
@@ -413,7 +417,7 @@ async function saveExam(){
   const timerMode = document.getElementById('timerMode').value;
   const duration = parseInt(document.getElementById('examDuration').value, 10) || 7;
   const perQuestionSeconds = parseInt(document.getElementById('perQSeconds').value, 10) || 36;
-  if(!title || !subject){ toast('নাম ও বিষয় পূরণ করো'); return; }
+  if(!title || !subject){ toast('নাম ও বিষয় পূরণ করো'); return; }
   for(const q of draftQuestions){
     if(!q.text.trim() || q.options.some(o=>!o.trim())){ toast('সব পূরণ করো'); return; }
   }
@@ -422,44 +426,84 @@ async function saveExam(){
   toast('গুগল শিটে সেভ হচ্ছে...');
   await sset('exam:'+code, JSON.stringify(exam));
   draftQuestions = [];
-  alert('পরীক্ষা তৈরি হয়েছে এবং গুগল শিটে সেভ হয়েছে! কোড: '+code);
+  alert('পরীক্ষা তৈরি হয়েছে এবং গুগল শিটে সেভ হয়েছে! কোড: '+code);
   go('teacherDashboard');
 }
 
 async function renderTeacherResults(code){
   app.innerHTML = `${header('রেজাল্ট')}<div class="card center">গুগল শিট থেকে রেজাল্ট লোড হচ্ছে...</div>`;
   const examRaw = await sget('exam:'+code);
-  if(!examRaw){ app.innerHTML = `${header()}<div class="card center">পরীক্ষা পাওয়া যায়নি।</div>`; return; }
+  if(!examRaw){ app.innerHTML = `${header()}<div class="card center">পরীক্ষা পাওয়া যায়নি।</div>`; return; }
   const exam = JSON.parse(examRaw.value);
-  
-  const results = await getRemoteResults(code);
-  results.sort((a,b)=> b.score - a.score || a.submittedAt - b.submittedAt);
 
-  let rows = results.map((r,i)=>{
-    const pct = Math.round((r.score/r.total)*100);
+  const rawResults = await getRemoteResults(code);
+  // group multiple practice attempts per student into one row (student can attempt unlimited times)
+  const groups = {};
+  rawResults.forEach(r=>{
+    const key = r.slug || slugify(r.studentName||'');
+    if(!groups[key]) groups[key] = [];
+    groups[key].push(r);
+  });
+  const grouped = Object.values(groups).map(list=>{
+    list.sort((a,b)=> b.submittedAt - a.submittedAt);
+    const best = list.reduce((m,r)=> (r.score > m.score ? r : m), list[0]);
+    return { studentName: list[0].studentName, attempts: list, best, count: list.length };
+  });
+  grouped.sort((a,b)=> b.best.score - a.best.score || a.best.submittedAt - b.best.submittedAt);
+  window.__lastGrouped = grouped;
+  window.__lastExam = exam;
+
+  let rows = grouped.map((g,i)=>{
+    const pct = Math.round((g.best.score/g.best.total)*100);
     return `<tr>
       <td class="${i===0?'rank1':''}">${i+1}</td>
-      <td>${escapeHtml(r.studentName)}</td>
-      <td class="score-big ${pct>=50?'score-pass':'score-fail'}">${r.score}/${r.total}</td>
+      <td>${escapeHtml(g.studentName)}${g.count>1?` <span class="q-tag">${g.count}বার চেষ্টা</span>`:''}</td>
+      <td class="score-big ${pct>=50?'score-pass':'score-fail'}">${g.best.score}/${g.best.total}</td>
       <td>${pct}%</td>
-      <td>${new Date(r.submittedAt).toLocaleTimeString('bn-BD')}</td>
-    </tr>`;
+      <td>${new Date(g.best.submittedAt).toLocaleTimeString('bn-BD')}</td>
+      <td><a class="link-back" onclick="toggleDetail(${i})">খাতা দেখো</a></td>
+    </tr>
+    <tr><td colspan="6" style="border-bottom:none; padding:0;"><div class="detail-wrap" id="detail${i}"></div></td></tr>`;
   }).join('');
 
   app.innerHTML = `
     ${header('রেজাল্ট')}
     <div class="card">
       <h2>${escapeHtml(exam.title)}</h2>
-      <p class="hint">কোড: <span class="code-chip">${exam.code}</span> · মোট জমা: ${results.length}</p>
-      ${results.length===0 ? `<div class="empty-state">এখনো কেউ পরীক্ষা দেয়নি বা লোড হতে পারছে না।</div>` : `
+      <p class="hint">কোড: <span class="code-chip">${exam.code}</span> · মোট স্টুডেন্ট: ${grouped.length} · মোট জমা (সব attempt মিলিয়ে): ${rawResults.length}</p>
+      <p class="hint">এখানে প্রতিটা স্টুডেন্টের সবচেয়ে ভালো স্কোরটা দেখানো হচ্ছে (একাধিকবার practice করলেও)।</p>
+      ${grouped.length===0 ? `<div class="empty-state">এখনো কেউ পরীক্ষা দেয়নি বা লোড হতে পারছে না।</div>` : `
       <table class="results">
-        <thead><tr><th>#</th><th>নাম</th><th>স্কোর</th><th>%</th><th>সময়</th></tr></thead>
+        <thead><tr><th>#</th><th>নাম</th><th>সেরা স্কোর</th><th>%</th><th>সময়</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`}
     </div>
     <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>
     ${creditFooter()}
   `;
+}
+
+window.toggleDetail = function(i){
+  const el = document.getElementById('detail'+i);
+  const grouped = window.__lastGrouped, exam = window.__lastExam;
+  if(!el || !grouped || !exam) return;
+  if(el.classList.contains('open')){ el.classList.remove('open'); el.innerHTML=''; return; }
+  const g = grouped[i];
+  const r = g.best;
+  const answers = r.answers || [];
+  el.innerHTML = exam.questions.map((q,qi)=>{
+    const given = answers[qi];
+    const correct = q.correct;
+    const isRight = given === correct;
+    const givenLabel = (given===null||given===undefined) ? 'উত্তর দেয়নি' : `${['ক','খ','গ','ঘ'][given]}) ${escapeHtml(q.options[given])}`;
+    const correctLabel = `${['ক','খ','গ','ঘ'][correct]}) ${escapeHtml(q.options[correct])}`;
+    return `<div class="review-block">
+      <div class="q-text" style="font-size:14px;">${qi+1}. ${escapeHtml(q.text)}</div>
+      <div class="review-ans ${isRight?'right':'wrong'}">তার উত্তর: ${givenLabel} ${isRight?'✓':'✗'}</div>
+      ${!isRight ? `<div class="review-ans right">সঠিক উত্তর: ${correctLabel}</div>` : ''}
+    </div>`;
+  }).join('');
+  el.classList.add('open');
 }
 
 function renderStudentEntry(){
@@ -471,8 +515,8 @@ function renderStudentEntry(){
       <input type="text" id="studName" placeholder="পুরো নাম লেখো">
       <label class="field-label">এক্সাম কোড</label>
       <input type="text" id="studCode" placeholder="যেমন: 7K3PQ" style="text-transform:uppercase;">
-      <label class="field-label">পাসওয়ার্ড</label>
-      <input type="password" id="studPass" placeholder="কমপক্ষে ৪ সংখ্যার পাসওয়ার্ড">
+      <label class="field-label">পাসওয়ার্ড</label>
+      <input type="password" id="studPass" placeholder="কমপক্ষে ৪ সংখ্যার পাসওয়ার্ড">
       <button class="btn btn-primary btn-block" onclick="verifyStudentLogin()">পরীক্ষা শুরু করো</button>
       <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← ফিরে যাও</a></div>
     </div>
@@ -484,23 +528,95 @@ async function verifyStudentLogin(){
   const code = document.getElementById('studCode').value.trim().toUpperCase();
   const pass = document.getElementById('studPass').value.trim();
   if(!name || !code || !pass){ toast('সবগুলো পূরণ করো'); return; }
-  if(pass !== STUDENT_PASSWORD){ toast('পাসওয়ার্ড ভুল হয়েছে'); return; }
-  
+  if(pass !== STUDENT_PASSWORD){ toast('পাসওয়ার্ড ভুল হয়েছে'); return; }
+
   toast('গুগল শিট থেকে পরীক্ষা খোঁজা হচ্ছে...');
   const examRaw = await sget('exam:'+code);
-  if(!examRaw){ alert('পরীক্ষা পাওয়া যায়নি! কোডটি সঠিক কিনা যাচাই করো বা একটি নতুন এক্সাম তৈরি করে ট্রাই করো।'); return; }
-  
+  if(!examRaw){ alert('পরীক্ষা পাওয়া যায়নি! কোডটি সঠিক কিনা যাচাই করো বা একটি নতুন এক্সাম তৈরি করে ট্রাই করো।'); return; }
+
   const exam = JSON.parse(examRaw.value);
   const slug = slugify(name);
-  runCheckingSequence(exam, slug, name);
+
+  const existingResults = await getRemoteResults(code);
+  const myAttempts = existingResults.filter(r => (r.slug ? r.slug === slug : slugify(r.studentName||'') === slug));
+  if(myAttempts.length > 0){
+    myAttempts.sort((a,b)=> b.submittedAt - a.submittedAt);
+    go('studentChoice', { exam, slug, name, attempts: myAttempts });
+    return;
+  }
+
+  runCheckingSequence(exam, slug, name, 1);
 }
 
-function runCheckingSequence(exam, slug, name){
+function renderStudentChoice(exam, slug, name, attempts){
+  const latest = attempts[0];
+  const pct = Math.round((latest.score/latest.total)*100);
+  const best = attempts.reduce((m,r)=> r.score > m.score ? r : m, attempts[0]);
+  app.innerHTML = `
+    ${header('আগে থেকেই পরীক্ষা দিয়েছো')}
+    <div class="card center">
+      <h2>${escapeHtml(exam.title)}</h2>
+      <p class="hint">তুমি এই পরীক্ষাটা আগে ${attempts.length} বার দিয়েছো। এটা practice এর জন্য, তাই চাইলে আবার দিতে পারো — অথবা আগের ফলাফল দেখতে পারো।</p>
+      <div class="stamp ${pct>=50?'':'fail'}">${latest.score}/${latest.total}</div>
+      <p class="hint" style="margin-top:10px;">সর্বশেষ চেষ্টা · সেরা স্কোর: ${best.score}/${best.total}</p>
+      <div class="row" style="margin-top:16px;">
+        <button class="btn btn-outline btn-block" onclick="showPreviousResult()">📄 আগের ফলাফল দেখো</button>
+        <button class="btn btn-gold btn-block" onclick="startPracticeAttempt()">✍️ আবার পরীক্ষা দাও (Practice)</button>
+      </div>
+      <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
+    </div>
+    ${creditFooter()}
+  `;
+  window.__choiceCtx = { exam, slug, name, attempts };
+}
+function attemptsLatest(){ return window.__choiceCtx.attempts[0]; }
+window.showPreviousResult = function(){
+  const { exam, attempts } = window.__choiceCtx;
+  go('studentAlready', { exam, prev: attempts[0] });
+}
+window.startPracticeAttempt = function(){
+  const { exam, slug, name, attempts } = window.__choiceCtx;
+  runCheckingSequence(exam, slug, name, attempts.length + 1);
+}
+
+function renderStudentAlready(exam, prev){
+  const pct = Math.round((prev.score/prev.total)*100);
+  const answers = prev.answers || [];
+  const detail = exam.questions.map((q,qi)=>{
+    const given = answers[qi];
+    const correct = q.correct;
+    const isRight = given === correct;
+    const givenLabel = (given===null||given===undefined) ? 'উত্তর দেওনি' : `${['ক','খ','গ','ঘ'][given]}) ${escapeHtml(q.options[given])}`;
+    const correctLabel = `${['ক','খ','গ','ঘ'][correct]}) ${escapeHtml(q.options[correct])}`;
+    return `<div class="review-block">
+      <div class="q-text" style="font-size:14px;">${qi+1}. ${escapeHtml(q.text)}</div>
+      <div class="review-ans ${isRight?'right':'wrong'}">তুমি দিয়েছিলে: ${givenLabel} ${isRight?'✓':'✗'}</div>
+      ${!isRight ? `<div class="review-ans right">সঠিক উত্তর: ${correctLabel}</div>` : ''}
+    </div>`;
+  }).join('');
+  const hasCtx = !!window.__choiceCtx;
+  app.innerHTML = `
+    ${header('আগের ফলাফল')}
+    <div class="card center">
+      <h2>${escapeHtml(exam.title)}</h2>
+      <p class="hint">এই attempt-এ তুমি যা দাগিয়েছিলে, নিচে দেখানো হলো।</p>
+      <div class="stamp ${pct>=50?'':'fail'}">${prev.score}/${prev.total}</div>
+    </div>
+    <div class="card" style="text-align:start;">${detail}</div>
+    <div class="row">
+      ${hasCtx ? `<button class="btn btn-gold btn-block" onclick="startPracticeAttempt()">✍️ আবার পরীক্ষা দাও (Practice)</button>`:''}
+      <button class="btn btn-outline btn-block" onclick="go('landing')">← মূল পাতায় ফিরে যাও</button>
+    </div>
+    ${creditFooter()}
+  `;
+}
+
+function runCheckingSequence(exam, slug, name, attemptNumber){
   app.innerHTML = `
     ${header('যাচাই হচ্ছে')}
     <div class="card check-seq">
       <div id="cLine0" class="check-line">গুগল ডাটাবেজ কানেক্ট করা হচ্ছে...</div>
-      <div id="cLine1" class="check-line"><span class="tick">✓</span> পাসওয়ার্ড সঠিক</div>
+      <div id="cLine1" class="check-line"><span class="tick">✓</span> পাসওয়ার্ড সঠিক</div>
       <div id="cLine2" class="check-line"><span class="tick">✓</span> পরীক্ষা শুরু করার জন্য প্রস্তুত</div>
     </div>
     ${creditFooter()}
@@ -510,7 +626,7 @@ function runCheckingSequence(exam, slug, name){
   setTimeout(()=> document.getElementById('cLine2').classList.add('show'), 1100);
   setTimeout(async ()=>{
     go('studentExam', {
-      exam, slug, name,
+      exam, slug, name, attemptNumber: attemptNumber || 1,
       answers: new Array(exam.questions.length).fill(null),
       locked: new Array(exam.questions.length).fill(false),
       startedAt: Date.now(),
@@ -642,13 +758,13 @@ function updateTimerDisplay(sec){
 
 window.submitExam = async function(auto){
   if(timerInterval){ clearInterval(timerInterval); timerInterval=null; }
-  const { exam, slug, name, answers } = state;
+  const { exam, slug, name, answers, attemptNumber } = state;
   let score = 0;
   exam.questions.forEach((q,i)=>{ if(answers[i] === q.correct) score++; });
-  const resultObj = { studentName: name, score, total: exam.questions.length, submittedAt: Date.now() };
-  
-  app.innerHTML = `${header('জমা হচ্ছে')} <div class="card center">গুগল শিটে আপনার উত্তরপত্র জমা হচ্ছে, দয়া করে অপেক্ষা করুন...</div>`;
-  
+  const resultObj = { studentName: name, slug, score, total: exam.questions.length, submittedAt: Date.now(), answers, attemptNumber: attemptNumber||1 };
+
+  app.innerHTML = `${header('জমা হচ্ছে')} <div class="card center">গুগল শিটে আপনার উত্তরপত্র জমা হচ্ছে, দয়া করে অপেক্ষা করুন...</div>`;
+
   await sset('result:'+exam.code+':'+slug, JSON.stringify(resultObj));
   go('studentResult', { exam, score, total: exam.questions.length });
 }
@@ -662,7 +778,7 @@ function renderStudentResult(){
       <h2>${escapeHtml(exam.title)}</h2>
       <div class="stamp ${pct>=50?'':'fail'}">${score}/${total}</div>
       <div style="margin-top:20px;">
-        <button class="btn btn-primary" onclick="go('landing')">মূল পাতায় যাও</button>
+        <button class="btn btn-primary" onclick="go('landing')">মূল পাতায় যাও</button>
       </div>
     </div>
     ${creditFooter()}
@@ -677,6 +793,8 @@ function render(){
   else if(s==='teacherNewExam') renderTeacherNewExam();
   else if(s==='teacherResults') renderTeacherResults(state.code);
   else if(s==='studentEntry') renderStudentEntry();
+  else if(s==='studentChoice') renderStudentChoice(state.exam, state.slug, state.name, state.attempts);
+  else if(s==='studentAlready') renderStudentAlready(state.exam, state.prev);
   else if(s==='studentExam') renderStudentExam();
   else if(s==='studentResult') renderStudentResult();
 }
