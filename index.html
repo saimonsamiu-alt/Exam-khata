@@ -245,8 +245,8 @@ function renderLanding(){
   app.innerHTML = `
     ${header()}
     <div class="card center">
-      <h1>তুমি কে হিসেবে ঢুকছো?</h1>
-      <p class="hint">শিক্ষক হিসেবে ঢুকলে নতুন পরীক্ষা সাজাতে ও রেজাল্ট দেখতে পারবে। স্টুডেন্ট হিসেবে ঢুকলে কোড দিয়ে পরীক্ষা দিতে পারবে।</p>
+      <h1>স্বাগতম! কোন অপশনটা বেছে নেবে?</h1>
+      <p class="hint">নিচের অপশন থেকে বেছে নাও — পরীক্ষা সাজাতে/দেখতে চাইলে Admin বা Teacher, পরীক্ষা দিতে চাইলে Student, আর শুধু চর্চার জন্য Practice।</p>
       <div class="row">
         <button class="btn btn-primary btn-block" onclick="go('teacherGate')">🛠️ Admin</button>
         <button class="btn btn-gold btn-block" onclick="go('studentEntry')">🧑‍🎓 Student (Private)</button>
@@ -336,7 +336,7 @@ function renderTeacherGate(){
       <h2>পাসওয়ার্ড দাও</h2>
       <p class="hint">এটা শুধু তোমার জন্য — স্টুডেন্টদের সাথে শেয়ার কোরো না।</p>
       <input type="password" id="enterPin" maxlength="10" placeholder="পাসওয়ার্ড" onkeydown="if(event.key==='Enter') checkTeacherPin()">
-      <button class="btn btn-primary btn-block" onclick="checkTeacherPin()">ঢোকো</button>
+      <button class="btn btn-primary btn-block" onclick="checkTeacherPin()">প্রবেশ করো</button>
       <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← ফিরে যাও</a></div>
     </div>
     ${creditFooter()}
@@ -358,12 +358,12 @@ function renderTeacherOtherGate(){
     ${header('অন্য শিক্ষক')}
     <div class="card">
       <h2>তোমার নিজের একাউন্ট</h2>
-      <p class="hint">প্রথমবার আসলে তোমার দেওয়া নাম ও পাসওয়ার্ড দিয়েই নতুন একাউন্ট তৈরি হয়ে যাবে। পরেরবার থেকে একই নাম ও পাসওয়ার্ড দিয়ে ঢুকবে — তোমার পরীক্ষাগুলো অন্য কেউ দেখতে পাবে না, এটা তোমার নিজস্ব আলাদা সেকশন।</p>
+      <p class="hint">প্রথমবার আসলে তোমার দেওয়া নাম ও পাসওয়ার্ড দিয়েই নতুন একাউন্ট তৈরি হয়ে যাবে। পরেরবার থেকে একই নাম ও পাসওয়ার্ড দিয়ে প্রবেশ করবে — তোমার পরীক্ষাগুলো অন্য কেউ দেখতে পাবে না, এটা তোমার নিজস্ব আলাদা সেকশন।</p>
       <label class="field-label">তোমার নাম</label>
       <input type="text" id="otherTeacherName" placeholder="যেমন: রহিম স্যার">
       <label class="field-label">পাসওয়ার্ড</label>
       <input type="password" id="otherTeacherPass" placeholder="নিজের একটা পাসওয়ার্ড দাও" onkeydown="if(event.key==='Enter') otherTeacherLogin()">
-      <button class="btn btn-primary btn-block" onclick="otherTeacherLogin()">ঢোকো / নতুন একাউন্ট বানাও</button>
+      <button class="btn btn-primary btn-block" onclick="otherTeacherLogin()">প্রবেশ করো / নতুন একাউন্ট বানাও</button>
       <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← ফিরে যাও</a></div>
     </div>
     ${creditFooter()}
@@ -657,22 +657,33 @@ window.toggleDetail = function(i){
   const grouped = window.__lastGrouped, exam = window.__lastExam;
   if(!el || !grouped || !exam) return;
   if(el.classList.contains('open')){ el.classList.remove('open'); el.innerHTML=''; return; }
-  const g = grouped[i];
-  const r = g.best;
-  const answers = r.answers || [];
-  el.innerHTML = exam.questions.map((q,qi)=>{
-    const given = answers[qi];
-    const correct = q.correct;
-    const isRight = given === correct;
-    const givenLabel = (given===null||given===undefined) ? 'উত্তর দেয়নি' : `${['ক','খ','গ','ঘ'][given]}) ${escapeHtml(q.options[given])}`;
-    const correctLabel = `${['ক','খ','গ','ঘ'][correct]}) ${escapeHtml(q.options[correct])}`;
-    return `<div class="review-block">
-      <div class="q-text" style="font-size:14px;">${qi+1}. ${escapeHtml(q.text)}</div>
-      <div class="review-ans ${isRight?'right':'wrong'}">তার উত্তর: ${givenLabel} ${isRight?'✓':'✗'}</div>
-      ${!isRight ? `<div class="review-ans right">সঠিক উত্তর: ${correctLabel}</div>` : ''}
+  el.classList.add('open');
+  renderAttemptList(i);
+}
+function renderAttemptList(i){
+  const el = document.getElementById('detail'+i);
+  const g = window.__lastGrouped[i];
+  const sortedAsc = [...g.attempts].sort((a,b)=> a.submittedAt - b.submittedAt);
+  g.__sortedAsc = sortedAsc;
+  const listHtml = [...sortedAsc].reverse().map((r,idxRev)=>{
+    const tryNo = sortedAsc.length - idxRev;
+    const pct = Math.round((r.score/r.total)*100);
+    return `<div class="review-block" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+      <div>চেষ্টা ${tryNo} · <span class="score-big ${pct>=50?'score-pass':'score-fail'}">${r.score}/${r.total}</span><br><span class="meta">${new Date(r.submittedAt).toLocaleString('bn-BD')}</span></div>
+      <a class="link-back" onclick="showTeacherAttempt(${i},${tryNo})">খাতা দেখো</a>
     </div>`;
   }).join('');
-  el.classList.add('open');
+  el.innerHTML = `<div style="padding-top:8px;">${listHtml}</div>`;
+}
+window.showTeacherAttempt = function(i, tryNo){
+  const el = document.getElementById('detail'+i);
+  const g = window.__lastGrouped[i];
+  const exam = window.__lastExam;
+  const r = g.__sortedAsc[tryNo-1];
+  el.innerHTML = `<div style="padding-top:8px;">
+    <a class="link-back" onclick="renderAttemptList(${i})">← সব চেষ্টার তালিকায় ফিরে যাও</a>
+    <div style="margin-top:10px;">${buildAnswerReview(exam, r.answers||[])}</div>
+  </div>`;
 }
 
 function renderStudentEntry(){
@@ -718,63 +729,66 @@ async function verifyStudentLogin(){
 }
 
 function renderStudentChoice(exam, slug, name, attempts){
-  const latest = attempts[0];
-  const pct = Math.round((latest.score/latest.total)*100);
+  const sortedAsc = [...attempts].sort((a,b)=> a.submittedAt - b.submittedAt);
   const best = attempts.reduce((m,r)=> r.score > m.score ? r : m, attempts[0]);
+  const listHtml = [...sortedAsc].reverse().map((r,idxRev)=>{
+    const tryNo = sortedAsc.length - idxRev;
+    const pct = Math.round((r.score/r.total)*100);
+    return `<div class="exam-item">
+      <div class="row-top">
+        <div>
+          <h3 style="margin-bottom:2px;">চেষ্টা ${tryNo}</h3>
+          <div class="meta">${new Date(r.submittedAt).toLocaleString('bn-BD')}</div>
+        </div>
+        <div class="score-big ${pct>=50?'score-pass':'score-fail'}">${r.score}/${r.total}</div>
+      </div>
+      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="viewAttemptDetail(${tryNo})">এই খাতাটা দেখো</button>
+    </div>`;
+  }).join('');
+
   app.innerHTML = `
     ${header('আগে থেকেই পরীক্ষা দিয়েছো')}
     <div class="card center">
       <h2>${escapeHtml(exam.title)}</h2>
-      <p class="hint">তুমি এই পরীক্ষাটা আগে ${attempts.length} বার দিয়েছো। এটা practice এর জন্য, তাই চাইলে আবার দিতে পারো — অথবা আগের ফলাফল দেখতে পারো।</p>
-      <div class="stamp ${pct>=50?'':'fail'}">${latest.score}/${latest.total}</div>
-      <p class="hint" style="margin-top:10px;">সর্বশেষ চেষ্টা · সেরা স্কোর: ${best.score}/${best.total}</p>
-      <div class="row" style="margin-top:16px;">
-        <button class="btn btn-outline btn-block" onclick="showPreviousResult()">📄 আগের ফলাফল দেখো</button>
-        <button class="btn btn-gold btn-block" onclick="startPracticeAttempt()">✍️ আবার পরীক্ষা দাও (Practice)</button>
-      </div>
-      <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
+      <p class="hint">তুমি এই পরীক্ষাটা আগে ${attempts.length} বার দিয়েছো। এটা practice এর জন্য, তাই চাইলে আবার দিতে পারো — অথবা যেকোনো আগের চেষ্টার খাতা দেখতে পারো।</p>
+      <p class="hint">সেরা স্কোর: <b>${best.score}/${best.total}</b></p>
+      <button class="btn btn-gold btn-block" onclick="startPracticeAttempt()">✍️ আবার পরীক্ষা দাও (Practice)</button>
     </div>
+    <div class="card">
+      <h3 style="margin-bottom:10px;">সব চেষ্টার তালিকা</h3>
+      ${listHtml}
+    </div>
+    <div class="center"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
     ${creditFooter()}
   `;
-  window.__choiceCtx = { exam, slug, name, attempts };
+  window.__choiceCtx = { exam, slug, name, attempts, sortedAsc };
 }
-function attemptsLatest(){ return window.__choiceCtx.attempts[0]; }
-window.showPreviousResult = function(){
-  const { exam, attempts } = window.__choiceCtx;
-  go('studentAlready', { exam, prev: attempts[0] });
+window.viewAttemptDetail = function(tryNo){
+  const { exam, sortedAsc } = window.__choiceCtx;
+  const attempt = sortedAsc[tryNo - 1];
+  go('studentAlready', { exam, prev: attempt, tryNo, totalTries: sortedAsc.length });
 }
 window.startPracticeAttempt = function(){
   const { exam, slug, name, attempts } = window.__choiceCtx;
   runCheckingSequence(exam, slug, name, attempts.length + 1);
 }
 
-function renderStudentAlready(exam, prev){
+function renderStudentAlready(exam, prev, tryNo, totalTries){
   const pct = Math.round((prev.score/prev.total)*100);
   const answers = prev.answers || [];
-  const detail = exam.questions.map((q,qi)=>{
-    const given = answers[qi];
-    const correct = q.correct;
-    const isRight = given === correct;
-    const givenLabel = (given===null||given===undefined) ? 'উত্তর দেওনি' : `${['ক','খ','গ','ঘ'][given]}) ${escapeHtml(q.options[given])}`;
-    const correctLabel = `${['ক','খ','গ','ঘ'][correct]}) ${escapeHtml(q.options[correct])}`;
-    return `<div class="review-block">
-      <div class="q-text" style="font-size:14px;">${qi+1}. ${escapeHtml(q.text)}</div>
-      <div class="review-ans ${isRight?'right':'wrong'}">তুমি দিয়েছিলে: ${givenLabel} ${isRight?'✓':'✗'}</div>
-      ${!isRight ? `<div class="review-ans right">সঠিক উত্তর: ${correctLabel}</div>` : ''}
-    </div>`;
-  }).join('');
+  const detail = buildAnswerReview(exam, answers);
   const hasCtx = !!window.__choiceCtx;
   app.innerHTML = `
     ${header('আগের ফলাফল')}
     <div class="card center">
       <h2>${escapeHtml(exam.title)}</h2>
-      <p class="hint">এই attempt-এ তুমি যা দাগিয়েছিলে, নিচে দেখানো হলো।</p>
+      <p class="hint">${tryNo ? `চেষ্টা ${tryNo} / ${totalTries} — ` : ''}এই attempt-এ তুমি যা দাগিয়েছিলে, নিচে দেখানো হলো।</p>
       <div class="stamp ${pct>=50?'':'fail'}">${prev.score}/${prev.total}</div>
     </div>
     <div class="card" style="text-align:start;">${detail}</div>
     <div class="row">
-      ${hasCtx ? `<button class="btn btn-gold btn-block" onclick="startPracticeAttempt()">✍️ আবার পরীক্ষা দাও (Practice)</button>`:''}
-      <button class="btn btn-outline btn-block" onclick="go('landing')">← মূল পাতায় ফিরে যাও</button>
+      ${hasCtx ? `<button class="btn btn-outline btn-block" onclick="go('studentChoice', window.__choiceCtx)">← সব চেষ্টার তালিকায় ফিরে যাও</button>`:''}
+      <button class="btn btn-outline btn-block" onclick="go('landing')">মূল পাতায় ফিরে যাও</button>
     </div>
     ${creditFooter()}
   `;
@@ -935,20 +949,38 @@ window.submitExam = async function(auto){
   app.innerHTML = `${header('জমা হচ্ছে')} <div class="card center">গুগল শিটে আপনার উত্তরপত্র জমা হচ্ছে, দয়া করে অপেক্ষা করুন...</div>`;
 
   await sset('result:'+exam.code+':'+slug, JSON.stringify(resultObj));
-  go('studentResult', { exam, score, total: exam.questions.length });
+  go('studentResult', { exam, result: resultObj, auto });
+}
+
+function buildAnswerReview(exam, answers){
+  return exam.questions.map((q,qi)=>{
+    const given = answers[qi];
+    const correct = q.correct;
+    const isRight = given === correct;
+    const givenLabel = (given===null||given===undefined) ? 'উত্তর দেওনি' : `${['ক','খ','গ','ঘ'][given]}) ${escapeHtml(q.options[given])}`;
+    const correctLabel = `${['ক','খ','গ','ঘ'][correct]}) ${escapeHtml(q.options[correct])}`;
+    return `<div class="review-block">
+      <div class="q-text" style="font-size:14px;">${qi+1}. ${escapeHtml(q.text)}</div>
+      <div class="review-ans ${isRight?'right':'wrong'}">তুমি দিয়েছিলে: ${givenLabel} ${isRight?'✓':'✗'}</div>
+      ${!isRight ? `<div class="review-ans right">সঠিক উত্তর: ${correctLabel}</div>` : ''}
+    </div>`;
+  }).join('');
 }
 
 function renderStudentResult(){
-  const { exam, score, total } = state;
-  const pct = Math.round((score/total)*100);
+  const { exam, result, auto } = state;
+  const pct = Math.round((result.score/result.total)*100);
   app.innerHTML = `
     ${header('ফলাফল')}
     <div class="card center">
       <h2>${escapeHtml(exam.title)}</h2>
-      <div class="stamp ${pct>=50?'':'fail'}">${score}/${total}</div>
-      <div style="margin-top:20px;">
-        <button class="btn btn-primary" onclick="go('landing')">মূল পাতায় যাও</button>
-      </div>
+      ${auto ? `<p class="hint">⏱️ সময় শেষ হয়ে যাওয়ায় স্বয়ংক্রিয়ভাবে জমা হয়েছে।</p>`:''}
+      <div class="stamp ${pct>=50?'':'fail'}">${result.score}/${result.total}</div>
+      <p class="hint" style="margin-top:10px;">নিচে দেখো কোন প্রশ্নে কী দাগিয়েছিলে — এখনই দেখে নাও, পরে আবার লগইন করার দরকার নেই।</p>
+    </div>
+    <div class="card" style="text-align:start;">${buildAnswerReview(exam, result.answers)}</div>
+    <div class="center">
+      <button class="btn btn-primary" onclick="go('landing')">মূল পাতায় যাও</button>
     </div>
     ${creditFooter()}
   `;
@@ -966,7 +998,7 @@ function render(){
   else if(s==='practiceList') renderPracticeList();
   else if(s==='practiceEntry') renderPracticeEntry(state.exam);
   else if(s==='studentChoice') renderStudentChoice(state.exam, state.slug, state.name, state.attempts);
-  else if(s==='studentAlready') renderStudentAlready(state.exam, state.prev);
+  else if(s==='studentAlready') renderStudentAlready(state.exam, state.prev, state.tryNo, state.totalTries);
   else if(s==='studentExam') renderStudentExam();
   else if(s==='studentResult') renderStudentResult();
 }
