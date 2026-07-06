@@ -134,7 +134,7 @@ const CREATOR_DEPT = 'Industrial and Production Engineering (IPE)';
 const CREATOR_WHATSAPP = '01577477346';
 const CREATOR_WA_LINK = 'https://wa.me/8801577477346';
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwZm-weWqbr4C4CavNvkNKsPFu8lgaAAZGCl74358QnLVvVTzC2ytxJKlVdLYy60Ds1/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwELPZT_kYI8RLDJCyMJYoSBhwkZ8ZkjkvY_nNDAGxHs1u5yB95sbVXY898v-LwdDmg/exec';
 
 const holesEl = document.getElementById('holes');
 for(let i=0;i<10;i++){ const s=document.createElement('span'); holesEl.appendChild(s); }
@@ -248,11 +248,11 @@ function renderLanding(){
       <h1>তুমি কে হিসেবে ঢুকছো?</h1>
       <p class="hint">শিক্ষক হিসেবে ঢুকলে নতুন পরীক্ষা সাজাতে ও রেজাল্ট দেখতে পারবে। স্টুডেন্ট হিসেবে ঢুকলে কোড দিয়ে পরীক্ষা দিতে পারবে।</p>
       <div class="row">
-        <button class="btn btn-primary btn-block" onclick="go('teacherGate')">👩‍🏫 আমি শিক্ষক</button>
-        <button class="btn btn-gold btn-block" onclick="go('studentEntry')">🧑‍🎓 আমি স্টুডেন্ট (কোড দিয়ে)</button>
+        <button class="btn btn-primary btn-block" onclick="go('teacherGate')">🛠️ Admin</button>
+        <button class="btn btn-gold btn-block" onclick="go('studentEntry')">🧑‍🎓 Student (Private)</button>
       </div>
-      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('teacherOtherGate')">👨‍🏫 অন্য শিক্ষক (নিজের আলাদা একাউন্ট)</button>
-      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('practiceList')">🎯 প্র্যাকটিস করো (কোড ছাড়াই, সবার জন্য উন্মুক্ত)</button>
+      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('teacherOtherGate')">👨‍🏫 Teacher</button>
+      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('practiceList')">🎯 Practice</button>
     </div>
     ${creditFooter()}
   `;
