@@ -134,7 +134,7 @@ const CREATOR_DEPT = 'Industrial and Production Engineering (IPE)';
 const CREATOR_WHATSAPP = '01577477346';
 const CREATOR_WA_LINK = 'https://wa.me/8801577477346';
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwELPZT_kYI8RLDJCyMJYoSBhwkZ8ZkjkvY_nNDAGxHs1u5yB95sbVXY898v-LwdDmg/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwJxKtzUre4E2tmWaSirMeNKoe_PMdnoLPb5E7HK3tHwuG5bvhWIc6-Pkte5MdACFkh/exec';
 
 const holesEl = document.getElementById('holes');
 for(let i=0;i<10;i++){ const s=document.createElement('span'); holesEl.appendChild(s); }
@@ -169,18 +169,50 @@ async function sset(key, value) {
   try {
     if (key.startsWith('exam:')) {
       const code = key.split(':')[1];
-      const encodedData = encodeURIComponent(value);
-      await fetch(`${SCRIPT_URL}?action=saveExam&code=${code}&exam=${encodedData}`);
+      const r = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // avoids CORS preflight; Apps Script just reads raw body
+        body: JSON.stringify({ action: 'saveExam', code, exam: value })
+      });
+      const text = await r.text();
+      let json;
+      try { json = JSON.parse(text); } catch(parseErr){
+        console.error('saveExam: non-JSON response', text);
+        toast('সেভ ব্যর্থ: সার্ভার থেকে ভুল উত্তর এসেছে');
+        return null;
+      }
+      if(json.status !== 'success'){
+        console.error('saveExam failed', json);
+        toast('সেভ ব্যর্থ: ' + (json.message || 'অজানা সমস্যা'));
+        return null;
+      }
     } else if (key.startsWith('result:')) {
       const parts = key.split(':');
       const code = parts[1];
       const slug = parts[2];
-      const encodedData = encodeURIComponent(value);
-      await fetch(`${SCRIPT_URL}?action=submitResult&code=${code}&slug=${slug}&result=${encodedData}`);
+      const r = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'submitResult', code, slug, result: value })
+      });
+      const text = await r.text();
+      let json;
+      try { json = JSON.parse(text); } catch(parseErr){
+        console.error('submitResult: non-JSON response', text);
+        toast('জমা ব্যর্থ: সার্ভার থেকে ভুল উত্তর এসেছে');
+        return null;
+      }
+      if(json.status !== 'success'){
+        console.error('submitResult failed', json);
+        toast('জমা ব্যর্থ: ' + (json.message || 'অজানা সমস্যা'));
+        return null;
+      }
     }
     return true;
   } catch(e) {
-    return true;
+    console.error('sset network error', e);
+    toast('নেটওয়ার্ক সমস্যা: সেভ/জমা করা যায়নি');
+    return null;
   }
 }
 
@@ -593,7 +625,8 @@ async function saveExam(){
   const teacherId = currentTeacher ? currentTeacher.id : 'admin';
   const exam = { code, title, subject, timerMode, duration, perQuestionSeconds, isPublic, teacherId, questions: draftQuestions, createdAt: Date.now() };
   toast('গুগল শিটে সেভ হচ্ছে...');
-  await sset('exam:'+code, JSON.stringify(exam));
+  const res = await sset('exam:'+code, JSON.stringify(exam));
+  if(!res){ return; } // sset already showed a toast explaining what went wrong; keep draftQuestions so nothing is lost
   draftQuestions = [];
   alert('পরীক্ষা তৈরি হয়েছে এবং গুগল শিটে সেভ হয়েছে! কোড: '+code + (isPublic ? '\n\nএটা "প্র্যাকটিস করো" সেকশনে সবার জন্য উন্মুক্ত থাকবে।' : ''));
   go('teacherDashboard');
@@ -948,7 +981,36 @@ window.submitExam = async function(auto){
 
   app.innerHTML = `${header('জমা হচ্ছে')} <div class="card center">গুগল শিটে আপনার উত্তরপত্র জমা হচ্ছে, দয়া করে অপেক্ষা করুন...</div>`;
 
-  await sset('result:'+exam.code+':'+slug, JSON.stringify(resultObj));
+  const res = await sset('result:'+exam.code+':'+slug, JSON.stringify(resultObj));
+  if(!res){
+    window.__pendingResult = { exam, slug, resultObj, auto };
+    app.innerHTML = `
+      ${header('জমা ব্যর্থ হয়েছে')}
+      <div class="card center">
+        <p class="hint">তোমার উত্তরপত্র জমা দিতে সমস্যা হয়েছে (ইন্টারনেট বা সার্ভার সমস্যা)। তোমার উত্তরগুলো এখনো এই ডিভাইসে সেভ আছে, হারিয়ে যায়নি — নিচে আবার চেষ্টা করো।</p>
+        <button class="btn btn-primary btn-block" onclick="retrySubmit()">🔁 আবার জমা দাও</button>
+      </div>
+      ${creditFooter()}
+    `;
+    return;
+  }
+  go('studentResult', { exam, result: resultObj, auto });
+}
+window.retrySubmit = async function(){
+  const { exam, slug, resultObj, auto } = window.__pendingResult;
+  app.innerHTML = `${header('জমা হচ্ছে')} <div class="card center">আবার চেষ্টা করা হচ্ছে...</div>`;
+  const res = await sset('result:'+exam.code+':'+slug, JSON.stringify(resultObj));
+  if(!res){
+    app.innerHTML = `
+      ${header('জমা ব্যর্থ হয়েছে')}
+      <div class="card center">
+        <p class="hint">আবারও ব্যর্থ হয়েছে। ইন্টারনেট কানেকশন চেক করে আবার চেষ্টা করো।</p>
+        <button class="btn btn-primary btn-block" onclick="retrySubmit()">🔁 আবার জমা দাও</button>
+      </div>
+      ${creditFooter()}
+    `;
+    return;
+  }
   go('studentResult', { exam, result: resultObj, auto });
 }
 
