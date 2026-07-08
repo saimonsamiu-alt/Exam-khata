@@ -134,7 +134,7 @@ const CREATOR_DEPT = 'Industrial and Production Engineering (IPE)';
 const CREATOR_WHATSAPP = '01577477346';
 const CREATOR_WA_LINK = 'https://wa.me/8801577477346';
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzJ_lvejHDgyMpZlfF4fs_94e1GApC2mKn4DfvMgLjo2CqxqN3gCkZTUVg9mJ2TLM0T/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby1H_32rH2wmY5ZtrvKkPbCWS6_RXaLpPqifu5Ir424NxEmza1w2i7ccYfuiBxbbVKS/exec';
 
 const holesEl = document.getElementById('holes');
 for(let i=0;i<10;i++){ const s=document.createElement('span'); holesEl.appendChild(s); }
@@ -238,6 +238,36 @@ async function getRemoteResults(code) {
 function genCode(){ const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let c=''; for(let i=0;i<5;i++) c += chars[Math.floor(Math.random()*chars.length)]; return c; }
 function slugify(name){ return name.trim().toLowerCase().replace(/[^a-z0-9\u0980-\u09FF]+/g,'_').slice(0,40) || 'student'; }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function linkifyText(s){
+  const escaped = escapeHtml(s);
+  return escaped.replace(/(https?:\/\/[^\s<]+)/g, url => `<a href="${url}" target="_blank" rel="noopener" style="color:var(--margin-red); text-decoration:underline;">${url}</a>`);
+}
+async function postToScript(action, params){
+  try{
+    const r = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // avoids CORS preflight; Apps Script reads raw body
+      body: JSON.stringify({ action, ...params })
+    });
+    const text = await r.text();
+    let json;
+    try{ json = JSON.parse(text); } catch(parseErr){
+      console.error(action+': non-JSON response', text);
+      toast('সেভ ব্যর্থ: সার্ভার থেকে ভুল উত্তর এসেছে');
+      return null;
+    }
+    if(json.status !== 'success'){
+      console.error(action+' failed', json);
+      toast('ব্যর্থ: ' + (json.message || 'অজানা সমস্যা'));
+      return null;
+    }
+    return json;
+  } catch(e){
+    console.error(action+' network error', e);
+    toast('নেটওয়ার্ক সমস্যা: আবার চেষ্টা করো');
+    return null;
+  }
+}
 function fmtTime(totalSec){ const m = Math.floor(totalSec/60), s = totalSec%60; return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'); }
 
 let state = { screen: 'landing' };
@@ -1038,10 +1068,8 @@ async function getAllTopics(){
   return [];
 }
 async function saveTopicRemote(key, name, content){
-  try{
-    await fetch(`${SCRIPT_URL}?action=saveTopic&key=${encodeURIComponent(key)}&name=${encodeURIComponent(name)}&content=${encodeURIComponent(content)}`);
-    return true;
-  } catch(e){ return false; }
+  const res = await postToScript('saveTopic', { key, name, content });
+  return !!res;
 }
 
 // ---- Teacher: manage topics ----
@@ -1097,9 +1125,37 @@ async function renderTopicsManageChapters(subject, sectionKey){
       <h2>${TOPIC_STRUCTURE[subject].label} · ${sec.label}</h2>
       ${rows}
     </div>
+    <div class="card">
+      <h2>📥 একসাথে অনেক অধ্যায় বসাও (Bulk Import)</h2>
+      <p class="hint">নিচের ফরম্যাটে পেস্ট করো — প্রতিটা অধ্যায়ের নাম লেখো <code>##</code> দিয়ে শুরু করে, তার নিচে কনটেন্ট লেখো। ক্রম অনুযায়ী অধ্যায় ১, ২, ৩... এ বসে যাবে:<br>
+      <code>## অধ্যায়ের নাম ১<br>এখানে কনটেন্ট লেখো, একাধিক লাইনেও লেখা যাবে...<br><br>## অধ্যায়ের নাম ২<br>এই অধ্যায়ের কনটেন্ট...</code></p>
+      <textarea id="topicBulkText" placeholder="এখানে পেস্ট করো..."></textarea>
+      <button class="btn btn-outline btn-block" onclick="importTopicsBulk('${subject}','${sectionKey}',${sec.count})">📥 ইম্পোর্ট করো ও সেভ করো</button>
+    </div>
     <div class="center"><a class="link-back" onclick="go('topicsManageSection',{subject:'${subject}'})">← ফিরে যাও</a></div>
     ${creditFooter()}
   `;
+}
+window.importTopicsBulk = async function(subject, sectionKey, maxCount){
+  const raw = document.getElementById('topicBulkText').value;
+  if(!raw.trim()){ toast('আগে টেক্সট পেস্ট করো'); return; }
+  const blocks = raw.split(/\n(?=##\s)/).map(b=>b.trim()).filter(Boolean);
+  const parsed = [];
+  for(const block of blocks){
+    const lines = block.split('\n');
+    const headerLine = lines[0].replace(/^##\s*/, '').trim();
+    const content = lines.slice(1).join('\n').trim();
+    if(headerLine) parsed.push({ name: headerLine, content });
+  }
+  if(parsed.length === 0){ toast('কোনো অধ্যায় পার্স করা যায়নি, ফরম্যাট চেক করো'); return; }
+  const toSave = parsed.slice(0, maxCount);
+  toast(`${toSave.length}টা অধ্যায় সেভ হচ্ছে...`);
+  for(let i=0;i<toSave.length;i++){
+    const key = `${subject}_${sectionKey}_${i+1}`;
+    await saveTopicRemote(key, toSave[i].name, toSave[i].content);
+  }
+  toast(`${toSave.length}টা অধ্যায় সেভ হয়েছে ✅`);
+  go('topicsManageChapters', { subject, sectionKey });
 }
 function renderTopicsEdit(subject, sectionKey, chNum, existingName, existingContent){
   app.innerHTML = `
@@ -1195,51 +1251,42 @@ function renderTopicsView(chapName, content, subject, sectionKey){
     ${header('গুরুত্বপূর্ণ Topics')}
     <div class="card">
       <h2>${escapeHtml(chapName)}</h2>
-      <div style="white-space:pre-wrap; font-size:15px; line-height:1.7;">${escapeHtml(content)}</div>
+      <div style="white-space:pre-wrap; font-size:15px; line-height:1.7;">${linkifyText(content)}</div>
     </div>
     <div class="center"><a class="link-back" onclick="go('topicsChapterList',{subject:'${subject}', sectionKey:'${sectionKey}'})">← অধ্যায় তালিকায় ফিরে যাও</a></div>
     ${creditFooter()}
   `;
 }
 
-// ================= ATTENDANCE & FEE TRACKING =================
-function genStudentId(){
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  let c=''; for(let i=0;i<6;i++) c += chars[Math.floor(Math.random()*chars.length)];
-  return c;
+// ================= ATTENDANCE & FEE TRACKING (name-only, no ID/password needed) =================
+async function addStudentRemote(name){
+  const slug = slugify(name);
+  const res = await postToScript('addStudent', { name, slug });
+  return res ? slug : null;
 }
-async function addStudentRemote(teacherId, name){
-  const studentId = genStudentId();
-  try{ await fetch(`${SCRIPT_URL}?action=addStudent&teacherId=${encodeURIComponent(teacherId)}&name=${encodeURIComponent(name)}&studentId=${encodeURIComponent(studentId)}`); }catch(e){}
-  return studentId;
-}
-async function listStudentsRemote(teacherId){
+async function listStudentsRemote(){
   try{
-    const r = await fetch(`${SCRIPT_URL}?action=listStudents&teacherId=${encodeURIComponent(teacherId)}`);
+    const r = await fetch(`${SCRIPT_URL}?action=listStudents`);
     const json = await r.json();
     if(json.status==='success') return json.data;
   }catch(e){}
   return [];
 }
-async function markAttendanceRemote(studentId, dateStr){
-  try{
-    await fetch(`${SCRIPT_URL}?action=markAttendance&studentId=${encodeURIComponent(studentId)}&date=${encodeURIComponent(dateStr)}`);
-    return true;
-  }catch(e){ return false; }
+async function markAttendanceRemote(slug, dateStr){
+  const res = await postToScript('markAttendance', { slug, date: dateStr });
+  return !!res;
 }
-async function listAttendanceRemote(studentId){
+async function listAttendanceRemote(slug){
   try{
-    const r = await fetch(`${SCRIPT_URL}?action=listAttendance&studentId=${encodeURIComponent(studentId)}`);
+    const r = await fetch(`${SCRIPT_URL}?action=listAttendance&slug=${encodeURIComponent(slug)}`);
     const json = await r.json();
     if(json.status==='success') return json.data;
   }catch(e){}
   return [];
 }
-async function approveAttendanceRemote(studentId, dateStr){
-  try{
-    await fetch(`${SCRIPT_URL}?action=approveAttendance&studentId=${encodeURIComponent(studentId)}&date=${encodeURIComponent(dateStr)}`);
-    return true;
-  }catch(e){ return false; }
+async function approveAttendanceRemote(slug, dateStr){
+  const res = await postToScript('approveAttendance', { slug, date: dateStr });
+  return !!res;
 }
 function todayStr(){
   const d = new Date();
@@ -1250,8 +1297,6 @@ const BN_MONTHS = ['জানুয়ারি','ফেব্রুয়ার
 const BN_WEEKDAYS = ['রবি','সোম','মঙ্গল','বুধ','বৃহ','শুক্র','শনি'];
 
 // ---- Mini calendar builder ----
-// records: array of {date:'YYYY-MM-DD', status:'pending'|'approved'}
-// onDayClick: JS expression string called with the clicked date string, e.g. "teacherDayClick('XYZ123','${date}')"
 function buildMiniCalendar(year, month, records, onDayClickFn, navTargetScreen, navCtx){
   const statusByDate = {};
   records.forEach(r=> statusByDate[r.date] = r.status);
@@ -1307,8 +1352,7 @@ window.goCalNav = function(y, m, targetScreen, ctx){
 async function renderAttendanceDashboard(){
   window.__calYear = null; window.__calMonth = null;
   app.innerHTML = `${header('উপস্থিতি ও বেতন')}<div class="card center">লোড হচ্ছে...</div>`;
-  const teacherId = currentTeacher ? currentTeacher.id : 'admin';
-  const students = await listStudentsRemote(teacherId);
+  const students = await listStudentsRemote();
 
   let studentRows = '';
   if(students.length === 0){
@@ -1317,12 +1361,9 @@ async function renderAttendanceDashboard(){
     studentRows = students.map(s=>{
       return `<div class="exam-item">
         <div class="row-top">
-          <div>
-            <h3 style="margin-bottom:2px;">${escapeHtml(s.name)}</h3>
-            <div class="meta">Student ID: <span class="code-chip">${s.studentId}</span></div>
-          </div>
+          <div><h3 style="margin-bottom:2px;">${escapeHtml(s.name)}</h3></div>
         </div>
-        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick='go("attendanceMark",{studentId:"${s.studentId}", studentName:${JSON.stringify(s.name)}})'>📅 ক্যালেন্ডার খোলো</button>
+        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick='go("attendanceMark",{slug:"${s.slug}", studentName:${JSON.stringify(s.name)}})'>📅 ক্যালেন্ডার খোলো</button>
       </div>`;
     }).join('');
   }
@@ -1331,7 +1372,7 @@ async function renderAttendanceDashboard(){
     ${header('উপস্থিতি ও বেতন')}
     <div class="card">
       <h2>স্টুডেন্ট তালিকা</h2>
-      <p class="hint">নতুন স্টুডেন্ট যোগ করলে একটা Student ID তৈরি হবে — শুধু এই ID টা student কে দিলেই হবে, আর কিছু লাগবে না। Student নিজে সেই ID দিয়ে ঢুকে ক্যালেন্ডারে ক্লিক করে confirm করবে।</p>
+      <p class="hint">নতুন স্টুডেন্ট যোগ করো, তারপর ক্যালেন্ডারে ক্লিক করে যেদিন ক্লাস হয়েছে সেটা মার্ক করো। Student শুধু নিজের নাম লিখে ঢুকে সেটা confirm করবে — কোনো ID/পাসওয়ার্ড লাগবে না।</p>
       <div class="row">
         <input type="text" id="newStudentName" placeholder="নতুন স্টুডেন্টের নাম" style="margin-bottom:0;">
         <button class="btn btn-outline" onclick="addNewStudent()">+ যোগ করো</button>
@@ -1345,16 +1386,15 @@ async function renderAttendanceDashboard(){
 window.addNewStudent = async function(){
   const name = document.getElementById('newStudentName').value.trim();
   if(!name){ toast('নাম লেখো'); return; }
-  const teacherId = currentTeacher ? currentTeacher.id : 'admin';
   toast('যোগ করা হচ্ছে...');
-  const studentId = await addStudentRemote(teacherId, name);
-  alert(`স্টুডেন্ট যোগ হয়েছে! Student ID: ${studentId}\n\nএই ID টা শুধু ${name}-কে দাও।`);
+  const slug = await addStudentRemote(name);
+  if(slug) toast('স্টুডেন্ট যোগ হয়েছে ✅');
   go('attendanceDashboard');
 }
 
-async function renderAttendanceMark(studentId, studentName){
+async function renderAttendanceMark(slug, studentName){
   app.innerHTML = `${header('উপস্থিতি মার্ক করো')}<div class="card center">লোড হচ্ছে...</div>`;
-  const records = await listAttendanceRemote(studentId);
+  const records = await listAttendanceRemote(slug);
   const now = new Date();
   const year = window.__calYear !== null ? window.__calYear : now.getFullYear();
   const month = window.__calMonth !== null ? window.__calMonth : now.getMonth();
@@ -1363,7 +1403,7 @@ async function renderAttendanceMark(studentId, studentName){
   const curMonthKey = todayStr().slice(0,7);
   const approvedThisMonth = records.filter(r=> r.status==='approved' && monthKeyOf(r.date)===curMonthKey).length;
 
-  const calHtml = buildMiniCalendar(year, month, records, 'teacherToggleDay', 'attendanceMark', { studentId, studentName });
+  const calHtml = buildMiniCalendar(year, month, records, 'teacherToggleDay', 'attendanceMark', { slug, studentName });
 
   app.innerHTML = `
     ${header('উপস্থিতি মার্ক করো')}
@@ -1377,20 +1417,21 @@ async function renderAttendanceMark(studentId, studentName){
   `;
 }
 window.teacherToggleDay = async function(dateStr){
-  const { studentId, studentName } = state;
+  const { slug, studentName } = state;
   toast('মার্ক করা হচ্ছে...');
-  await markAttendanceRemote(studentId, dateStr);
-  go('attendanceMark', { studentId, studentName });
+  const ok = await markAttendanceRemote(slug, dateStr);
+  if(ok) toast('মার্ক হয়েছে ✅');
+  go('attendanceMark', { slug, studentName });
 }
 
-// ---- Student: confirm attendance (just Student ID, nothing else) ----
+// ---- Student: confirm attendance (just name, nothing else) ----
 function renderAttendanceStudentEntry(){
   app.innerHTML = `
     ${header('উপস্থিতি নিশ্চিত করো')}
     <div class="card">
-      <h2>তোমার Student ID দাও</h2>
-      <p class="hint">শিক্ষকের দেওয়া Student ID টা লেখো — আর কিছু লাগবে না।</p>
-      <input type="text" id="attStudentId" placeholder="যেমন: 7K3PQ2" style="text-transform:uppercase;" onkeydown="if(event.key==='Enter') loadAttendanceForStudent()">
+      <h2>তোমার নাম লেখো</h2>
+      <p class="hint">শিক্ষকের কাছে যেই নামে দিয়েছিলে, ঠিক সেই নামটাই লেখো — আর কিছু লাগবে না।</p>
+      <input type="text" id="attStudName" placeholder="তোমার নাম" onkeydown="if(event.key==='Enter') loadAttendanceForStudent()">
       <button class="btn btn-primary btn-block" onclick="loadAttendanceForStudent()">দেখো</button>
       <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← ফিরে যাও</a></div>
     </div>
@@ -1398,14 +1439,15 @@ function renderAttendanceStudentEntry(){
   `;
 }
 window.loadAttendanceForStudent = async function(){
-  const studentId = document.getElementById('attStudentId').value.trim().toUpperCase();
-  if(!studentId){ toast('Student ID দাও'); return; }
+  const name = document.getElementById('attStudName').value.trim();
+  if(!name){ toast('নাম লেখো'); return; }
+  const slug = slugify(name);
   toast('লোড হচ্ছে...');
-  const records = await listAttendanceRemote(studentId);
+  const records = await listAttendanceRemote(slug);
   window.__calYear = null; window.__calMonth = null;
-  go('attendanceStudentView', { studentId, records });
+  go('attendanceStudentView', { slug, name, records });
 }
-function renderAttendanceStudentView(studentId, records){
+function renderAttendanceStudentView(slug, name, records){
   const now = new Date();
   const year = window.__calYear !== null ? window.__calYear : now.getFullYear();
   const month = window.__calMonth !== null ? window.__calMonth : now.getMonth();
@@ -1413,11 +1455,12 @@ function renderAttendanceStudentView(studentId, records){
 
   const curMonthKey = todayStr().slice(0,7);
   const approvedThisMonth = records.filter(r=> r.status==='approved' && monthKeyOf(r.date)===curMonthKey).length;
-  const calHtml = buildMiniCalendar(year, month, records, 'studentToggleDay', 'attendanceStudentView', { studentId, records });
+  const calHtml = buildMiniCalendar(year, month, records, 'studentToggleDay', 'attendanceStudentView', { slug, name, records });
 
   app.innerHTML = `
     ${header('উপস্থিতি')}
     <div class="card center">
+      <h2>${escapeHtml(name)}</h2>
       <p class="hint">এই মাসে অনুমোদিত ক্লাস: <b>${approvedThisMonth}</b>টা</p>
       <p class="hint">🟨 হলুদ দিনে ক্লিক করে confirm করো যে সেদিন ক্লাস হয়েছিল।</p>
     </div>
@@ -1427,42 +1470,43 @@ function renderAttendanceStudentView(studentId, records){
   `;
 }
 window.studentToggleDay = async function(dateStr){
-  const { studentId, records } = state;
+  const { slug, name, records } = state;
   const rec = records.find(r=> r.date === dateStr);
-  if(!rec || rec.status !== 'pending'){ return; } // only pending days are confirmable
+  if(!rec || rec.status !== 'pending'){ return; }
   toast('নিশ্চিত করা হচ্ছে...');
-  await approveAttendanceRemote(studentId, dateStr);
+  await approveAttendanceRemote(slug, dateStr);
   toast('ধন্যবাদ, নিশ্চিত করা হলো ✅');
-  const newRecords = await listAttendanceRemote(studentId);
-  go('attendanceStudentView', { studentId, records: newRecords });
+  const newRecords = await listAttendanceRemote(slug);
+  go('attendanceStudentView', { slug, name, records: newRecords });
 }
+
 
 // ================= FAQ / সাধারণ জিজ্ঞাসা =================
 const DEFAULT_FAQ = [
   {
     id: 'default_uni_list',
-    question: 'বাংলাদেশের বিশ্ববিদ্যালয়সমূহ: সরকারি, বেসরকারি ও আন্তর্জাতিক তালিকা (UGC অনুযায়ী)',
-    answer: `University Grants Commission (UGC)-এর তালিকা অনুযায়ী বাংলাদেশের বিশ্ববিদ্যালয়গুলো ৩ ভাগে বিভক্ত:
+    question: 'বাংলাদেশের বিশ্ববিদ্যালয়সমূহ: সরকারি, বেসরকারি ও আন্তর্জাতিক তালিকা (বিশ্ববিদ্যালয় মঞ্জুরি কমিশন অনুযায়ী)',
+    answer: `বিশ্ববিদ্যালয় মঞ্জুরি কমিশনের তালিকা অনুযায়ী বাংলাদেশের বিশ্ববিদ্যালয়গুলো ৩ ভাগে বিভক্ত:
 
-🏛️ সরকারি বিশ্ববিদ্যালয়: ৫৯টি (যেমন: ঢাবি, বুয়েট, রাবি, চবি, জাবি, সাস্ট, কুয়েট, রুয়েট, চুয়েট, ঢাকা মেডিকেল ইউনিভার্সিটি ইত্যাদি)
+🏛️ সরকারি বিশ্ববিদ্যালয়: ৫৯টি
+সম্পূর্ণ তালিকা দেখতে ক্লিক করুন: http://www.ugc-universities.gov.bd/public-universities
 
-🏢 বেসরকারি বিশ্ববিদ্যালয়: ১১৬টি (যেমন: নর্থ সাউথ, ব্র্যাক, আইইউবি, ইস্ট ওয়েস্ট, এইউএসটি, এআইইউবি ইত্যাদি)
+🏢 বেসরকারি বিশ্ববিদ্যালয়: ১১৬টি
+সম্পূর্ণ তালিকা দেখতে ক্লিক করুন: http://www.ugc-universities.gov.bd/private-universities
 
-🌍 আন্তর্জাতিক বিশ্ববিদ্যালয়: ৩টি —
-১. Islamic University of Technology (IUT), Gazipur
-২. Asian University for Women (AUW)
-৩. South Asian University (SAU)
+🌍 আন্তর্জাতিক বিশ্ববিদ্যালয়: ৩টি
+সম্পূর্ণ তালিকা দেখতে ক্লিক করুন: http://www.ugc-universities.gov.bd/international-universities
 
-সূত্র: UGC (University Grants Commission of Bangladesh) অফিসিয়াল ওয়েবসাইট, ugc-universities.gov.bd`
+সূত্র: বিশ্ববিদ্যালয় মঞ্জুরি কমিশনের অফিসিয়াল ওয়েবসাইট`
   },
   {
     id: 'default_iut_status',
     question: 'IUT কি একটি প্রাইভেট বিশ্ববিদ্যালয়?',
-    answer: `না। IUT (Islamic University of Technology) প্রাইভেট বিশ্ববিদ্যালয় নয় — UGC-র তালিকায় একে "Public" বা "Private" কোনোটাতেই না রেখে আলাদা "International Universities" ক্যাটাগরিতে রাখা হয়েছে (এই ক্যাটাগরিতে মোট ৩টি বিশ্ববিদ্যালয় আছে)।
+    answer: `না। IUT (Islamic University of Technology) প্রাইভেট বিশ্ববিদ্যালয় নয় — বিশ্ববিদ্যালয় মঞ্জুরি কমিশনের তালিকায় একে "Public" বা "Private" কোনোটাতেই না রেখে আলাদা "International Universities" ক্যাটাগরিতে রাখা হয়েছে (এই ক্যাটাগরিতে মোট ৩টি বিশ্ববিদ্যালয় আছে, তালিকা উপরের প্রশ্নে আছে)।
 
-সহজ কথায়: IUT একটি International Public University — এটা ৫৭টি দেশের যৌথ অর্থায়নে পরিচালিত হয় এবং বাংলাদেশ সরকার ও UGC এটাকে স্বীকৃতি দিয়েছে।
+সহজ কথায়: IUT একটি International Public University — এটা ৫৭টি দেশের যৌথ অর্থায়নে পরিচালিত হয় এবং বাংলাদেশ সরকার ও বিশ্ববিদ্যালয় মঞ্জুরি কমিশন এটাকে স্বীকৃতি দিয়েছে।
 
-সূত্র: UGC ওয়েবসাইট (ugc-universities.gov.bd/university-detail/8)
+সূত্র: বিশ্ববিদ্যালয় মঞ্জুরি কমিশনের ওয়েবসাইট — http://www.ugc-universities.gov.bd/university-detail/8
 
 📊 প্রকৌশল বিশ্ববিদ্যালয়সমূহের মধ্যে র‍্যাংক (শুধু প্রকৌশল বিশ্ববিদ্যালয়গুলো মিলিয়ে, এবং সাথে গ্লোবাল ব্র্যাকেট):
 
@@ -1489,10 +1533,8 @@ async function getAllFAQCombined(){
   return [...DEFAULT_FAQ, ...sheetItems];
 }
 async function saveFAQRemote(id, question, answer){
-  try{
-    await fetch(`${SCRIPT_URL}?action=saveFAQ&id=${encodeURIComponent(id||'')}&question=${encodeURIComponent(question)}&answer=${encodeURIComponent(answer)}`);
-    return true;
-  } catch(e){ return false; }
+  const res = await postToScript('saveFAQ', { id: id||'', question, answer });
+  return res;
 }
 async function deleteFAQRemote(id){
   try{ await fetch(`${SCRIPT_URL}?action=deleteFAQ&id=${encodeURIComponent(id)}`); }catch(e){}
@@ -1596,7 +1638,7 @@ async function renderFAQView(id){
     ${header('সাধারণ জিজ্ঞাসা')}
     <div class="card">
       <h2>${escapeHtml(it.question)}</h2>
-      <div style="white-space:pre-wrap; font-size:15px; line-height:1.7;">${escapeHtml(it.answer)}</div>
+      <div style="white-space:pre-wrap; font-size:15px; line-height:1.7;">${linkifyText(it.answer)}</div>
     </div>
     <div class="center"><a class="link-back" onclick="go('faqList')">← তালিকায় ফিরে যাও</a></div>
     ${creditFooter()}
@@ -1626,9 +1668,9 @@ function render(){
   else if(s==='topicsChapterList') renderTopicsChapterList(state.subject, state.sectionKey);
   else if(s==='topicsView') renderTopicsView(state.chapName, state.content, state.subject, state.sectionKey);
   else if(s==='attendanceDashboard') renderAttendanceDashboard();
-  else if(s==='attendanceMark') renderAttendanceMark(state.studentId, state.studentName);
+  else if(s==='attendanceMark') renderAttendanceMark(state.slug, state.studentName);
   else if(s==='attendanceStudentEntry') renderAttendanceStudentEntry();
-  else if(s==='attendanceStudentView') renderAttendanceStudentView(state.studentId, state.records);
+  else if(s==='attendanceStudentView') renderAttendanceStudentView(state.slug, state.name, state.records);
   else if(s==='faqManage') renderFAQManage();
   else if(s==='faqEdit') renderFAQEdit(state.id);
   else if(s==='faqList') renderFAQList();
