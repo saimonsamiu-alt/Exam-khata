@@ -134,7 +134,7 @@ const CREATOR_DEPT = 'Industrial and Production Engineering (IPE)';
 const CREATOR_WHATSAPP = '01577477346';
 const CREATOR_WA_LINK = 'https://wa.me/8801577477346';
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwJxKtzUre4E2tmWaSirMeNKoe_PMdnoLPb5E7HK3tHwuG5bvhWIc6-Pkte5MdACFkh/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzJ_lvejHDgyMpZlfF4fs_94e1GApC2mKn4DfvMgLjo2CqxqN3gCkZTUVg9mJ2TLM0T/exec';
 
 const holesEl = document.getElementById('holes');
 for(let i=0;i<10;i++){ const s=document.createElement('span'); holesEl.appendChild(s); }
@@ -283,8 +283,10 @@ function renderLanding(){
         <button class="btn btn-primary btn-block" onclick="go('teacherGate')">🛠️ Admin</button>
         <button class="btn btn-gold btn-block" onclick="go('studentEntry')">🧑‍🎓 Student (Private)</button>
       </div>
-      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('teacherOtherGate')">👨‍🏫 Teacher</button>
       <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('practiceList')">🎯 Practice</button>
+      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('topicsSubject')">📚 গুরুত্বপূর্ণ Topics</button>
+      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('faqList')">❓ সাধারণ জিজ্ঞাসা</button>
+      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('attendanceStudentEntry')">📅 উপস্থিতি নিশ্চিত করো</button>
     </div>
     ${creditFooter()}
   `;
@@ -384,49 +386,6 @@ function checkTeacherPin(){
   else toast('পাসওয়ার্ড ভুল হয়েছে');
 }
 
-// ================= OTHER TEACHERS: own account, own separate section =================
-function renderTeacherOtherGate(){
-  app.innerHTML = `
-    ${header('অন্য শিক্ষক')}
-    <div class="card">
-      <h2>তোমার নিজের একাউন্ট</h2>
-      <p class="hint">প্রথমবার আসলে তোমার দেওয়া নাম ও পাসওয়ার্ড দিয়েই নতুন একাউন্ট তৈরি হয়ে যাবে। পরেরবার থেকে একই নাম ও পাসওয়ার্ড দিয়ে প্রবেশ করবে — তোমার পরীক্ষাগুলো অন্য কেউ দেখতে পাবে না, এটা তোমার নিজস্ব আলাদা সেকশন।</p>
-      <label class="field-label">তোমার নাম</label>
-      <input type="text" id="otherTeacherName" placeholder="যেমন: রহিম স্যার">
-      <label class="field-label">পাসওয়ার্ড</label>
-      <input type="password" id="otherTeacherPass" placeholder="নিজের একটা পাসওয়ার্ড দাও" onkeydown="if(event.key==='Enter') otherTeacherLogin()">
-      <button class="btn btn-primary btn-block" onclick="otherTeacherLogin()">প্রবেশ করো / নতুন একাউন্ট বানাও</button>
-      <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← ফিরে যাও</a></div>
-    </div>
-    ${creditFooter()}
-  `;
-}
-async function teacherAuth(name, password){
-  const slug = slugify(name);
-  try{
-    const r = await fetch(`${SCRIPT_URL}?action=teacherAuth&name=${encodeURIComponent(name)}&password=${encodeURIComponent(password)}&slug=${encodeURIComponent(slug)}`);
-    const json = await r.json();
-    return json;
-  } catch(e){
-    return { status:'error', message: e.message };
-  }
-}
-window.otherTeacherLogin = async function(){
-  const name = document.getElementById('otherTeacherName').value.trim();
-  const password = document.getElementById('otherTeacherPass').value.trim();
-  if(!name || !password){ toast('নাম ও পাসওয়ার্ড দুটোই দাও'); return; }
-  toast('যাচাই করা হচ্ছে...');
-  const res = await teacherAuth(name, password);
-  if(res.status === 'success'){
-    currentTeacher = { id: res.teacherId, name: res.name || name };
-    go('teacherDashboard');
-  } else if(res.status === 'error' && res.message === 'password_mismatch'){
-    toast('এই নামে আগে থেকে একাউন্ট আছে, পাসওয়ার্ড মেলেনি');
-  } else {
-    toast('সমস্যা হয়েছে, আবার চেষ্টা করো (Script আপডেট করা আছে তো?)');
-  }
-}
-
 async function getExamsByTeacher(teacherId){
   try{
     const r = await fetch(`${SCRIPT_URL}?action=listMine&teacherId=${encodeURIComponent(teacherId)}`);
@@ -474,6 +433,11 @@ async function renderTeacherDashboard(){
       <p class="hint">${teacherId==='admin' ? '' : 'এটা শুধু তোমার নিজের আলাদা সেকশন — অন্য শিক্ষকরা তোমার এই পরীক্ষাগুলো দেখতে পাবে না।'} পরীক্ষার কোড আর এই অ্যাপের লিংক স্টুডেন্টদের পাঠিয়ে দাও। স্টুডেন্টদের পাসওয়ার্ড: <b>${STUDENT_PASSWORD}</b></p>
       ${listHtml}
       <button class="btn btn-primary btn-block" style="margin-top:6px;" onclick="draftQuestions=[]; go('teacherNewExam')">+ নতুন পরীক্ষা সাজাও</button>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn btn-outline btn-block" onclick="go('attendanceDashboard')">📅 উপস্থিতি ও বেতন হিসাব</button>
+        <button class="btn btn-outline btn-block" onclick="go('topicsManage')">📚 Topics ম্যানেজ করো</button>
+        <button class="btn btn-outline btn-block" onclick="go('faqManage')">❓ প্রশ্নোত্তর ম্যানেজ করো</button>
+      </div>
     </div>
     <div class="center"><a class="link-back" onclick="currentTeacher=null; go('landing')">← মূল পাতায় ফিরে যাও (লগ-আউট)</a></div>
     ${creditFooter()}
@@ -1048,11 +1012,601 @@ function renderStudentResult(){
   `;
 }
 
+// ================= TOPICS (chapter-wise study material) =================
+const TOPIC_STRUCTURE = {
+  chemistry: {
+    label: 'রসায়ন (Chemistry)',
+    sections: {
+      paper1: { label: '১ম পত্র', count: 5 },
+      paper2: { label: '২য় পত্র', count: 5 }
+    }
+  },
+  biology: {
+    label: 'জীববিজ্ঞান (Biology)',
+    sections: {
+      botany: { label: 'উদ্ভিদবিজ্ঞান (Botany)', count: 12 },
+      zoology: { label: 'প্রাণিবিজ্ঞান (Zoology)', count: 12 }
+    }
+  }
+};
+async function getAllTopics(){
+  try{
+    const r = await fetch(`${SCRIPT_URL}?action=listTopics`);
+    const json = await r.json();
+    if(json.status==='success') return json.data;
+  } catch(e){}
+  return [];
+}
+async function saveTopicRemote(key, name, content){
+  try{
+    await fetch(`${SCRIPT_URL}?action=saveTopic&key=${encodeURIComponent(key)}&name=${encodeURIComponent(name)}&content=${encodeURIComponent(content)}`);
+    return true;
+  } catch(e){ return false; }
+}
+
+// ---- Teacher: manage topics ----
+function renderTopicsManage(){
+  app.innerHTML = `
+    ${header('Topics ম্যানেজ করো')}
+    <div class="card">
+      <h2>বিষয় বাছো</h2>
+      <p class="hint">Chemistry-তে ১০টা অধ্যায় (৫টা ১ম পত্র + ৫টা ২য় পত্র), Biology-তে Botany ১২টা ও Zoology ১২টা অধ্যায়। প্রতিটার নাম ও কনটেন্ট তুমি লিখে দিতে পারবে।</p>
+      <button class="btn btn-primary btn-block" onclick="go('topicsManageSection',{subject:'chemistry'})">🧪 Chemistry</button>
+      <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="go('topicsManageSection',{subject:'biology'})">🌿 Biology</button>
+    </div>
+    <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+function renderTopicsManageSection(subject){
+  const subj = TOPIC_STRUCTURE[subject];
+  const btns = Object.keys(subj.sections).map(secKey=>{
+    const sec = subj.sections[secKey];
+    return `<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('topicsManageChapters',{subject:'${subject}', sectionKey:'${secKey}'})">${sec.label} (${sec.count}টা অধ্যায়)</button>`;
+  }).join('');
+  app.innerHTML = `
+    ${header('Topics ম্যানেজ করো')}
+    <div class="card">
+      <h2>${subj.label}</h2>
+      ${btns}
+    </div>
+    <div class="center"><a class="link-back" onclick="go('topicsManage')">← ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+async function renderTopicsManageChapters(subject, sectionKey){
+  app.innerHTML = `${header('Topics ম্যানেজ করো')}<div class="card center">লোড হচ্ছে...</div>`;
+  const sec = TOPIC_STRUCTURE[subject].sections[sectionKey];
+  const allTopics = await getAllTopics();
+  const map = {};
+  allTopics.forEach(t=>{ map[t.key] = t; });
+  let rows = '';
+  for(let i=1;i<=sec.count;i++){
+    const key = `${subject}_${sectionKey}_${i}`;
+    const existing = map[key];
+    const name = existing ? existing.name : `অধ্যায় ${i}`;
+    rows += `<div class="exam-item">
+      <h3 style="margin-bottom:4px;">অধ্যায় ${i}: ${escapeHtml(name)}</h3>
+      <div class="meta">${existing && existing.content ? 'কনটেন্ট যোগ করা আছে ✓' : 'এখনো কনটেন্ট যোগ করা হয়নি'}</div>
+      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('topicsEdit',{subject:'${subject}', sectionKey:'${sectionKey}', chNum:${i}, existingName: ${JSON.stringify(name)}, existingContent: ${JSON.stringify(existing ? existing.content : '')}})">✏️ লেখো / এডিট করো</button>
+    </div>`;
+  }
+  app.innerHTML = `
+    ${header('Topics ম্যানেজ করো')}
+    <div class="card">
+      <h2>${TOPIC_STRUCTURE[subject].label} · ${sec.label}</h2>
+      ${rows}
+    </div>
+    <div class="center"><a class="link-back" onclick="go('topicsManageSection',{subject:'${subject}'})">← ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+function renderTopicsEdit(subject, sectionKey, chNum, existingName, existingContent){
+  app.innerHTML = `
+    ${header('অধ্যায় এডিট করো')}
+    <div class="card">
+      <h2>অধ্যায় ${chNum}</h2>
+      <label class="field-label">অধ্যায়ের নাম</label>
+      <input type="text" id="chapName" value="${escapeHtml(existingName)}">
+      <label class="field-label">গুরুত্বপূর্ণ টপিক/কনটেন্ট</label>
+      <textarea id="chapContent" style="min-height:220px;" placeholder="এখানে গুরুত্বপূর্ণ টপিক, সংজ্ঞা, পয়েন্ট লিখো...">${escapeHtml(existingContent)}</textarea>
+      <button class="btn btn-primary btn-block" onclick="saveTopicChapter('${subject}','${sectionKey}',${chNum})">✅ সেভ করো</button>
+    </div>
+    <div class="center"><a class="link-back" onclick="go('topicsManageChapters',{subject:'${subject}', sectionKey:'${sectionKey}'})">← ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+window.saveTopicChapter = async function(subject, sectionKey, chNum){
+  const name = document.getElementById('chapName').value.trim() || `অধ্যায় ${chNum}`;
+  const content = document.getElementById('chapContent').value;
+  const key = `${subject}_${sectionKey}_${chNum}`;
+  toast('সেভ হচ্ছে...');
+  await saveTopicRemote(key, name, content);
+  toast('সেভ হয়েছে ✅');
+  go('topicsManageChapters', { subject, sectionKey });
+}
+
+// ---- Student: browse topics ----
+function renderTopicsSubject(){
+  const btns = Object.keys(TOPIC_STRUCTURE).map(subject=>{
+    const subj = TOPIC_STRUCTURE[subject];
+    const icon = subject==='chemistry' ? '🧪' : '🌿';
+    return `<button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="go('topicsSection',{subject:'${subject}'})">${icon} ${subj.label}</button>`;
+  }).join('');
+  app.innerHTML = `
+    ${header('গুরুত্বপূর্ণ Topics')}
+    <div class="card">
+      <h2>কোন বিষয়ের topics দেখতে চাও?</h2>
+      ${btns}
+    </div>
+    <div class="center"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+function renderTopicsSection(subject){
+  const subj = TOPIC_STRUCTURE[subject];
+  const btns = Object.keys(subj.sections).map(secKey=>{
+    const sec = subj.sections[secKey];
+    return `<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('topicsChapterList',{subject:'${subject}', sectionKey:'${secKey}'})">${sec.label}</button>`;
+  }).join('');
+  app.innerHTML = `
+    ${header('গুরুত্বপূর্ণ Topics')}
+    <div class="card">
+      <h2>${subj.label}</h2>
+      ${btns}
+    </div>
+    <div class="center"><a class="link-back" onclick="go('topicsSubject')">← ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+async function renderTopicsChapterList(subject, sectionKey){
+  app.innerHTML = `${header('গুরুত্বপূর্ণ Topics')}<div class="card center">লোড হচ্ছে...</div>`;
+  const sec = TOPIC_STRUCTURE[subject].sections[sectionKey];
+  const allTopics = await getAllTopics();
+  const map = {};
+  allTopics.forEach(t=>{ map[t.key] = t; });
+  let rows = '';
+  for(let i=1;i<=sec.count;i++){
+    const key = `${subject}_${sectionKey}_${i}`;
+    const existing = map[key];
+    const name = existing && existing.name ? existing.name : `অধ্যায় ${i}`;
+    const hasContent = existing && existing.content && existing.content.trim();
+    rows += `<div class="exam-item">
+      <div class="row-top">
+        <h3 style="margin-bottom:0;">অধ্যায় ${i}: ${escapeHtml(name)}</h3>
+      </div>
+      ${hasContent
+        ? `<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick='go("topicsView",{subject:"${subject}",sectionKey:"${sectionKey}",chNum:${i},chapName:${JSON.stringify(name)},content:${JSON.stringify(existing.content)}})'>পড়ো</button>`
+        : `<div class="meta">এখনো কনটেন্ট যোগ করা হয়নি</div>`}
+    </div>`;
+  }
+  app.innerHTML = `
+    ${header('গুরুত্বপূর্ণ Topics')}
+    <div class="card">
+      <h2>${TOPIC_STRUCTURE[subject].label} · ${sec.label}</h2>
+      ${rows}
+    </div>
+    <div class="center"><a class="link-back" onclick="go('topicsSection',{subject:'${subject}'})">← ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+function renderTopicsView(chapName, content, subject, sectionKey){
+  app.innerHTML = `
+    ${header('গুরুত্বপূর্ণ Topics')}
+    <div class="card">
+      <h2>${escapeHtml(chapName)}</h2>
+      <div style="white-space:pre-wrap; font-size:15px; line-height:1.7;">${escapeHtml(content)}</div>
+    </div>
+    <div class="center"><a class="link-back" onclick="go('topicsChapterList',{subject:'${subject}', sectionKey:'${sectionKey}'})">← অধ্যায় তালিকায় ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+
+// ================= ATTENDANCE & FEE TRACKING =================
+function genStudentId(){
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let c=''; for(let i=0;i<6;i++) c += chars[Math.floor(Math.random()*chars.length)];
+  return c;
+}
+async function addStudentRemote(teacherId, name){
+  const studentId = genStudentId();
+  try{ await fetch(`${SCRIPT_URL}?action=addStudent&teacherId=${encodeURIComponent(teacherId)}&name=${encodeURIComponent(name)}&studentId=${encodeURIComponent(studentId)}`); }catch(e){}
+  return studentId;
+}
+async function listStudentsRemote(teacherId){
+  try{
+    const r = await fetch(`${SCRIPT_URL}?action=listStudents&teacherId=${encodeURIComponent(teacherId)}`);
+    const json = await r.json();
+    if(json.status==='success') return json.data;
+  }catch(e){}
+  return [];
+}
+async function markAttendanceRemote(studentId, dateStr){
+  try{
+    await fetch(`${SCRIPT_URL}?action=markAttendance&studentId=${encodeURIComponent(studentId)}&date=${encodeURIComponent(dateStr)}`);
+    return true;
+  }catch(e){ return false; }
+}
+async function listAttendanceRemote(studentId){
+  try{
+    const r = await fetch(`${SCRIPT_URL}?action=listAttendance&studentId=${encodeURIComponent(studentId)}`);
+    const json = await r.json();
+    if(json.status==='success') return json.data;
+  }catch(e){}
+  return [];
+}
+async function approveAttendanceRemote(studentId, dateStr){
+  try{
+    await fetch(`${SCRIPT_URL}?action=approveAttendance&studentId=${encodeURIComponent(studentId)}&date=${encodeURIComponent(dateStr)}`);
+    return true;
+  }catch(e){ return false; }
+}
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function monthKeyOf(dateStr){ return dateStr.slice(0,7); }
+const BN_MONTHS = ['জানুয়ারি','ফেব্রুয়ারি','মার্চ','এপ্রিল','মে','জুন','জুলাই','আগস্ট','সেপ্টেম্বর','অক্টোবর','নভেম্বর','ডিসেম্বর'];
+const BN_WEEKDAYS = ['রবি','সোম','মঙ্গল','বুধ','বৃহ','শুক্র','শনি'];
+
+// ---- Mini calendar builder ----
+// records: array of {date:'YYYY-MM-DD', status:'pending'|'approved'}
+// onDayClick: JS expression string called with the clicked date string, e.g. "teacherDayClick('XYZ123','${date}')"
+function buildMiniCalendar(year, month, records, onDayClickFn, navTargetScreen, navCtx){
+  const statusByDate = {};
+  records.forEach(r=> statusByDate[r.date] = r.status);
+  const first = new Date(year, month, 1);
+  const startWeekday = first.getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const todayS = todayStr();
+
+  let cells = '';
+  for(let i=0;i<startWeekday;i++){ cells += `<div></div>`; }
+  for(let d=1; d<=daysInMonth; d++){
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const status = statusByDate[dateStr];
+    let bg = '#F5F9FE', color = 'var(--ink)', border = '1px solid var(--rule)';
+    if(status === 'approved'){ bg = 'var(--green)'; color = '#fff'; border = 'none'; }
+    else if(status === 'pending'){ bg = 'var(--gold)'; color = '#3a2a06'; border = 'none'; }
+    const isToday = dateStr === todayS;
+    const clickable = onDayClickFn ? `onclick="${onDayClickFn}('${dateStr}')" style="cursor:pointer;` : `style="cursor:default;`;
+    cells += `<div ${clickable} background:${bg}; color:${color}; border:${border}; ${isToday?'outline:2px solid var(--margin-red);':''} border-radius:7px; display:flex; align-items:center; justify-content:center; height:34px; font-size:13px; font-family:var(--font-mono);">${d}</div>`;
+  }
+
+  const prevM = month===0 ? 11 : month-1;
+  const prevY = month===0 ? year-1 : year;
+  const nextM = month===11 ? 0 : month+1;
+  const nextY = month===11 ? year+1 : year;
+
+  return `
+    <div class="card" style="padding:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <a class="link-back" onclick='goCalNav(${prevY},${prevM},"${navTargetScreen}",${JSON.stringify(navCtx)})'>‹</a>
+        <b style="font-family:var(--font-display); font-size:16px;">${BN_MONTHS[month]} ${year}</b>
+        <a class="link-back" onclick='goCalNav(${nextY},${nextM},"${navTargetScreen}",${JSON.stringify(navCtx)})'>›</a>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:6px;">
+        ${BN_WEEKDAYS.map(w=>`<div style="text-align:center; font-size:11px; color:var(--pencil); font-weight:600;">${w}</div>`).join('')}
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:4px;">
+        ${cells}
+      </div>
+      <div style="margin-top:12px; font-size:12px; color:var(--pencil); display:flex; gap:14px; flex-wrap:wrap;">
+        <span>🟨 pending</span><span>🟩 approved</span>
+      </div>
+    </div>
+  `;
+}
+window.__calYear = null; window.__calMonth = null;
+window.goCalNav = function(y, m, targetScreen, ctx){
+  window.__calYear = y; window.__calMonth = m;
+  go(targetScreen, ctx);
+}
+
+// ---- Teacher: attendance dashboard ----
+async function renderAttendanceDashboard(){
+  window.__calYear = null; window.__calMonth = null;
+  app.innerHTML = `${header('উপস্থিতি ও বেতন')}<div class="card center">লোড হচ্ছে...</div>`;
+  const teacherId = currentTeacher ? currentTeacher.id : 'admin';
+  const students = await listStudentsRemote(teacherId);
+
+  let studentRows = '';
+  if(students.length === 0){
+    studentRows = `<div class="empty-state">এখনো কোনো স্টুডেন্ট যোগ করোনি। নিচ থেকে যোগ করো।</div>`;
+  } else {
+    studentRows = students.map(s=>{
+      return `<div class="exam-item">
+        <div class="row-top">
+          <div>
+            <h3 style="margin-bottom:2px;">${escapeHtml(s.name)}</h3>
+            <div class="meta">Student ID: <span class="code-chip">${s.studentId}</span></div>
+          </div>
+        </div>
+        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick='go("attendanceMark",{studentId:"${s.studentId}", studentName:${JSON.stringify(s.name)}})'>📅 ক্যালেন্ডার খোলো</button>
+      </div>`;
+    }).join('');
+  }
+
+  app.innerHTML = `
+    ${header('উপস্থিতি ও বেতন')}
+    <div class="card">
+      <h2>স্টুডেন্ট তালিকা</h2>
+      <p class="hint">নতুন স্টুডেন্ট যোগ করলে একটা Student ID তৈরি হবে — শুধু এই ID টা student কে দিলেই হবে, আর কিছু লাগবে না। Student নিজে সেই ID দিয়ে ঢুকে ক্যালেন্ডারে ক্লিক করে confirm করবে।</p>
+      <div class="row">
+        <input type="text" id="newStudentName" placeholder="নতুন স্টুডেন্টের নাম" style="margin-bottom:0;">
+        <button class="btn btn-outline" onclick="addNewStudent()">+ যোগ করো</button>
+      </div>
+      <div style="margin-top:14px;">${studentRows}</div>
+    </div>
+    <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+window.addNewStudent = async function(){
+  const name = document.getElementById('newStudentName').value.trim();
+  if(!name){ toast('নাম লেখো'); return; }
+  const teacherId = currentTeacher ? currentTeacher.id : 'admin';
+  toast('যোগ করা হচ্ছে...');
+  const studentId = await addStudentRemote(teacherId, name);
+  alert(`স্টুডেন্ট যোগ হয়েছে! Student ID: ${studentId}\n\nএই ID টা শুধু ${name}-কে দাও।`);
+  go('attendanceDashboard');
+}
+
+async function renderAttendanceMark(studentId, studentName){
+  app.innerHTML = `${header('উপস্থিতি মার্ক করো')}<div class="card center">লোড হচ্ছে...</div>`;
+  const records = await listAttendanceRemote(studentId);
+  const now = new Date();
+  const year = window.__calYear !== null ? window.__calYear : now.getFullYear();
+  const month = window.__calMonth !== null ? window.__calMonth : now.getMonth();
+  window.__calYear = year; window.__calMonth = month;
+
+  const curMonthKey = todayStr().slice(0,7);
+  const approvedThisMonth = records.filter(r=> r.status==='approved' && monthKeyOf(r.date)===curMonthKey).length;
+
+  const calHtml = buildMiniCalendar(year, month, records, 'teacherToggleDay', 'attendanceMark', { studentId, studentName });
+
+  app.innerHTML = `
+    ${header('উপস্থিতি মার্ক করো')}
+    <div class="card center">
+      <h2>${escapeHtml(studentName)}</h2>
+      <p class="hint">যেই দিন ক্লাস হয়েছে সেই দিনে ক্লিক করো (ফাঁকা দিনে ক্লিক করলে মার্ক হবে)। এই মাসে অনুমোদিত: <b>${approvedThisMonth}</b>টা।</p>
+    </div>
+    ${calHtml}
+    <div class="center"><a class="link-back" onclick="go('attendanceDashboard')">← স্টুডেন্ট তালিকায় ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+window.teacherToggleDay = async function(dateStr){
+  const { studentId, studentName } = state;
+  toast('মার্ক করা হচ্ছে...');
+  await markAttendanceRemote(studentId, dateStr);
+  go('attendanceMark', { studentId, studentName });
+}
+
+// ---- Student: confirm attendance (just Student ID, nothing else) ----
+function renderAttendanceStudentEntry(){
+  app.innerHTML = `
+    ${header('উপস্থিতি নিশ্চিত করো')}
+    <div class="card">
+      <h2>তোমার Student ID দাও</h2>
+      <p class="hint">শিক্ষকের দেওয়া Student ID টা লেখো — আর কিছু লাগবে না।</p>
+      <input type="text" id="attStudentId" placeholder="যেমন: 7K3PQ2" style="text-transform:uppercase;" onkeydown="if(event.key==='Enter') loadAttendanceForStudent()">
+      <button class="btn btn-primary btn-block" onclick="loadAttendanceForStudent()">দেখো</button>
+      <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← ফিরে যাও</a></div>
+    </div>
+    ${creditFooter()}
+  `;
+}
+window.loadAttendanceForStudent = async function(){
+  const studentId = document.getElementById('attStudentId').value.trim().toUpperCase();
+  if(!studentId){ toast('Student ID দাও'); return; }
+  toast('লোড হচ্ছে...');
+  const records = await listAttendanceRemote(studentId);
+  window.__calYear = null; window.__calMonth = null;
+  go('attendanceStudentView', { studentId, records });
+}
+function renderAttendanceStudentView(studentId, records){
+  const now = new Date();
+  const year = window.__calYear !== null ? window.__calYear : now.getFullYear();
+  const month = window.__calMonth !== null ? window.__calMonth : now.getMonth();
+  window.__calYear = year; window.__calMonth = month;
+
+  const curMonthKey = todayStr().slice(0,7);
+  const approvedThisMonth = records.filter(r=> r.status==='approved' && monthKeyOf(r.date)===curMonthKey).length;
+  const calHtml = buildMiniCalendar(year, month, records, 'studentToggleDay', 'attendanceStudentView', { studentId, records });
+
+  app.innerHTML = `
+    ${header('উপস্থিতি')}
+    <div class="card center">
+      <p class="hint">এই মাসে অনুমোদিত ক্লাস: <b>${approvedThisMonth}</b>টা</p>
+      <p class="hint">🟨 হলুদ দিনে ক্লিক করে confirm করো যে সেদিন ক্লাস হয়েছিল।</p>
+    </div>
+    ${calHtml}
+    <div class="center"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+window.studentToggleDay = async function(dateStr){
+  const { studentId, records } = state;
+  const rec = records.find(r=> r.date === dateStr);
+  if(!rec || rec.status !== 'pending'){ return; } // only pending days are confirmable
+  toast('নিশ্চিত করা হচ্ছে...');
+  await approveAttendanceRemote(studentId, dateStr);
+  toast('ধন্যবাদ, নিশ্চিত করা হলো ✅');
+  const newRecords = await listAttendanceRemote(studentId);
+  go('attendanceStudentView', { studentId, records: newRecords });
+}
+
+// ================= FAQ / সাধারণ জিজ্ঞাসা =================
+const DEFAULT_FAQ = [
+  {
+    id: 'default_uni_list',
+    question: 'বাংলাদেশের বিশ্ববিদ্যালয়সমূহ: সরকারি, বেসরকারি ও আন্তর্জাতিক তালিকা (UGC অনুযায়ী)',
+    answer: `University Grants Commission (UGC)-এর তালিকা অনুযায়ী বাংলাদেশের বিশ্ববিদ্যালয়গুলো ৩ ভাগে বিভক্ত:
+
+🏛️ সরকারি বিশ্ববিদ্যালয়: ৫৯টি (যেমন: ঢাবি, বুয়েট, রাবি, চবি, জাবি, সাস্ট, কুয়েট, রুয়েট, চুয়েট, ঢাকা মেডিকেল ইউনিভার্সিটি ইত্যাদি)
+
+🏢 বেসরকারি বিশ্ববিদ্যালয়: ১১৬টি (যেমন: নর্থ সাউথ, ব্র্যাক, আইইউবি, ইস্ট ওয়েস্ট, এইউএসটি, এআইইউবি ইত্যাদি)
+
+🌍 আন্তর্জাতিক বিশ্ববিদ্যালয়: ৩টি —
+১. Islamic University of Technology (IUT), Gazipur
+২. Asian University for Women (AUW)
+৩. South Asian University (SAU)
+
+সূত্র: UGC (University Grants Commission of Bangladesh) অফিসিয়াল ওয়েবসাইট, ugc-universities.gov.bd`
+  },
+  {
+    id: 'default_iut_status',
+    question: 'IUT কি একটি প্রাইভেট বিশ্ববিদ্যালয়?',
+    answer: `না। IUT (Islamic University of Technology) প্রাইভেট বিশ্ববিদ্যালয় নয় — UGC-র তালিকায় একে "Public" বা "Private" কোনোটাতেই না রেখে আলাদা "International Universities" ক্যাটাগরিতে রাখা হয়েছে (এই ক্যাটাগরিতে মোট ৩টি বিশ্ববিদ্যালয় আছে)।
+
+সহজ কথায়: IUT একটি International Public University — এটা ৫৭টি দেশের যৌথ অর্থায়নে পরিচালিত হয় এবং বাংলাদেশ সরকার ও UGC এটাকে স্বীকৃতি দিয়েছে।
+
+সূত্র: UGC ওয়েবসাইট (ugc-universities.gov.bd/university-detail/8)
+
+📊 প্রকৌশল বিশ্ববিদ্যালয়সমূহের মধ্যে র‍্যাংক (শুধু প্রকৌশল বিশ্ববিদ্যালয়গুলো মিলিয়ে, এবং সাথে গ্লোবাল ব্র্যাকেট):
+
+BUET — প্রকৌশল বিশ্ববিদ্যালয়ের মধ্যে ১ম, গ্লোবাল র‍্যাংক ৭৬১–৭৭০
+CUET — প্রকৌশল বিশ্ববিদ্যালয়ের মধ্যে ২য়, গ্লোবাল র‍্যাংক ১৪০১+
+IUT — প্রকৌশল বিশ্ববিদ্যালয়ের মধ্যে ৩য়, গ্লোবাল র‍্যাংক ১২০১–১৪০০
+KUET — প্রকৌশল বিশ্ববিদ্যালয়ের মধ্যে ৪র্থ, গ্লোবাল র‍্যাংক ১৪০১+
+
+(এই র‍্যাংকটা সব বিশ্ববিদ্যালয় মিলিয়ে না, শুধু প্রকৌশল বিশ্ববিদ্যালয়গুলোর মধ্যে আপেক্ষিক অবস্থান। RUET ও DUET এই বছরের QS তালিকায় আসেনি)
+
+সূত্র: QS World Ranking`
+  }
+];
+async function getAllFAQ(){
+  try{
+    const r = await fetch(`${SCRIPT_URL}?action=listFAQ`);
+    const json = await r.json();
+    if(json.status==='success') return json.data;
+  } catch(e){}
+  return [];
+}
+async function getAllFAQCombined(){
+  const sheetItems = await getAllFAQ();
+  return [...DEFAULT_FAQ, ...sheetItems];
+}
+async function saveFAQRemote(id, question, answer){
+  try{
+    await fetch(`${SCRIPT_URL}?action=saveFAQ&id=${encodeURIComponent(id||'')}&question=${encodeURIComponent(question)}&answer=${encodeURIComponent(answer)}`);
+    return true;
+  } catch(e){ return false; }
+}
+async function deleteFAQRemote(id){
+  try{ await fetch(`${SCRIPT_URL}?action=deleteFAQ&id=${encodeURIComponent(id)}`); }catch(e){}
+}
+
+// ---- Teacher: manage FAQ ----
+async function renderFAQManage(){
+  app.innerHTML = `${header('প্রশ্নোত্তর ম্যানেজ করো')}<div class="card center">লোড হচ্ছে...</div>`;
+  const items = await getAllFAQ();
+  window.__faqItems = items;
+  const defaultRows = DEFAULT_FAQ.map(it=> `
+    <div class="exam-item">
+      <h3 style="margin-bottom:6px;">${escapeHtml(it.question)} <span class="q-tag">বিল্ট-ইন</span></h3>
+      <div class="meta">এটা অ্যাপের সাথেই যুক্ত করা আছে, এডিট/মুছা যাবে না।</div>
+    </div>`).join('');
+  let rows = items.map((it,idx)=> `
+    <div class="exam-item">
+      <h3 style="margin-bottom:6px;">${escapeHtml(it.question)}</h3>
+      <div class="row">
+        <button class="btn btn-outline" onclick="go('faqEdit',{id:'${it.id}'})">✏️ এডিট করো</button>
+        <button class="btn btn-danger" onclick="deleteFAQItem('${it.id}')">🗑️ মুছো</button>
+      </div>
+    </div>`).join('');
+  if(items.length===0) rows = `<div class="empty-state">এখনো তুমি নিজে কোনো প্রশ্নোত্তর যোগ করোনি।</div>`;
+  app.innerHTML = `
+    ${header('প্রশ্নোত্তর ম্যানেজ করো')}
+    <div class="card">
+      <h2>সব প্রশ্নোত্তর</h2>
+      <p class="hint">সাধারণ জ্ঞান, ভর্তি সংক্রান্ত তথ্য, বা যেকোনো গুরুত্বপূর্ণ প্রশ্ন-উত্তর এখানে যোগ করো — স্টুডেন্টরা মূল পাতা থেকে "❓ সাধারণ জিজ্ঞাসা"-তে গিয়ে দেখতে পারবে।</p>
+      ${defaultRows}
+      ${rows}
+      <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="go('faqEdit',{id:null})">+ নতুন প্রশ্নোত্তর যোগ করো</button>
+    </div>
+    <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+window.deleteFAQItem = async function(id){
+  if(!confirm('এই প্রশ্নোত্তরটা মুছে ফেলতে চাও?')) return;
+  await deleteFAQRemote(id);
+  toast('মুছে ফেলা হয়েছে');
+  go('faqManage');
+}
+async function renderFAQEdit(id){
+  let question = '', answer = '';
+  if(id){
+    const items = window.__faqItems && window.__faqItems.length ? window.__faqItems : await getAllFAQ();
+    const it = items.find(x=> x.id === id);
+    if(it){ question = it.question; answer = it.answer; }
+  }
+  app.innerHTML = `
+    ${header('প্রশ্নোত্তর')}
+    <div class="card">
+      <h2>${id ? 'এডিট করো' : 'নতুন প্রশ্নোত্তর'}</h2>
+      <label class="field-label">প্রশ্ন</label>
+      <input type="text" id="faqQ" value="${escapeHtml(question)}" placeholder="যেমন: IUT কি প্রাইভেট বিশ্ববিদ্যালয়?">
+      <label class="field-label">উত্তর (রেফারেন্সসহ লিখতে পারো)</label>
+      <textarea id="faqA" style="min-height:260px;" placeholder="বিস্তারিত উত্তর লেখো...">${escapeHtml(answer)}</textarea>
+      <button class="btn btn-primary btn-block" onclick="saveFAQItem('${id||''}')">✅ সেভ করো</button>
+    </div>
+    <div class="center"><a class="link-back" onclick="go('faqManage')">← ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+window.saveFAQItem = async function(id){
+  const question = document.getElementById('faqQ').value.trim();
+  const answer = document.getElementById('faqA').value.trim();
+  if(!question || !answer){ toast('প্রশ্ন ও উত্তর দুটোই লেখো'); return; }
+  toast('সেভ হচ্ছে...');
+  await saveFAQRemote(id, question, answer);
+  toast('সেভ হয়েছে ✅');
+  go('faqManage');
+}
+
+// ---- Student: browse FAQ ----
+async function renderFAQList(){
+  app.innerHTML = `${header('সাধারণ জিজ্ঞাসা')}<div class="card center">লোড হচ্ছে...</div>`;
+  const items = await getAllFAQCombined();
+  window.__faqItemsStudent = items;
+  let rows = items.map(it=> `
+    <div class="exam-item">
+      <h3 style="margin-bottom:8px;">${escapeHtml(it.question)}</h3>
+      <button class="btn btn-outline btn-block" onclick="go('faqView',{id:'${it.id}'})">উত্তর দেখো</button>
+    </div>`).join('');
+  if(items.length===0) rows = `<div class="empty-state">এখনো কোনো প্রশ্নোত্তর যোগ করা হয়নি।</div>`;
+  app.innerHTML = `
+    ${header('সাধারণ জিজ্ঞাসা')}
+    <div class="card">
+      <h2>প্রশ্নোত্তর তালিকা</h2>
+      ${rows}
+    </div>
+    <div class="center"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+async function renderFAQView(id){
+  const items = window.__faqItemsStudent && window.__faqItemsStudent.length ? window.__faqItemsStudent : await getAllFAQCombined();
+  const it = items.find(x=> x.id === id);
+  if(!it){ app.innerHTML = `${header()}<div class="card center">পাওয়া যায়নি।</div>`; return; }
+  app.innerHTML = `
+    ${header('সাধারণ জিজ্ঞাসা')}
+    <div class="card">
+      <h2>${escapeHtml(it.question)}</h2>
+      <div style="white-space:pre-wrap; font-size:15px; line-height:1.7;">${escapeHtml(it.answer)}</div>
+    </div>
+    <div class="center"><a class="link-back" onclick="go('faqList')">← তালিকায় ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+
 function render(){
   const s = state.screen;
   if(s==='landing') renderLanding();
   else if(s==='teacherGate') renderTeacherGate();
-  else if(s==='teacherOtherGate') renderTeacherOtherGate();
   else if(s==='teacherDashboard') renderTeacherDashboard();
   else if(s==='teacherNewExam') renderTeacherNewExam();
   else if(s==='teacherResults') renderTeacherResults(state.code);
@@ -1063,6 +1617,22 @@ function render(){
   else if(s==='studentAlready') renderStudentAlready(state.exam, state.prev, state.tryNo, state.totalTries);
   else if(s==='studentExam') renderStudentExam();
   else if(s==='studentResult') renderStudentResult();
+  else if(s==='topicsManage') renderTopicsManage();
+  else if(s==='topicsManageSection') renderTopicsManageSection(state.subject);
+  else if(s==='topicsManageChapters') renderTopicsManageChapters(state.subject, state.sectionKey);
+  else if(s==='topicsEdit') renderTopicsEdit(state.subject, state.sectionKey, state.chNum, state.existingName, state.existingContent);
+  else if(s==='topicsSubject') renderTopicsSubject();
+  else if(s==='topicsSection') renderTopicsSection(state.subject);
+  else if(s==='topicsChapterList') renderTopicsChapterList(state.subject, state.sectionKey);
+  else if(s==='topicsView') renderTopicsView(state.chapName, state.content, state.subject, state.sectionKey);
+  else if(s==='attendanceDashboard') renderAttendanceDashboard();
+  else if(s==='attendanceMark') renderAttendanceMark(state.studentId, state.studentName);
+  else if(s==='attendanceStudentEntry') renderAttendanceStudentEntry();
+  else if(s==='attendanceStudentView') renderAttendanceStudentView(state.studentId, state.records);
+  else if(s==='faqManage') renderFAQManage();
+  else if(s==='faqEdit') renderFAQEdit(state.id);
+  else if(s==='faqList') renderFAQList();
+  else if(s==='faqView') renderFAQView(state.id);
 }
 
 render();
