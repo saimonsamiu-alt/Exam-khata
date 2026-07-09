@@ -134,7 +134,7 @@ const CREATOR_DEPT = 'Industrial and Production Engineering (IPE)';
 const CREATOR_WHATSAPP = '01577477346';
 const CREATOR_WA_LINK = 'https://wa.me/8801577477346';
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby1H_32rH2wmY5ZtrvKkPbCWS6_RXaLpPqifu5Ir424NxEmza1w2i7ccYfuiBxbbVKS/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzhaqxLeYcQKv9BGBEB3DNjcxuLN7EpkMp3YIfSjGrTZjb4UXI-96DqoE3uPw-06jgN/exec';
 
 const holesEl = document.getElementById('holes');
 for(let i=0;i<10;i++){ const s=document.createElement('span'); holesEl.appendChild(s); }
@@ -1108,6 +1108,7 @@ async function renderTopicsManageChapters(subject, sectionKey){
   const allTopics = await getAllTopics();
   const map = {};
   allTopics.forEach(t=>{ map[t.key] = t; });
+  window.__topicsManageCtx = { subject, sectionKey, map };
   let rows = '';
   for(let i=1;i<=sec.count;i++){
     const key = `${subject}_${sectionKey}_${i}`;
@@ -1116,7 +1117,7 @@ async function renderTopicsManageChapters(subject, sectionKey){
     rows += `<div class="exam-item">
       <h3 style="margin-bottom:4px;">অধ্যায় ${i}: ${escapeHtml(name)}</h3>
       <div class="meta">${existing && existing.content ? 'কনটেন্ট যোগ করা আছে ✓' : 'এখনো কনটেন্ট যোগ করা হয়নি'}</div>
-      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('topicsEdit',{subject:'${subject}', sectionKey:'${sectionKey}', chNum:${i}, existingName: ${JSON.stringify(name)}, existingContent: ${JSON.stringify(existing ? existing.content : '')}})">✏️ লেখো / এডিট করো</button>
+      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="editTopicChapter(${i})">✏️ লেখো / এডিট করো</button>
     </div>`;
   }
   app.innerHTML = `
@@ -1156,6 +1157,14 @@ window.importTopicsBulk = async function(subject, sectionKey, maxCount){
   }
   toast(`${toSave.length}টা অধ্যায় সেভ হয়েছে ✅`);
   go('topicsManageChapters', { subject, sectionKey });
+}
+window.editTopicChapter = function(chNum){
+  const { subject, sectionKey, map } = window.__topicsManageCtx;
+  const key = `${subject}_${sectionKey}_${chNum}`;
+  const existing = map[key];
+  const existingName = existing ? existing.name : `অধ্যায় ${chNum}`;
+  const existingContent = existing ? existing.content : '';
+  go('topicsEdit', { subject, sectionKey, chNum, existingName, existingContent });
 }
 function renderTopicsEdit(subject, sectionKey, chNum, existingName, existingContent){
   app.innerHTML = `
@@ -1221,6 +1230,7 @@ async function renderTopicsChapterList(subject, sectionKey){
   const allTopics = await getAllTopics();
   const map = {};
   allTopics.forEach(t=>{ map[t.key] = t; });
+  window.__topicsChapterCtx = { subject, sectionKey, map };
   let rows = '';
   for(let i=1;i<=sec.count;i++){
     const key = `${subject}_${sectionKey}_${i}`;
@@ -1232,7 +1242,7 @@ async function renderTopicsChapterList(subject, sectionKey){
         <h3 style="margin-bottom:0;">অধ্যায় ${i}: ${escapeHtml(name)}</h3>
       </div>
       ${hasContent
-        ? `<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick='go("topicsView",{subject:"${subject}",sectionKey:"${sectionKey}",chNum:${i},chapName:${JSON.stringify(name)},content:${JSON.stringify(existing.content)}})'>পড়ো</button>`
+        ? `<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="viewTopicChapter(${i})">পড়ো</button>`
         : `<div class="meta">এখনো কনটেন্ট যোগ করা হয়নি</div>`}
     </div>`;
   }
@@ -1245,6 +1255,13 @@ async function renderTopicsChapterList(subject, sectionKey){
     <div class="center"><a class="link-back" onclick="go('topicsSection',{subject:'${subject}'})">← ফিরে যাও</a></div>
     ${creditFooter()}
   `;
+}
+window.viewTopicChapter = function(chNum){
+  const { subject, sectionKey, map } = window.__topicsChapterCtx;
+  const key = `${subject}_${sectionKey}_${chNum}`;
+  const existing = map[key];
+  const name = existing && existing.name ? existing.name : `অধ্যায় ${chNum}`;
+  go('topicsView', { subject, sectionKey, chNum, chapName: name, content: existing ? existing.content : '' });
 }
 function renderTopicsView(chapName, content, subject, sectionKey){
   app.innerHTML = `
@@ -1298,6 +1315,7 @@ const BN_WEEKDAYS = ['রবি','সোম','মঙ্গল','বুধ','ব�
 
 // ---- Mini calendar builder ----
 function buildMiniCalendar(year, month, records, onDayClickFn, navTargetScreen, navCtx){
+  window.__calNavCtx = navCtx; // stash instead of inlining (names/records could contain quotes)
   const statusByDate = {};
   records.forEach(r=> statusByDate[r.date] = r.status);
   const first = new Date(year, month, 1);
@@ -1326,9 +1344,9 @@ function buildMiniCalendar(year, month, records, onDayClickFn, navTargetScreen, 
   return `
     <div class="card" style="padding:16px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <a class="link-back" onclick='goCalNav(${prevY},${prevM},"${navTargetScreen}",${JSON.stringify(navCtx)})'>‹</a>
+        <a class="link-back" onclick="goCalNav(${prevY},${prevM},'${navTargetScreen}')">‹</a>
         <b style="font-family:var(--font-display); font-size:16px;">${BN_MONTHS[month]} ${year}</b>
-        <a class="link-back" onclick='goCalNav(${nextY},${nextM},"${navTargetScreen}",${JSON.stringify(navCtx)})'>›</a>
+        <a class="link-back" onclick="goCalNav(${nextY},${nextM},'${navTargetScreen}')">›</a>
       </div>
       <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:6px;">
         ${BN_WEEKDAYS.map(w=>`<div style="text-align:center; font-size:11px; color:var(--pencil); font-weight:600;">${w}</div>`).join('')}
@@ -1343,9 +1361,9 @@ function buildMiniCalendar(year, month, records, onDayClickFn, navTargetScreen, 
   `;
 }
 window.__calYear = null; window.__calMonth = null;
-window.goCalNav = function(y, m, targetScreen, ctx){
+window.goCalNav = function(y, m, targetScreen){
   window.__calYear = y; window.__calMonth = m;
-  go(targetScreen, ctx);
+  go(targetScreen, window.__calNavCtx);
 }
 
 // ---- Teacher: attendance dashboard ----
@@ -1353,6 +1371,7 @@ async function renderAttendanceDashboard(){
   window.__calYear = null; window.__calMonth = null;
   app.innerHTML = `${header('উপস্থিতি ও বেতন')}<div class="card center">লোড হচ্ছে...</div>`;
   const students = await listStudentsRemote();
+  window.__attendanceStudents = students;
 
   let studentRows = '';
   if(students.length === 0){
@@ -1363,7 +1382,7 @@ async function renderAttendanceDashboard(){
         <div class="row-top">
           <div><h3 style="margin-bottom:2px;">${escapeHtml(s.name)}</h3></div>
         </div>
-        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick='go("attendanceMark",{slug:"${s.slug}", studentName:${JSON.stringify(s.name)}})'>📅 ক্যালেন্ডার খোলো</button>
+        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="openAttendanceMark('${s.slug}')">📅 ক্যালেন্ডার খোলো</button>
       </div>`;
     }).join('');
   }
@@ -1390,6 +1409,10 @@ window.addNewStudent = async function(){
   const slug = await addStudentRemote(name);
   if(slug) toast('স্টুডেন্ট যোগ হয়েছে ✅');
   go('attendanceDashboard');
+}
+window.openAttendanceMark = function(slug){
+  const s = (window.__attendanceStudents||[]).find(x=> x.slug === slug);
+  go('attendanceMark', { slug, studentName: s ? s.name : slug });
 }
 
 async function renderAttendanceMark(slug, studentName){
