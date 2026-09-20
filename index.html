@@ -84,6 +84,14 @@
   .score-pass{ color:var(--green); }
   .score-fail{ color:var(--red); }
   a.link-back{ color:var(--pencil); font-size:13.5px; cursor:pointer; text-decoration:underline; }
+  #logoutFab{
+    position:fixed; top:14px; right:14px; z-index:60;
+    background:var(--margin-red); color:#fff; border:none; border-radius:20px;
+    padding:9px 16px; font-family:var(--font-body); font-weight:600; font-size:13px;
+    cursor:pointer; box-shadow:0 4px 14px -4px rgba(191,58,44,0.55);
+  }
+  #logoutFab:active{ transform:translateY(1px); }
+  @media (max-width:480px){ #logoutFab{ top:auto; bottom:78px; right:12px; padding:8px 14px; font-size:12.5px; } }
   .toast{ position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 18px; border-radius:20px;
     font-size:13.5px; box-shadow:0 6px 20px -6px rgba(0,0,0,0.4); z-index:50; opacity:0; transition:opacity .25s ease; }
   .toast.show{ opacity:1; }
@@ -120,6 +128,7 @@
 <div class="holes" id="holes"></div>
 <div class="wrap" id="app"></div>
 <div class="toast" id="toast"></div>
+<button id="logoutFab" onclick="currentTeacher=null; go('landing');" style="display:none;">🚪 লগ-আউট</button>
 <script>
 const app = document.getElementById('app');
 const toastEl = document.getElementById('toast');
@@ -136,7 +145,7 @@ const CREATOR_DEPT = 'Industrial and Production Engineering (IPE)';
 const CREATOR_WHATSAPP = '01577477346';
 const CREATOR_WA_LINK = 'https://wa.me/8801577477346';
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzISgFn0_3kZTwPbwOdMoqdFAKYgfli3ILC55q-0RYxXDsipzBU9wPLeHNwU2fCmHv6/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxHCR8KZd_P9QhVtOUi-c79tHlt607JxGsU_SH_7K9RdjwVHHZX1QYhOR5OA4sMP7C9/exec';
 
 const holesEl = document.getElementById('holes');
 for(let i=0;i<10;i++){ const s=document.createElement('span'); holesEl.appendChild(s); }
@@ -323,13 +332,63 @@ function renderLanding(){
       <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('masteryEntry')">📊 আমার প্রোগ্রেস (Mastery)</button>
       <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('couponEntry')">🎁 আমার Treat Coupon</button>
       <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('writtenEntry')">✍️ Written CQ পরীক্ষা দাও</button>
+      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('doubtEntry')">🤔 Doubt জিজ্ঞেস করো (AI)</button>
       <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('attendanceStudentEntry')">📅 উপস্থিতি নিশ্চিত করো</button>
     </div>
     ${creditFooter()}
   `;
 }
 
-// ================= OPEN PRACTICE (no code, no password) =================
+// ================= DOUBT SOLVING (AI — RAG দিয়ে শিক্ষকের নোট থেকে উত্তর) =================
+const DOUBT_SUBJECTS = {
+  chemistry: { label: 'রসায়ন (Chemistry)', icon: '🧪' },
+  mathematics: { label: 'গণিত (Mathematics)', icon: '📐' },
+  biology: { label: 'জীববিজ্ঞান (Biology)', icon: '🌿' }
+};
+function renderDoubtEntry(){
+  const subjectOptions = Object.keys(DOUBT_SUBJECTS).map(key=>{
+    const s = DOUBT_SUBJECTS[key];
+    return `<option value="${key}">${s.icon} ${s.label}</option>`;
+  }).join('');
+  app.innerHTML = `
+    ${header('Doubt জিজ্ঞেস করো')}
+    <div class="card">
+      <h2>তোমার প্রশ্নটা লেখো</h2>
+      <p class="hint">যেকোনো doubt/প্রশ্ন এখানে লেখো — AI ধাপে ধাপে বুঝিয়ে দেবে, শিক্ষকের নোট থাকলে সেটার উপর ভিত্তি করেই উত্তর দেওয়ার চেষ্টা করবে।</p>
+      <label class="field-label">বিষয় (ঐচ্ছিক, নির্দিষ্ট করলে উত্তর আরও প্রাসঙ্গিক হতে পারে)</label>
+      <select id="doubtSubject">
+        <option value="">— সব বিষয় —</option>
+        ${subjectOptions}
+      </select>
+      <label class="field-label">তোমার প্রশ্ন</label>
+      <textarea id="doubtText" style="min-height:120px;" placeholder="যেমন: লা-শাতেলিয়ার নীতি ব্যাখ্যা করো..."></textarea>
+      <button class="btn btn-primary btn-block" onclick="submitDoubt()">🤔 উত্তর জিজ্ঞেস করো</button>
+      <div id="doubtAnswerArea" style="margin-top:14px;"></div>
+      <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
+    </div>
+    ${creditFooter()}
+  `;
+}
+window.submitDoubt = async function(){
+  const doubtText = document.getElementById('doubtText').value.trim();
+  const subject = document.getElementById('doubtSubject').value;
+  if(!doubtText){ toast('আগে প্রশ্নটা লেখো'); return; }
+  const areaEl = document.getElementById('doubtAnswerArea');
+  areaEl.innerHTML = `<div class="card center" style="padding:20px;">AI উত্তর ভাবছে...</div>`;
+  const res = await postToScript('aiSolveDoubt', { doubtText, subject });
+  if(res && res.answer){
+    areaEl.innerHTML = `
+      <div class="card" style="background:#FBFDFF;">
+        <h3 style="margin-bottom:10px;">🤖 উত্তর</h3>
+        <div style="white-space:pre-wrap; font-size:15px; line-height:1.7;">${linkifyText(res.answer)}</div>
+      </div>
+    `;
+  } else {
+    areaEl.innerHTML = `<div class="empty-state">উত্তর পাওয়া যায়নি, আবার চেষ্টা করো।</div>`;
+  }
+}
+
+
 async function getPublicExams(){
   try{
     const r = await fetch(`${SCRIPT_URL}?action=listPublic`);
@@ -438,6 +497,7 @@ async function renderTeacherDashboard(){
   const teacherName = currentTeacher ? currentTeacher.name : CREATOR_NAME;
   const exams = await getExamsByTeacher(teacherId);
   exams.sort((a,b)=> (b.createdAt||0) - (a.createdAt||0));
+  window.__examListCache = exams;
 
   let listHtml = '';
   if(exams.length === 0){
@@ -449,14 +509,15 @@ async function renderTeacherDashboard(){
         <div class="exam-item">
           <div class="row-top">
             <div>
-              <h3 style="margin-bottom:4px;">${escapeHtml(ex.title)} ${ex.isPublic ? '<span class="q-tag">🎯 উন্মুক্ত প্র্যাকটিস</span>':''}</h3>
+              <h3 style="margin-bottom:4px;">${escapeHtml(ex.title)} ${ex.isPublic ? '<span class="q-tag">🎯 উন্মুক্ত প্র্যাকটিস</span>':''} ${ex.isTreat ? '<span class="q-tag">🎁 Treat</span>':''}</h3>
               <div class="meta">${escapeHtml(ex.subject)} · ${ex.questions.length}টি প্রশ্ন · ${timerLabel}</div>
             </div>
             <div class="code-chip">${ex.code}</div>
           </div>
           <div class="row" style="margin-top:12px;">
+            <button class="btn btn-outline" onclick="viewEditExam('${ex.code}')">✏️ দেখো/এডিট করো</button>
             <button class="btn btn-outline" onclick="go('teacherResults',{code:'${ex.code}'})">📊 রেজাল্ট</button>
-            <button class="btn btn-outline" onclick="shareExam('${ex.code}','${escapeHtml(ex.title).replace(/'/g,"\\'")}')">🔗 শেয়ার</button>
+            <button class="btn btn-outline" onclick="shareExamByCode('${ex.code}')">🔗 শেয়ার</button>
             <button class="btn btn-danger" onclick="deleteExam('${ex.code}')">মুছে ফেলো</button>
           </div>
         </div>`;
@@ -496,6 +557,18 @@ function shareExam(code, title){
   const msg = `${title}\nএক্সাম কোড: ${code}\nস্টুডেন্ট পাসওয়ার্ড: ${STUDENT_PASSWORD}\nএই লিংকে গিয়ে পরীক্ষা দাও:\n${url}`;
   navigator.clipboard.writeText(msg).then(()=> toast('লিংক ও কোড কপি হয়েছে')).catch(()=> toast('কপি করতে সমস্যা হয়েছে'));
 }
+window.shareExamByCode = function(code){
+  const ex = (window.__examListCache||[]).find(e=> e.code === code);
+  shareExam(code, ex ? ex.title : code);
+}
+window.viewEditExam = async function(code){
+  toast('লোড হচ্ছে...');
+  const examRaw = await sget('exam:'+code);
+  if(!examRaw){ toast('পরীক্ষা পাওয়া যায়নি'); return; }
+  const exam = JSON.parse(examRaw.value);
+  draftQuestions = exam.questions.map(q=>({...q}));
+  go('teacherNewExam', { editingExam: exam });
+}
 
 async function deleteExam(code){
   if(!confirm('এই পরীক্ষাটা স্থায়ীভাবে মুছে ফেলতে চাও?')) return;
@@ -506,41 +579,44 @@ async function deleteExam(code){
 }
 
 let draftQuestions = [];
-function renderTeacherNewExam(){
+function renderTeacherNewExam(editingExam){
+  window.__editingExam = editingExam || null;
   draftQuestions = draftQuestions.length ? draftQuestions : [ blankQuestion() ];
+  const ex = editingExam || {};
+  const timerMode = ex.timerMode || 'total';
   app.innerHTML = `
-    ${header('নতুন পরীক্ষা')}
+    ${header(editingExam ? 'পরীক্ষা এডিট করো' : 'নতুন পরীক্ষা')}
     <div class="card">
-      <h2>পরীক্ষার তথ্য</h2>
+      <h2>পরীক্ষার তথ্য ${editingExam ? `<span class="code-chip">${ex.code}</span>` : ''}</h2>
       <label class="field-label">পরীক্ষার নাম</label>
-      <input type="text" id="examTitle" placeholder="যেমন: পরমাণুর গঠন — MCQ টেস্ট">
+      <input type="text" id="examTitle" value="${escapeHtml(ex.title||'')}" placeholder="যেমন: পরমাণুর গঠন — MCQ টেস্ট">
       <label class="field-label">বিষয়</label>
-      <input type="text" id="examSubject" placeholder="যেমন: রসায়ন">
+      <input type="text" id="examSubject" value="${escapeHtml(ex.subject||'')}" placeholder="যেমন: রসায়ন">
       <label class="field-label">সময়ের ধরন</label>
       <select id="timerMode" onchange="toggleTimerFields()">
-        <option value="total">পুরো পরীক্ষার জন্য মোট সময় (মিনিট)</option>
-        <option value="perQuestion">প্রতিটা প্রশ্নের জন্য আলাদা সময় (সেকেন্ড)</option>
+        <option value="total" ${timerMode==='total'?'selected':''}>পুরো পরীক্ষার জন্য মোট সময় (মিনিট)</option>
+        <option value="perQuestion" ${timerMode==='perQuestion'?'selected':''}>প্রতিটা প্রশ্নের জন্য আলাদা সময় (সেকেন্ড)</option>
       </select>
-      <div id="totalField">
+      <div id="totalField" style="${timerMode==='perQuestion'?'display:none;':''}">
         <label class="field-label">মোট সময় (মিনিট)</label>
-        <input type="number" id="examDuration" value="7" min="1" max="180">
+        <input type="number" id="examDuration" value="${ex.duration||7}" min="1" max="180">
       </div>
-      <div id="perQField" style="display:none;">
+      <div id="perQField" style="${timerMode==='perQuestion'?'':'display:none;'}">
         <label class="field-label">প্রশ্ন প্রতি সময় (সেকেন্ড)</label>
-        <input type="number" id="perQSeconds" value="36" min="5" max="600">
+        <input type="number" id="perQSeconds" value="${ex.perQuestionSeconds||36}" min="5" max="600">
       </div>
       <label class="bubble-opt" style="padding-left:0;">
-        <input type="checkbox" id="isPublic" style="display:inline-block; width:auto; margin:0;">
+        <input type="checkbox" id="isPublic" ${ex.isPublic?'checked':''} style="display:inline-block; width:auto; margin:0;">
         <span>🎯 এটা সবার জন্য উন্মুক্ত প্র্যাকটিস এক্সাম রাখো (কোড/পাসওয়ার্ড ছাড়াই, "প্র্যাকটিস করো" সেকশনে দেখাবে)</span>
       </label>
       <label class="bubble-opt" style="padding-left:0; margin-top:8px;">
-        <input type="checkbox" id="isTreat" style="display:inline-block; width:auto; margin:0;">
-        <span>🎁 এটা একটা Treat Coupon পরীক্ষা (নিজস্ব একবার-ব্যবহারযোগ্য পাসওয়ার্ড হবে, ৮০%+ পেলে কুপন পাবে)</span>
+        <input type="checkbox" id="isTreat" ${ex.isTreat?'checked':''} style="display:inline-block; width:auto; margin:0;">
+        <span>🎁 এটা একটা Treat Coupon পরীক্ষা ${ex.isTreat ? `(বর্তমান পাসওয়ার্ড: <b>${ex.treatPassword}</b>)` : '(নিজস্ব পাসওয়ার্ড হবে, ৮০%+ পেলে কুপন পাবে, একই নামে একবারই দেওয়া যাবে)'}</span>
       </label>
     </div>
     <div class="card">
       <h2>দ্রুত ইম্পোর্ট (ঐচ্ছিক)</h2>
-      <p class="hint">একসাথে অনেক প্রশ্ন থাকলে নিচের ফরম্যাটে পেস্ট করে "ইম্পোর্ট করো" চাপো:<br>
+      <p class="hint">একসাথে অনেক প্রশ্ন থাকলে নিচের ফরম্যাটে পেস্ট করে "ইম্পোর্ট করো" চাপো (বিদ্যমান প্রশ্নের সাথে যোগ হবে):<br>
       <code>Q: প্রশ্ন লেখো [ট্যাগ]<br>A) অপশন ১<br>B) অপশন ২<br>C) অপশন ৩<br>D) অপশন ৪<br>ANS: A</code></p>
       <textarea id="bulkText" placeholder="এখানে পেস্ট করো..."></textarea>
       <button class="btn btn-outline btn-block" onclick="importBulk()">📥 ইম্পোর্ট করো</button>
@@ -624,7 +700,7 @@ function renderQList(){
     </div>
   `).join('');
 }
-function cancelNewExam(){ draftQuestions = []; go('teacherDashboard'); }
+function cancelNewExam(){ draftQuestions = []; window.__editingExam = null; go('teacherDashboard'); }
 async function saveExam(){
   const title = document.getElementById('examTitle').value.trim();
   const subject = document.getElementById('examSubject').value.trim();
@@ -637,17 +713,20 @@ async function saveExam(){
   for(const q of draftQuestions){
     if(!q.text.trim() || q.options.some(o=>!o.trim())){ toast('সব পূরণ করো'); return; }
   }
-  let code = genCode();
+  const editingExam = window.__editingExam;
+  const code = editingExam ? editingExam.code : genCode();
   const teacherId = currentTeacher ? currentTeacher.id : 'admin';
-  const treatPassword = isTreat ? genTreatPassword() : null;
-  const exam = { code, title, subject, timerMode, duration, perQuestionSeconds, isPublic, isTreat, treatPassword, teacherId, questions: draftQuestions, createdAt: Date.now() };
+  const treatPassword = isTreat ? (editingExam && editingExam.isTreat ? editingExam.treatPassword : genTreatPassword()) : null;
+  const createdAt = editingExam ? editingExam.createdAt : Date.now();
+  const exam = { code, title, subject, timerMode, duration, perQuestionSeconds, isPublic, isTreat, treatPassword, teacherId, questions: draftQuestions, createdAt };
   toast('গুগল শিটে সেভ হচ্ছে...');
   const res = await sset('exam:'+code, JSON.stringify(exam));
   if(!res){ return; } // sset already showed a toast explaining what went wrong; keep draftQuestions so nothing is lost
   draftQuestions = [];
-  alert('পরীক্ষা তৈরি হয়েছে এবং গুগল শিটে সেভ হয়েছে! কোড: '+code
+  window.__editingExam = null;
+  alert((editingExam ? 'পরীক্ষা আপডেট হয়েছে! কোড: ' : 'পরীক্ষা তৈরি হয়েছে এবং গুগল শিটে সেভ হয়েছে! কোড: ')+code
     + (isPublic ? '\n\nএটা "প্র্যাকটিস করো" সেকশনে সবার জন্য উন্মুক্ত থাকবে।' : '')
-    + (isTreat ? `\n\nTreat Coupon পাসওয়ার্ড: ${treatPassword} (এটা একবার ব্যবহার হলেই বদলে যাবে, নতুন পাসওয়ার্ড "🎁 Treat Coupon" ড্যাশবোর্ডে দেখতে পাবে)` : ''));
+    + (isTreat ? `\n\nTreat Coupon পাসওয়ার্ড: ${treatPassword}` : ''));
   go('teacherDashboard');
 }
 function genTreatPassword(){
@@ -799,6 +878,13 @@ async function verifyStudentLogin(){
   const myAttempts = existingResults.filter(r => (r.slug ? r.slug === slug : slugify(r.studentName||'') === slug));
   if(myAttempts.length > 0){
     myAttempts.sort((a,b)=> b.submittedAt - a.submittedAt);
+    if(exam.isTreat){
+      // Treat exams are tied to real money rewards - no retries allowed once
+      // a given name has completed it (this replaces the old password-rotation
+      // approach, which was causing confusion).
+      go('treatBlocked', { exam, attempt: myAttempts[0] });
+      return;
+    }
     go('studentChoice', { exam, slug, name, attempts: myAttempts });
     return;
   }
@@ -806,6 +892,20 @@ async function verifyStudentLogin(){
   runCheckingSequence(exam, slug, name, 1);
 }
 
+function renderTreatBlocked(exam, attempt){
+  const pct = Math.round((attempt.score/attempt.total)*100);
+  app.innerHTML = `
+    ${header('আগেই সম্পন্ন হয়েছে')}
+    <div class="card center">
+      <h2>${escapeHtml(exam.title)}</h2>
+      <p class="hint">এটা একটা 🎁 Treat Coupon পরীক্ষা — টাকার সাথে যুক্ত থাকায় একই নামে একবারই দেওয়া যায়, আবার দেওয়া যাবে না।</p>
+      <div class="stamp ${pct>=50?'':'fail'}">${attempt.score}/${attempt.total}</div>
+      <p class="hint" style="margin-top:10px;">তোমার আগের ফলাফল উপরে দেখানো হলো। কোনো ভুল মনে হলে শিক্ষকের সাথে কথা বলো।</p>
+    </div>
+    <div class="center"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
 function renderStudentChoice(exam, slug, name, attempts){
   const sortedAsc = [...attempts].sort((a,b)=> a.submittedAt - b.submittedAt);
   const best = attempts.reduce((m,r)=> r.score > m.score ? r : m, attempts[0]);
@@ -1064,10 +1164,9 @@ async function finalizeExamSubmission(exam, slug, resultObj, auto){
     const percent = Math.round((resultObj.score/exam.questions.length)*100);
     const couponRes = await awardCouponRemote(slug, exam.code, percent);
     if(couponRes && couponRes.amount) couponAmount = couponRes.amount;
-    // single-use password: rotate so the old password can't be reused by someone else
-    const newPassword = genTreatPassword();
-    const updatedExam = { ...exam, treatPassword: newPassword };
-    await sset('exam:'+exam.code, JSON.stringify(updatedExam));
+    // NOTE: password is no longer rotated after use - once someone with a given
+    // name has completed this Treat exam, they're blocked from re-entering
+    // (checked in verifyStudentLogin), so a fixed shared password is safe.
   }
   // taking any exam today counts as proof of attendance for that day, auto-approved (blue)
   markAttendanceRemote(slug, todayStr(), 'exam').catch(()=>{});
@@ -2937,9 +3036,12 @@ function questionsToBulkText(questions){
     return block;
   }).join('\n\n');
 }
+let writtenDraftQuestions = [];
+function blankWrittenQuestion(){ return { text:'', imageUrl:'', modelAnswerText:'', modelAnswerImageUrl:'' }; }
 function renderWrittenEdit(examId, existing){
   existing = existing || {};
-  const bulkPrefill = existing.questions ? questionsToBulkText(existing.questions) : '';
+  writtenDraftQuestions = (existing.questions && existing.questions.length) ? existing.questions.map(q=>({...q})) : [ blankWrittenQuestion() ];
+  window.__writtenEditCtx = { examId, title: existing.title||'', subject: existing.subject||'' };
   app.innerHTML = `
     ${header('Written CQ Exam')}
     <div class="card">
@@ -2950,36 +3052,115 @@ function renderWrittenEdit(examId, existing){
       <input type="text" id="wqSubject" value="${escapeHtml(existing.subject||'')}" placeholder="যেমন: গণিত">
     </div>
     <div class="card">
-      <h2>📥 প্রশ্ন ও মডেল উত্তর (Bulk)</h2>
-      <p class="hint">প্রতিটা প্রশ্নের ব্লক এভাবে দাও, দুইটা প্রশ্নের মাঝে একটা ফাঁকা লাইন রাখো — ২০টা, এমনকি তার বেশিও দিতে পারো:<br>
-      <code>Q: প্রশ্নের লেখা<br>QIMG: (ঐচ্ছিক, ছবির লিংক)<br>MODEL: সঠিক সমাধানের বর্ণনা<br>MIMG: (ঐচ্ছিক, মডেল উত্তরের ছবির লিংক)</code><br>
-      ছবি Google Drive-এ আপলোড করে "Anyone with the link" শেয়ার করে লিংকটা QIMG/MIMG-তে বসাও।</p>
-      <textarea id="wqBulkText" style="min-height:320px; font-family:var(--font-mono); font-size:13px;" placeholder="Q: প্রথম প্রশ্ন...&#10;MODEL: এই প্রশ্নের সঠিক সমাধান...&#10;&#10;Q: দ্বিতীয় প্রশ্ন...&#10;MODEL: ...">${escapeHtml(bulkPrefill)}</textarea>
-      <button class="btn btn-primary btn-block" onclick="saveWrittenExamItem('${examId||''}')">✅ সেভ করো</button>
-      <div id="wqSaveStatus" style="margin-top:10px;"></div>
+      <h2>📥 দ্রুত ইম্পোর্ট (ঐচ্ছিক)</h2>
+      <p class="hint">অনেক প্রশ্ন একসাথে পেস্ট করতে চাইলে (ছবি ছাড়া, শুধু লেখা): দুইটা প্রশ্নের মাঝে ফাঁকা লাইন রাখো —<br>
+      <code>Q: প্রশ্নের লেখা<br>MODEL: সঠিক সমাধানের বর্ণনা</code></p>
+      <textarea id="wqBulkText" style="min-height:140px; font-family:var(--font-mono); font-size:13px;" placeholder="Q: প্রথম প্রশ্ন...&#10;MODEL: সমাধান...&#10;&#10;Q: দ্বিতীয় প্রশ্ন...&#10;MODEL: ..."></textarea>
+      <button class="btn btn-outline btn-block" onclick="importWrittenBulk()">📥 ইম্পোর্ট করো (নিচে যোগ হবে)</button>
     </div>
+    <div class="card">
+      <h2>প্রশ্নসমূহ (প্রতিটার নিজস্ব ছবি আপলোড করা যায়)</h2>
+      <p class="hint">প্রতিটা প্রশ্ন আলাদা বিষয়ের হতে পারে — যেমন ১ নম্বরে Chemistry, ২ নম্বরে Math। প্রশ্ন লেখা বা ছবি (বা দুটোই) দাও, মডেল উত্তরও একইভাবে।</p>
+      <div id="wqList"></div>
+      <button class="btn btn-outline btn-block" onclick="addWrittenQuestion()">+ আরেকটা প্রশ্ন যোগ করো</button>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="saveWrittenExamItem('${examId||''}')">✅ সেভ করো</button>
+    <div id="wqSaveStatus" style="margin-top:10px;"></div>
     <div class="center"><a class="link-back" onclick="go('writtenManage')">← ফিরে যাও</a></div>
     ${creditFooter()}
   `;
+  renderWrittenQList();
+}
+window.addWrittenQuestion = function(){ writtenDraftQuestions.push(blankWrittenQuestion()); renderWrittenQList(); }
+window.removeWrittenQuestion = function(i){ writtenDraftQuestions.splice(i,1); if(writtenDraftQuestions.length===0) writtenDraftQuestions.push(blankWrittenQuestion()); renderWrittenQList(); }
+window.importWrittenBulk = function(){
+  const raw = document.getElementById('wqBulkText').value;
+  if(!raw.trim()){ toast('আগে টেক্সট পেস্ট করো'); return; }
+  const parsed = parseWrittenBulk(raw);
+  if(parsed.length === 0){ toast('কোনো প্রশ্ন পার্স করা যায়নি'); return; }
+  // if the only existing row is still blank, replace it instead of leaving an empty row behind
+  if(writtenDraftQuestions.length===1 && !writtenDraftQuestions[0].text && !writtenDraftQuestions[0].imageUrl){
+    writtenDraftQuestions = parsed;
+  } else {
+    writtenDraftQuestions = writtenDraftQuestions.concat(parsed);
+  }
+  renderWrittenQList();
+  toast(parsed.length + 'টা প্রশ্ন যোগ হয়েছে');
+  document.getElementById('wqBulkText').value = '';
+}
+function renderWrittenQList(){
+  const el = document.getElementById('wqList');
+  el.innerHTML = writtenDraftQuestions.map((q,i)=> `
+    <div class="q-block">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <span class="q-num">${i+1}</span>
+        ${writtenDraftQuestions.length>1 ? `<a class="link-back" onclick="removeWrittenQuestion(${i})">মুছো</a>`:''}
+      </div>
+      <label class="field-label">প্রশ্ন (লেখা, ঐচ্ছিক যদি ছবি দাও)</label>
+      <textarea oninput="writtenDraftQuestions[${i}].text=this.value" style="min-height:70px;" placeholder="প্রশ্নটা লেখো...">${escapeHtml(q.text)}</textarea>
+      <label class="field-label">প্রশ্নের ছবি আপলোড করো (ঐচ্ছিক)</label>
+      <input type="file" accept="image/*" onchange="handleWrittenQImageUpload(this, ${i})" style="margin-bottom:6px;">
+      <div id="wqImgPrev${i}">${q.imageUrl ? `<img src="${escapeHtml(q.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="প্রশ্নের ছবি">`:''}</div>
+      <label class="field-label">মডেল উত্তর (AI এটার সাথে তুলনা করবে)</label>
+      <textarea oninput="writtenDraftQuestions[${i}].modelAnswerText=this.value" style="min-height:90px;" placeholder="ধাপে ধাপে সঠিক সমাধান লেখো...">${escapeHtml(q.modelAnswerText)}</textarea>
+      <label class="field-label">মডেল উত্তরের ছবি আপলোড করো (ঐচ্ছিক)</label>
+      <input type="file" accept="image/*" onchange="handleWrittenModelImageUpload(this, ${i})" style="margin-bottom:6px;">
+      <div id="wqModelImgPrev${i}">${q.modelAnswerImageUrl ? `<img src="${escapeHtml(q.modelAnswerImageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="মডেল উত্তরের ছবি">`:''}</div>
+    </div>
+  `).join('');
+}
+window.handleWrittenQImageUpload = async function(inputEl, idx){
+  const file = inputEl.files[0];
+  if(!file) return;
+  document.getElementById('wqImgPrev'+idx).innerHTML = `<p class="hint">আপলোড হচ্ছে...</p>`;
+  const compressed = await compressImageFile(file, 1200, 0.75);
+  const res = await postToScript('uploadImage', { base64: compressed.base64, mimeType: compressed.mimeType, fileName: file.name });
+  if(res && res.url){
+    writtenDraftQuestions[idx].imageUrl = res.url;
+    document.getElementById('wqImgPrev'+idx).innerHTML = `<img src="${escapeHtml(res.url)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="প্রশ্নের ছবি">`;
+  } else {
+    document.getElementById('wqImgPrev'+idx).innerHTML = `<p class="hint">আপলোড ব্যর্থ হয়েছে</p>`;
+  }
+}
+window.handleWrittenModelImageUpload = async function(inputEl, idx){
+  const file = inputEl.files[0];
+  if(!file) return;
+  document.getElementById('wqModelImgPrev'+idx).innerHTML = `<p class="hint">আপলোড হচ্ছে...</p>`;
+  const compressed = await compressImageFile(file, 1200, 0.75);
+  const res = await postToScript('uploadImage', { base64: compressed.base64, mimeType: compressed.mimeType, fileName: file.name });
+  if(res && res.url){
+    writtenDraftQuestions[idx].modelAnswerImageUrl = res.url;
+    document.getElementById('wqModelImgPrev'+idx).innerHTML = `<img src="${escapeHtml(res.url)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="মডেল উত্তরের ছবি">`;
+  } else {
+    document.getElementById('wqModelImgPrev'+idx).innerHTML = `<p class="hint">আপলোড ব্যর্থ হয়েছে</p>`;
+  }
 }
 window.saveWrittenExamItem = async function(examId){
   const title = document.getElementById('wqTitle').value.trim();
   const subject = document.getElementById('wqSubject').value.trim();
-  const raw = document.getElementById('wqBulkText').value;
   if(!title || !subject){ toast('শিরোনাম ও বিষয় দাও'); return; }
-  const questions = parseWrittenBulk(raw);
-  if(questions.length === 0){ toast('অন্তত একটা প্রশ্ন দাও, ফরম্যাট চেক করো'); return; }
+  const questions = writtenDraftQuestions.filter(q=> (q.text && q.text.trim()) || q.imageUrl);
+  if(questions.length === 0){ toast('অন্তত একটা প্রশ্নে লেখা বা ছবি দাও'); return; }
+  for(const q of questions){
+    if(!(q.modelAnswerText && q.modelAnswerText.trim()) && !q.modelAnswerImageUrl){
+      toast('প্রতিটা প্রশ্নের মডেল উত্তর (লেখা বা ছবি) দাও');
+      return;
+    }
+  }
   document.getElementById('wqSaveStatus').innerHTML = `<p class="hint">${questions.length}টা প্রশ্ন সেভ হচ্ছে...</p>`;
   const res = await saveWrittenExamRemote(examId, title, subject, questions);
   if(res && res.code){
     alert(`Exam সেভ হয়েছে!\nকোড: ${res.code}\nপাসওয়ার্ড: ${res.treatPassword}\n${questions.length}টা প্রশ্ন যোগ হয়েছে।\n\nএই দুটো student কে দাও।`);
   }
+  writtenDraftQuestions = [];
   go('writtenManage');
 }
 
 // ---- Teacher: view written submissions with AI score + manual override ----
+function percentToMarks(percent){ return Math.round((percent/100)*5*2)/2; } // nearest 0.5, out of 5
 async function renderWrittenSubmissions(code){
   app.innerHTML = `${header('জমা দেওয়া খাতা')}<div class="card center">লোড হচ্ছে...</div>`;
+
   const subs = await getWrittenSubmissionsRemote(code);
   subs.sort((a,b)=> b.submittedAt - a.submittedAt);
   window.__writtenSubsCache = subs;
@@ -2989,21 +3170,23 @@ async function renderWrittenSubmissions(code){
 
   let rows = Object.keys(bySlug).map(slug=>{
     const list = bySlug[slug];
-    const avg = Math.round(list.reduce((a,b)=>a+b.percent,0)/list.length);
+    const totalMarks = list.length * 5;
+    const earnedMarks = list.reduce((a,b)=>a+percentToMarks(b.percent),0);
     const qRows = list.sort((a,b)=>a.questionIndex-b.questionIndex).map((s)=>{
       const idxInCache = window.__writtenSubsCache.indexOf(s);
+      const marks = percentToMarks(s.percent);
       return `<div class="review-block">
-        <div class="q-text" style="font-size:13.5px;">প্রশ্ন ${s.questionIndex+1} · <a href="${escapeHtml(s.driveUrl)}" target="_blank" rel="noopener">ছবি দেখো</a></div>
-        <div class="review-ans wrong">🤖 ${s.percent}% — ${escapeHtml(s.aiFeedback||'')}</div>
+        <div class="q-text" style="font-size:13.5px;">প্রশ্ন ${s.questionIndex+1} · <a href="${escapeHtml(s.driveUrl)}" target="_blank" rel="noopener">ছবি দেখো</a> ${s.reviewRequested ? '<span class="q-tag">🚩 রিভিউ চাওয়া হয়েছে</span>':''}</div>
+        <div class="review-ans wrong">🤖 ${marks}/5 নম্বর (AI ${s.percent}%) — ${escapeHtml(s.aiFeedback||'')}</div>
         <div class="row" style="margin-top:6px;">
-          <input type="number" id="wscore${idxInCache}" value="${s.percent}" min="0" max="100" style="margin-bottom:0;">
-          <button class="btn btn-outline" onclick="saveWrittenManualScore('${s.id}',${idxInCache},'${code}')">✅ ঠিক করো</button>
+          <input type="number" id="wmarks${idxInCache}" value="${marks}" min="0" max="5" step="0.5" style="margin-bottom:0;">
+          <button class="btn btn-outline" onclick="saveWrittenManualScore('${s.id}',${idxInCache},'${code}')">✅ নম্বর ঠিক করো</button>
         </div>
       </div>`;
     }).join('');
     return `<div class="exam-item">
       <h3 style="margin-bottom:4px;">${escapeHtml(list[0].studentName)}</h3>
-      <div class="meta">গড় স্কোর: <b>${avg}%</b> (${list.length}টা প্রশ্নের ভিত্তিতে)</div>
+      <div class="meta">মোট: <b>${earnedMarks} / ${totalMarks}</b> নম্বর (${list.length}টা প্রশ্নের ভিত্তিতে)</div>
       <div style="margin-top:8px;">${qRows}</div>
     </div>`;
   }).join('');
@@ -3016,8 +3199,9 @@ async function renderWrittenSubmissions(code){
   `;
 }
 window.saveWrittenManualScore = async function(submissionId, idx, code){
-  const newPercent = parseInt(document.getElementById('wscore'+idx).value, 10);
-  if(isNaN(newPercent) || newPercent<0 || newPercent>100){ toast('সঠিক percentage দাও'); return; }
+  const marks = parseFloat(document.getElementById('wmarks'+idx).value);
+  if(isNaN(marks) || marks<0 || marks>5){ toast('০ থেকে ৫ এর মধ্যে নম্বর দাও'); return; }
+  const newPercent = Math.round((marks/5)*100);
   toast('আপডেট হচ্ছে...');
   await updateWrittenScoreRemote(submissionId, newPercent);
   toast('আপডেট হয়েছে ✅ (কুপনও পুনঃগণনা হয়েছে)');
@@ -3052,10 +3236,26 @@ window.startWrittenExam = async function(){
   if(!q){ toast('এই কোডে কোনো exam পাওয়া যায়নি'); return; }
   // compare as text, defensively, in case a password ever ends up stored/read as a different type
   if(String(pass).trim().toUpperCase() !== String(q.treatPassword).trim().toUpperCase()){ toast('পাসওয়ার্ড ভুল হয়েছে'); return; }
-  go('writtenSolve', { exam: q, slug: slugify(name), name });
+
+  const slug = slugify(name);
+  // this is a Treat exam tied to money - block re-entry once this name has fully
+  // completed it before; if partially done, resume exactly where they left off
+  const mySubs = await getWrittenSubmissionsRemote(code);
+  const mine = mySubs.filter(s=> s.slug === slug);
+  const answered = {};
+  mine.forEach(s=>{ answered[s.questionIndex] = { percent: s.percent, aiFeedback: s.aiFeedback }; });
+  if(Object.keys(answered).length >= q.questions.length){
+    const avgPercent = Math.round(mine.reduce((a,b)=>a+b.percent,0)/mine.length);
+    go('treatBlocked', { exam: { title: q.title, isWritten: true }, attempt: { score: percentToMarks(avgPercent)*q.questions.length, total: q.questions.length*5 } });
+    return;
+  }
+  window.__writtenSolveCtx = { exam: q, slug, name, answered };
+  go('writtenSolve', { exam: q, slug, name });
 }
 function renderWrittenSolve(exam, slug, name){
-  window.__writtenSolveCtx = { exam, slug, name, answered: window.__writtenSolveCtx && window.__writtenSolveCtx.exam.code===exam.code ? window.__writtenSolveCtx.answered : {} };
+  if(!window.__writtenSolveCtx || window.__writtenSolveCtx.exam.code !== exam.code){
+    window.__writtenSolveCtx = { exam, slug, name, answered: {} };
+  }
   redrawWrittenSolve();
 }
 function redrawWrittenSolve(){
@@ -3064,11 +3264,13 @@ function redrawWrittenSolve(){
   const doneCount = Object.keys(answered).length;
   const qHtml = exam.questions.map((q,idx)=>{
     const done = answered[idx];
+    const marks = done ? percentToMarks(done.percent) : null;
     return `<div class="q-block">
       <div class="q-text">${idx+1}. ${escapeHtml(q.text||'')}</div>
       ${q.imageUrl ? `<img src="${escapeHtml(q.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="প্রশ্নের ছবি">`:''}
       ${done
-        ? `<div class="say">✅ জমা হয়েছে — AI স্কোর: ${done.percent}%<br>${escapeHtml(done.aiFeedback||'')}</div>`
+        ? `<div class="say">✅ জমা হয়েছে — নম্বর: ${marks}/5<br>${escapeHtml(done.aiFeedback||'')}</div>
+           ${!done.reviewRequested ? `<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="requestReviewForQuestion(${idx})">🚩 এই নম্বর নিয়ে রিভিউ চাও</button>` : `<p class="hint" style="margin-top:6px;">🚩 রিভিউ চাওয়া হয়েছে, শিক্ষক দেখবেন।</p>`}`
         : `<input type="file" id="wFile${idx}" accept="image/*" style="margin-bottom:8px;">
            <button class="btn btn-primary btn-block" onclick="submitWrittenQuestion(${idx})">📤 এই প্রশ্নের উত্তর জমা দাও</button>
            <div id="wStatus${idx}" style="margin-top:8px;"></div>`}
@@ -3079,7 +3281,7 @@ function redrawWrittenSolve(){
     ${header('Written CQ পরীক্ষা')}
     <div class="card">
       <h2>${escapeHtml(exam.title)}</h2>
-      <p class="hint">${doneCount} / ${total} প্রশ্নের উত্তর জমা দেওয়া হয়েছে। প্রতিটা প্রশ্নের ছবি আলাদাভাবে আপলোড করো।</p>
+      <p class="hint">${doneCount} / ${total} প্রশ্নের উত্তর জমা দেওয়া হয়েছে (প্রতি প্রশ্ন ৫ নম্বর)। প্রতিটা প্রশ্নের ছবি আলাদাভাবে আপলোড করো।</p>
     </div>
     <div class="card">${qHtml}</div>
     <div class="center"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
@@ -3097,9 +3299,11 @@ window.submitWrittenQuestion = async function(idx){
   statusEl.innerHTML = `<p class="hint">AI দিয়ে চেক করা হচ্ছে, একটু অপেক্ষা করো...</p>`;
   const res = await submitWrittenAnswerRemote(exam.code, slug, name, idx, compressed.base64, compressed.mimeType, file.name);
   if(res && res.status === 'success'){
-    window.__writtenSolveCtx.answered[idx] = { percent: res.percent, aiFeedback: res.aiFeedback };
+    window.__writtenSolveCtx.answered[idx] = { percent: res.percent, aiFeedback: res.aiFeedback, subId: res.subId };
     if(res.allDone){
-      go('writtenResult', { avgPercent: res.avgPercent, couponAmount: res.couponAmount, title: exam.title });
+      const totalMarks = exam.questions.length * 5;
+      const earnedMarks = percentToMarks(res.avgPercent) * exam.questions.length;
+      go('writtenResult', { earnedMarks, totalMarks, couponAmount: res.couponAmount, title: exam.title });
     } else {
       redrawWrittenSolve();
     }
@@ -3107,17 +3311,28 @@ window.submitWrittenQuestion = async function(idx){
     statusEl.innerHTML = `<p class="hint">জমা দিতে সমস্যা হয়েছে, আবার চেষ্টা করো।</p>`;
   }
 }
-function renderWrittenResult(avgPercent, couponAmount, title){
-  const passed = avgPercent >= 50;
+window.requestReviewForQuestion = async function(idx){
+  const { answered } = window.__writtenSolveCtx;
+  const sub = answered[idx];
+  if(!sub || !sub.subId){ toast('এটা রিভিউ করা যাচ্ছে না'); return; }
+  toast('রিভিউ চাওয়া হচ্ছে...');
+  await postToScript('requestWrittenReview', { submissionId: sub.subId });
+  answered[idx].reviewRequested = true;
+  toast('রিভিউর অনুরোধ পাঠানো হয়েছে ✅');
+  redrawWrittenSolve();
+}
+function renderWrittenResult(earnedMarks, totalMarks, couponAmount, title){
+  const pct = Math.round((earnedMarks/totalMarks)*100);
+  const passed = pct >= 50;
   app.innerHTML = `
     ${header('ফলাফল')}
     <div class="card center">
       <h2>${escapeHtml(title)}</h2>
       <p class="hint">সব প্রশ্ন জমা হয়ে গেছে ✅</p>
-      <div class="stamp ${passed?'':'fail'}">${avgPercent}%</div>
-      <p class="hint" style="margin-top:10px;">এটা তোমার সব প্রশ্নের গড় AI স্কোর।</p>
+      <div class="stamp ${passed?'':'fail'}">${earnedMarks}/${totalMarks}</div>
+      <p class="hint" style="margin-top:10px;">এটা তোমার সব প্রশ্নের মোট AI-মূল্যায়িত নম্বর (প্রতি প্রশ্নে ৫ নম্বর করে)।</p>
       ${couponAmount>0 ? `<div class="say" style="margin-top:10px;">🎁 <b>অভিনন্দন!</b> তুমি ৳${couponAmount} Treat Coupon পেয়েছো!</div>` : ''}
-      <p class="hint" style="margin-top:10px;">তোমার শিক্ষক চাইলে নম্বর পরে ম্যানুয়ালি ঠিক করে দিতে পারবেন — এটা প্রাথমিক AI মূল্যায়ন।</p>
+      <p class="hint" style="margin-top:10px;">কোনো প্রশ্নের নম্বর নিয়ে দ্বিমত থাকলে, ঐ প্রশ্নে গিয়ে "🚩 রিভিউ চাও" চাপতে পারতে — শিক্ষক ম্যানুয়ালি দেখে ঠিক করে দেবেন।</p>
     </div>
     <div class="center"><button class="btn btn-primary" onclick="go('landing')">মূল পাতায় যাও</button></div>
     ${creditFooter()}
@@ -3125,16 +3340,22 @@ function renderWrittenResult(avgPercent, couponAmount, title){
 }
 
 
+function syncLogoutFab(){
+  const fab = document.getElementById('logoutFab');
+  if(fab) fab.style.display = currentTeacher ? 'block' : 'none';
+}
 function render(){
+  syncLogoutFab();
   const s = state.screen;
   if(s==='landing') renderLanding();
   else if(s==='teacherGate') renderTeacherGate();
   else if(s==='teacherDashboard') renderTeacherDashboard();
-  else if(s==='teacherNewExam') renderTeacherNewExam();
+  else if(s==='teacherNewExam') renderTeacherNewExam(state.editingExam);
   else if(s==='teacherResults') renderTeacherResults(state.code);
   else if(s==='studentEntry') renderStudentEntry();
   else if(s==='practiceList') renderPracticeList();
   else if(s==='practiceEntry') renderPracticeEntry(state.exam);
+  else if(s==='treatBlocked') renderTreatBlocked(state.exam, state.attempt);
   else if(s==='studentChoice') renderStudentChoice(state.exam, state.slug, state.name, state.attempts);
   else if(s==='studentAlready') renderStudentAlready(state.exam, state.prev, state.tryNo, state.totalTries);
   else if(s==='studentExam') renderStudentExam();
@@ -3184,7 +3405,8 @@ function render(){
   else if(s==='writtenSubmissions') renderWrittenSubmissions(state.code);
   else if(s==='writtenEntry') renderWrittenEntry();
   else if(s==='writtenSolve') renderWrittenSolve(state.exam, state.slug, state.name);
-  else if(s==='writtenResult') renderWrittenResult(state.avgPercent, state.couponAmount, state.title);
+  else if(s==='writtenResult') renderWrittenResult(state.earnedMarks, state.totalMarks, state.couponAmount, state.title);
+  else if(s==='doubtEntry') renderDoubtEntry();
 }
 
 render();
