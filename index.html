@@ -145,7 +145,7 @@ const CREATOR_DEPT = 'Industrial and Production Engineering (IPE)';
 const CREATOR_WHATSAPP = '01577477346';
 const CREATOR_WA_LINK = 'https://wa.me/8801577477346';
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxegybbA7MEssgqYwydq9Z_njiR7J7CVuVw1fVVrFKKalxSYKLvflSPuxXKNEqCDJj3/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxHCR8KZd_P9QhVtOUi-c79tHlt607JxGsU_SH_7K9RdjwVHHZX1QYhOR5OA4sMP7C9/exec';
 
 const holesEl = document.getElementById('holes');
 for(let i=0;i<10;i++){ const s=document.createElement('span'); holesEl.appendChild(s); }
@@ -1210,11 +1210,25 @@ function renderStudentResult(){
 
 // ================= TOPICS (chapter-wise study material) =================
 const TOPIC_STRUCTURE = {
+  physics: {
+    label: 'পদার্থবিজ্ঞান (Physics)',
+    sections: {
+      paper1: { label: '১ম পত্র', count: 10 },
+      paper2: { label: '২য় পত্র', count: 10 }
+    }
+  },
   chemistry: {
     label: 'রসায়ন (Chemistry)',
     sections: {
       paper1: { label: '১ম পত্র', count: 5 },
       paper2: { label: '২য় পত্র', count: 5 }
+    }
+  },
+  mathematics: {
+    label: 'গণিত (Mathematics)',
+    sections: {
+      paper1: { label: '১ম পত্র', count: 10 },
+      paper2: { label: '২য় পত্র', count: 10 }
     }
   },
   biology: {
@@ -1224,11 +1238,10 @@ const TOPIC_STRUCTURE = {
       zoology: { label: 'প্রাণিবিজ্ঞান (Zoology)', count: 12 }
     }
   },
-  mathematics: {
-    label: 'গণিত (Mathematics)',
+  ict: {
+    label: 'তথ্য ও যোগাযোগ প্রযুক্তি (ICT)',
     sections: {
-      paper1: { label: '১ম পত্র', count: 10 },
-      paper2: { label: '২য় পত্র', count: 10 }
+      main: { label: 'সব অধ্যায়', count: 6 }
     }
   }
 };
@@ -1247,13 +1260,17 @@ async function saveTopicRemote(key, name, content){
 
 // ---- Teacher: manage topics ----
 function renderTopicsManage(){
+  const btns = Object.keys(TOPIC_STRUCTURE).map(subject=>{
+    const subj = TOPIC_STRUCTURE[subject];
+    const icon = subject==='physics' ? '⚛️' : (subject==='chemistry' ? '🧪' : (subject==='biology' ? '🌿' : (subject==='ict' ? '💻' : '📐')));
+    return `<button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="go('topicsManageSection',{subject:'${subject}'})">${icon} ${subj.label}</button>`;
+  }).join('');
   app.innerHTML = `
     ${header('Topics ম্যানেজ করো')}
     <div class="card">
       <h2>বিষয় বাছো</h2>
-      <p class="hint">Chemistry-তে ১০টা অধ্যায় (৫টা ১ম পত্র + ৫টা ২য় পত্র), Biology-তে Botany ১২টা ও Zoology ১২টা অধ্যায়। প্রতিটার নাম ও কনটেন্ট তুমি লিখে দিতে পারবে।</p>
-      <button class="btn btn-primary btn-block" onclick="go('topicsManageSection',{subject:'chemistry'})">🧪 Chemistry</button>
-      <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="go('topicsManageSection',{subject:'biology'})">🌿 Biology</button>
+      <p class="hint">Physics/Chemistry/Mathematics-এ ১ম ও ২য় পত্র, Biology-তে Botany ও Zoology, ICT-তে সব অধ্যায় একসাথে। প্রতিটার নাম ও কনটেন্ট তুমি লিখে দিতে পারবে।</p>
+      ${btns}
     </div>
     <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>
     ${creditFooter()}
@@ -1368,7 +1385,7 @@ window.saveTopicChapter = async function(subject, sectionKey, chNum){
 function renderTopicsSubject(){
   const btns = Object.keys(TOPIC_STRUCTURE).map(subject=>{
     const subj = TOPIC_STRUCTURE[subject];
-    const icon = subject==='chemistry' ? '🧪' : (subject==='biology' ? '🌿' : '📐');
+    const icon = subject==='physics' ? '⚛️' : (subject==='chemistry' ? '🧪' : (subject==='biology' ? '🌿' : (subject==='ict' ? '💻' : '📐')));
     return `<button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="go('topicsSection',{subject:'${subject}'})">${icon} ${subj.label}</button>`;
   }).join('');
   app.innerHTML = `
