@@ -307,7 +307,27 @@
     font-size: 12px; font-weight: 600; color: var(--ink); cursor: pointer; transition: background 0.15s ease;
   }
   .read-aloud-btn:hover { background: rgba(31,42,68,0.12); }
+
+  /* ===== Question library: side panel next to the exam form ===== */
+  .lib-panel{ position:fixed; z-index:70; top:60px; bottom:12px; right:12px; width:min(94vw,440px);
+    background:#fff; border:1.5px solid var(--paper-edge); border-radius:14px; display:flex; flex-direction:column; overflow:hidden;
+    box-shadow:0 18px 50px -12px rgba(31,42,68,0.45); }
+  .lib-panel-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 16px; border-bottom:1px solid var(--paper-edge); background:#FCFDFE; }
+  .lib-panel-body{ flex:1; overflow-y:auto; padding:14px 16px; }
+  .lib-panel-foot{ padding:9px 16px; border-top:1px solid var(--paper-edge); font-size:12.5px; color:var(--pencil); background:#FCFDFE; }
+  .lib-actions{ position:sticky; top:-14px; z-index:2; background:#fff; padding:8px 0 10px 0; margin-top:-8px; display:flex; gap:8px; }
+  .lib-actions .btn{ flex:1; padding:9px 10px; font-size:13px; }
+  .lib-q{ display:flex; gap:10px; align-items:flex-start; padding:10px 6px; border-bottom:1px dashed var(--rule); cursor:pointer; }
+  .lib-q input{ margin:4px 0 0 0; width:18px; height:18px; flex:none; }
+  .lib-q.dup{ opacity:.55; cursor:default; }
+  .lib-q-text{ font-weight:600; font-size:14px; line-height:1.5; }
+  @media (min-width:1150px){
+    /* wide screen: form moves slightly left, library sits right beside it */
+    body.lib-open .wrap{ margin-left:24px; margin-right:auto; }
+    .lib-panel{ left:680px; right:auto; width:min(560px, calc(100vw - 696px)); box-shadow:var(--card-shadow); }
+  }
 </style>
+
 
 </head>
 <body>
@@ -658,7 +678,14 @@ window.studentLogout = function(){
 
 let state = { screen: getLoggedStudent() ? 'studentDashboard' : 'landing' };
 let timerInterval = null;
-function go(screen, data={}){ if(timerInterval){ clearInterval(timerInterval); timerInterval = null; } state = { screen, ...data }; render(); }
+function go(screen, data={}){
+  if(timerInterval){ clearInterval(timerInterval); timerInterval = null; }
+  if(typeof closeLibraryPanel==='function') closeLibraryPanel();
+  // ড্যাশবোর্ডে ঢোকার সময় সবসময় নতুন ডাটা আনো (নাহলে পরীক্ষা দিয়ে কুপন পেলেও পুরনো ব্যালেন্স দেখাত)
+  if(screen==='studentDashboard') window.__studentDashCache = null;
+  state = { screen, ...data };
+  render();
+}
 
 function header(subtitle){
   const stud = getLoggedStudent();
@@ -1080,106 +1107,155 @@ function blankQuestion(){ return { text:'', tag:'', options:['','','',''], corre
 function addQuestion(){ draftQuestions.push(blankQuestion()); renderQList(); }
 window.removeQuestion = function(i){ draftQuestions.splice(i,1); if(draftQuestions.length===0) draftQuestions.push(blankQuestion()); renderQList(); }
 
-// ================= প্রশ্ন লাইব্রেরি (Mastery-তে আগে যোগ করা MCQ থেকে exam-এ বাছাই করে যোগ করা) =================
-window.openLibraryPicker = function(){ go('libraryPicker', { step:'subject' }); }
-async function renderLibraryPicker(step, subjectVal, courseId, courseTitle){
-  app.innerHTML = `${header('লাইব্রেরি থেকে বাছো')}<div class="card center">লোড হচ্ছে...</div>`;
-  const courses = await getMasteryCourses();
-  window.__libCourses = courses;
-
-  if(!step || step==='subject'){
-    const subjects = [...new Set(courses.map(c=>c.subject))];
-    const rows = subjects.map(s=> `<button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="go('libraryPicker',{step:'course', subjectVal:'${s}'})">${escapeHtml(s)}</button>`).join('');
-    app.innerHTML = `
-      ${header('লাইব্রেরি থেকে বাছো')}
-      <div class="card">
-        <h2>কোন বিষয় থেকে প্রশ্ন বাছবে?</h2>
-        ${rows || `<div class="empty-state">Mastery-তে এখনো কোনো কোর্স/চ্যাপ্টার যোগ করা হয়নি — আগে ওখানে (বা import_to_app.py দিয়ে) প্রশ্ন যোগ করো।</div>`}
+// ================= প্রশ্ন লাইব্রেরি — পরীক্ষার ফর্মের পাশেই সাইড প্যানেল (আলাদা পেজে যেতে হয় না) =================
+window.__lib = null;
+window.openLibraryPicker = function(){
+  if(document.getElementById('libPanel')){ closeLibraryPanel(); return; } // আবার চাপলে বন্ধ হবে
+  const p = document.createElement('div');
+  p.id = 'libPanel';
+  p.className = 'lib-panel';
+  p.innerHTML = `
+    <div class="lib-panel-head">
+      <div style="min-width:0;">
+        <div style="font-weight:700; font-size:15px;">📚 প্রশ্ন লাইব্রেরি</div>
+        <div class="meta" id="libCrumb" style="margin-top:2px;"></div>
       </div>
-      <div class="center"><a class="link-back" onclick="go('teacherNewExam')">← পরীক্ষায় ফিরে যাও</a></div>
-      ${creditFooter()}
-    `;
-    return;
-  }
-
-  if(step==='course'){
-    const filtered = courses.filter(c=> c.subject === subjectVal);
-    const rows = filtered.map(c=> `<button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="go('libraryPicker',{step:'chapter', subjectVal:'${subjectVal}', courseId:'${c.id}', courseTitle:'${escapeHtml(c.title)}'})">${escapeHtml(c.title)}</button>`).join('');
-    app.innerHTML = `
-      ${header('লাইব্রেরি থেকে বাছো')}
-      <div class="card">
-        <h2>${escapeHtml(subjectVal)} — কোন পত্র/কোর্স?</h2>
-        ${rows}
-      </div>
-      <div class="center"><a class="link-back" onclick="go('libraryPicker',{step:'subject'})">← ফিরে যাও</a></div>
-      ${creditFooter()}
-    `;
-    return;
-  }
-
-  if(step==='chapter'){
-    const topics = await getMasteryTopics(courseId);
-    topics.sort((a,b)=> a.order - b.order);
-    window.__libTopics = topics;
-    const rows = topics.map(t=> `<button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="go('libraryPicker',{step:'questions', subjectVal:'${subjectVal}', courseId:'${courseId}', courseTitle:'${escapeHtml(courseTitle)}', topicId:'${t.id}'})">${t.order}. ${escapeHtml(t.title)} (${t.questions.length}টা)</button>`).join('');
-    app.innerHTML = `
-      ${header('লাইব্রেরি থেকে বাছো')}
-      <div class="card">
-        <h2>${escapeHtml(courseTitle)} — কোন চ্যাপ্টার?</h2>
-        ${rows || `<div class="empty-state">এই কোর্সে এখনো কোনো চ্যাপ্টার নেই।</div>`}
-      </div>
-      <div class="center"><a class="link-back" onclick="go('libraryPicker',{step:'course', subjectVal:'${subjectVal}'})">← ফিরে যাও</a></div>
-      ${creditFooter()}
-    `;
-    return;
-  }
-}
-async function renderLibraryQuestionList(subjectVal, courseId, courseTitle, topicId){
-  let topics = window.__libTopics;
-  if(!topics){ topics = await getMasteryTopics(courseId); }
-  const topic = topics.find(t=> t.id === topicId);
-  if(!topic){ app.innerHTML = `${header()}<div class="card center">চ্যাপ্টার পাওয়া যায়নি।</div>`; return; }
-
-  const rows = topic.questions.map((q,i)=> `
-    <label class="bubble-opt" style="align-items:flex-start;">
-      <input type="checkbox" id="libq${i}" style="width:auto; margin:4px 8px 0 0;">
-      <div>
-        <div style="font-weight:600; font-size:14.5px;">${i+1}. ${escapeHtml(q.text)}</div>
-        <div class="meta">সঠিক: ${['ক','খ','গ','ঘ'][q.correct]}) ${escapeHtml(q.options[q.correct])}</div>
-      </div>
-    </label>
-  `).join('');
-
-  app.innerHTML = `
-    ${header('লাইব্রেরি থেকে বাছো')}
-    <div class="card">
-      <h2>${escapeHtml(topic.title)}</h2>
-      <p class="hint">যেগুলো এই পরীক্ষায় যোগ করতে চাও, টিক দাও।</p>
-      ${rows}
-      <button class="btn btn-primary btn-block" style="margin-top:12px;" onclick="addSelectedLibraryQuestions()">✅ নির্বাচিত প্রশ্নগুলো পরীক্ষায় যোগ করো</button>
+      <button class="info-btn" onclick="closeLibraryPanel()">✕ বন্ধ</button>
     </div>
-    <div class="center"><a class="link-back" onclick="go('libraryPicker',{step:'chapter', subjectVal:'${subjectVal}', courseId:'${courseId}', courseTitle:'${escapeHtml(courseTitle)}'})">← ফিরে যাও</a></div>
-    ${creditFooter()}
-  `;
-  window.__libCurrentTopic = topic;
+    <div class="lib-panel-body" id="libBody"></div>
+    <div class="lib-panel-foot">এই পরীক্ষায় এখন মোট <b id="libCount">0</b>টা প্রশ্ন আছে</div>`;
+  document.body.appendChild(p);
+  document.body.classList.add('lib-open');
+  window.__lib = { step:'subject', courses:null, subjects:[], subjectVal:'', courseList:[], course:null, topics:[], topic:null };
+  libUpdateCount();
+  libRender();
+};
+window.closeLibraryPanel = function(){
+  const p = document.getElementById('libPanel');
+  if(p) p.remove();
+  document.body.classList.remove('lib-open');
+  window.__lib = null;
+};
+function libUpdateCount(){
+  const el = document.getElementById('libCount');
+  if(el) el.textContent = draftQuestions.filter(q=> q.text && q.text.trim()).length;
 }
-window.addSelectedLibraryQuestions = function(){
-  const topic = window.__libCurrentTopic;
-  let addedCount = 0;
-  topic.questions.forEach((q,i)=>{
+function libBackBtn(){
+  return `<button class="btn btn-outline" style="padding:7px 12px; font-size:12.5px; margin-bottom:10px;" onclick="libBack()">← পেছনে</button>`;
+}
+window.libBack = function(){
+  const L = window.__lib; if(!L) return;
+  if(L.step==='questions') L.step='chapter';
+  else if(L.step==='chapter') L.step='course';
+  else if(L.step==='course') L.step='subject';
+  libRender();
+};
+async function libRender(){
+  const L = window.__lib;
+  const body = document.getElementById('libBody');
+  const crumb = document.getElementById('libCrumb');
+  if(!L || !body) return;
+
+  if(L.step==='subject'){
+    crumb.textContent = 'বিষয় বাছো';
+    if(!L.courses){
+      body.innerHTML = `<div class="empty-state">লোড হচ্ছে...</div>`;
+      const courses = await getMasteryCourses();
+      if(window.__lib !== L || !document.getElementById('libBody')) return;
+      L.courses = courses;
+      L.subjects = [...new Set(courses.map(c=> c.subject))];
+    }
+    body.innerHTML = L.subjects.length
+      ? L.subjects.map((sub,i)=> `<button class="btn btn-primary btn-block" style="margin-bottom:8px;" onclick="libPickSubject(${i})">${escapeHtml(sub)}</button>`).join('')
+      : `<div class="empty-state">Mastery-তে এখনো কোনো কোর্স/চ্যাপ্টার যোগ করা হয়নি — আগে ওখানে (বা import_to_app.py দিয়ে) প্রশ্ন যোগ করো।</div>`;
+    return;
+  }
+
+  if(L.step==='course'){
+    crumb.textContent = L.subjectVal;
+    body.innerHTML = libBackBtn() + (L.courseList.map((c,i)=> `<button class="btn btn-primary btn-block" style="margin-bottom:8px;" onclick="libPickCourse(${i})">${escapeHtml(c.title)}</button>`).join('') || `<div class="empty-state">কোনো কোর্স নেই।</div>`);
+    return;
+  }
+
+  if(L.step==='chapter'){
+    crumb.textContent = L.subjectVal + ' › ' + L.course.title;
+    body.innerHTML = libBackBtn() + (L.topics.map((t,i)=> `<button class="btn btn-primary btn-block" style="margin-bottom:8px; text-align:start; justify-content:flex-start;" onclick="libPickTopic(${i})">${t.order}. ${escapeHtml(t.title)} (${t.questions.length}টা)</button>`).join('') || `<div class="empty-state">এই কোর্সে এখনো কোনো চ্যাপ্টার নেই।</div>`);
+    return;
+  }
+
+  if(L.step==='questions'){
+    const topic = L.topic;
+    crumb.textContent = L.course.title + ' › ' + topic.title;
+    const already = new Set(draftQuestions.map(d=> (d.text||'').trim()));
+    const rows = topic.questions.map((q,i)=>{
+      const dup = already.has((q.text||'').trim());
+      return `<label class="lib-q ${dup?'dup':''}">
+        <input type="checkbox" id="libq${i}" ${dup?'disabled':''}>
+        <div>
+          <div class="lib-q-text">${i+1}. ${escapeHtml(q.text)}</div>
+          <div class="meta">সঠিক: ${['ক','খ','গ','ঘ'][q.correct]}) ${escapeHtml(q.options[q.correct])}${dup?' · ✓ যোগ করা আছে':''}</div>
+        </div>
+      </label>`;
+    }).join('');
+    body.innerHTML = libBackBtn() + `
+      <div class="lib-actions">
+        <button class="btn btn-outline" onclick="libToggleAll()">☑️ সব বাছো</button>
+        <button class="btn btn-primary" onclick="libAddSelected()">✅ পরীক্ষায় যোগ করো</button>
+      </div>
+      ${rows || `<div class="empty-state">এই চ্যাপ্টারে কোনো প্রশ্ন নেই।</div>`}`;
+    renderAllMath(body);
+    return;
+  }
+}
+window.libPickSubject = function(i){
+  const L = window.__lib; if(!L) return;
+  L.subjectVal = L.subjects[i];
+  L.courseList = L.courses.filter(c=> c.subject === L.subjectVal);
+  L.step = 'course';
+  libRender();
+};
+window.libPickCourse = async function(i){
+  const L = window.__lib; if(!L) return;
+  L.course = L.courseList[i];
+  L.step = 'chapter';
+  const body = document.getElementById('libBody');
+  if(body) body.innerHTML = `<div class="empty-state">লোড হচ্ছে...</div>`;
+  const topics = await getMasteryTopics(L.course.id);
+  if(window.__lib !== L) return;
+  topics.sort((a,b)=> a.order - b.order);
+  L.topics = topics;
+  libRender();
+};
+window.libPickTopic = function(i){
+  const L = window.__lib; if(!L) return;
+  L.topic = L.topics[i];
+  L.step = 'questions';
+  libRender();
+};
+window.libToggleAll = function(){
+  const L = window.__lib; if(!L || !L.topic) return;
+  const boxes = L.topic.questions.map((q,i)=> document.getElementById('libq'+i)).filter(cb=> cb && !cb.disabled);
+  const allOn = boxes.length && boxes.every(cb=> cb.checked);
+  boxes.forEach(cb=> cb.checked = !allOn);
+};
+window.libAddSelected = function(){
+  const L = window.__lib; if(!L || !L.topic) return;
+  let added = 0;
+  L.topic.questions.forEach((q,i)=>{
     const cb = document.getElementById('libq'+i);
-    if(cb && cb.checked){
-      // draftQuestions-এর প্রথম ফাঁকা প্রশ্নটা থাকলে সেটা replace করো, নাহলে নতুন যোগ করো
-      const blankIdx = draftQuestions.findIndex(dq=> !dq.text.trim());
+    if(cb && cb.checked && !cb.disabled){
       const newQ = { text: q.text, tag: '', options: [...q.options], correct: q.correct };
-      if(blankIdx !== -1 && draftQuestions.length===1){ draftQuestions[blankIdx] = newQ; }
-      else { draftQuestions.push(newQ); }
-      addedCount++;
+      const blankIdx = draftQuestions.findIndex(dq=> !(dq.text||'').trim() && dq.options.every(o=> !(o||'').trim()));
+      if(blankIdx !== -1) draftQuestions[blankIdx] = newQ; else draftQuestions.push(newQ);
+      added++;
     }
   });
-  toast(addedCount + 'টা প্রশ্ন যোগ হয়েছে');
-  go('teacherNewExam', { editingExam: window.__editingExam });
-}
+  if(!added){ toast('আগে অন্তত একটা প্রশ্নে টিক দাও'); return; }
+  renderQList();        // পরীক্ষার নাম/বিষয়/সময় ঠিক থাকে, শুধু প্রশ্নের তালিকা আপডেট হয়
+  libUpdateCount();
+  libRender();          // যোগ হওয়া প্রশ্নগুলো "✓ যোগ করা আছে" দেখাবে
+  toast(added + 'টা প্রশ্ন যোগ হয়েছে ✅');
+};
 
 window.importBulk = function(){
   const raw = document.getElementById('bulkText').value;
@@ -2828,11 +2904,24 @@ window.importMasteryBulk = async function(){
   const existing = await getMasteryTopics(courseId);
   let nextOrder = existing.length + 1;
   toast(`${parsedTopics.length}টা টপিক সেভ হচ্ছে...`);
+  // Sheets-এর এক cell-এ ৫০,০০০ অক্ষরের বেশি ধরে না, তাই বড় টপিক নিজে নিজে "অংশ ১, অংশ ২..." ভাগ হয়
+  let savedCount = 0, failedCount = 0;
   for(const t of parsedTopics){
-    await saveMasteryTopicRemote(courseId, nextOrder, t.title, t.questions, MASTERY_PASS_PERCENT);
-    nextOrder++;
+    const chunks = [];
+    let cur = [], len = 0;
+    for(const q of t.questions){
+      const l = JSON.stringify(q).length + 45;
+      if(cur.length && len + l > 40000){ chunks.push(cur); cur = []; len = 0; }
+      cur.push(q); len += l;
+    }
+    if(cur.length) chunks.push(cur);
+    for(let ci=0; ci<chunks.length; ci++){
+      const title = chunks.length === 1 ? t.title : `${t.title} (অংশ ${ci+1})`;
+      const res = await saveMasteryTopicRemote(courseId, nextOrder, title, chunks[ci], MASTERY_PASS_PERCENT);
+      if(res){ savedCount++; nextOrder++; } else { failedCount++; }
+    }
   }
-  toast(`${parsedTopics.length}টা টপিক সেভ হয়েছে ✅`);
+  toast(failedCount ? `${savedCount}টা সেভ হয়েছে, ${failedCount}টা ব্যর্থ ⚠️` : `${savedCount}টা টপিক সেভ হয়েছে ✅`);
   go('masteryManageCourse');
 }
 
@@ -3157,11 +3246,16 @@ async function awardCouponRemote(slug, examCode, percent){
   const res = await postToScript('awardCoupon', { slug, examCode, percent });
   return res;
 }
+// সার্ভার থেকে balance null/NaN এলে (JSON-এ NaN হয়ে যায় null) ইতিহাস থেকে হিসাব করে নেয়
+function safeCouponBalance(data){
+  if(data && data.balance !== null && data.balance !== undefined && isFinite(Number(data.balance))) return Number(data.balance);
+  return ((data && data.history) || []).filter(h=> h.status !== 'settled').reduce((a,h)=> a + (Number(h.amount)||0), 0);
+}
 async function getCouponBalanceRemote(slug){
   try{
     const r = await fetch(`${SCRIPT_URL}?action=getCouponBalance&slug=${encodeURIComponent(slug)}`);
     const json = await r.json();
-    if(json.status==='success') return json;
+    if(json.status==='success'){ json.balance = safeCouponBalance(json); return json; }
   } catch(e){}
   return { balance: 0, history: [] };
 }
@@ -4098,6 +4192,10 @@ async function renderStudentDashboard(){
     `;
     const res = await postToScript('getStudentDashboard', { slug });
     if(res && res.status === 'success'){
+      if(res.couponBalance === null || res.couponBalance === undefined || !isFinite(Number(res.couponBalance))){
+        const cb = await getCouponBalanceRemote(slug);
+        res.couponBalance = cb.balance;
+      }
       window.__studentDashCache = { ...res, slug };
     } else {
       window.__studentDashCache = {
@@ -5169,10 +5267,6 @@ function render(){
   else if(s==='writtenSolve') renderWrittenSolve(state.exam, state.slug, state.name);
   else if(s==='writtenResult') renderWrittenResult(state.earnedMarks, state.totalMarks, state.couponAmount, state.title);
   else if(s==='doubtEntry') renderDoubtEntry();
-  else if(s==='libraryPicker'){
-    if(state.step==='questions') renderLibraryQuestionList(state.subjectVal, state.courseId, state.courseTitle, state.topicId);
-    else renderLibraryPicker(state.step, state.subjectVal, state.courseId, state.courseTitle);
-  }
 
   if(deferredPwaPrompt){
     setTimeout(() => {
