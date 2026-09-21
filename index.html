@@ -4,23 +4,34 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <title>পরীক্ষার খাতা</title>
+<meta name="theme-color" content="#1F2A44">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="পরীক্ষার খাতা">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Noto+Sans+Bengali:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<!-- KaTeX for Math & Science LaTeX equations -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/mhchem.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" onload="if(typeof renderAllMath==='function')renderAllMath();"></script>
 <style>
   :root{
-    --paper:#F2F6FB; --paper-edge:#E7EEF6; --rule:#C9D8E8; --margin-red:#BF3A2C;
+    --paper:#F5F7FB; --paper-edge:#E3E8F1; --rule:#E3E8F1; --margin-red:#BF3A2C;
     --ink:#1F2A44; --pencil:#5B6472; --gold:#D9A441; --green:#2F7D5A; --red:#BF3A2C;
     --card-shadow: 0 2px 0 rgba(31,42,68,0.06), 0 8px 24px -12px rgba(31,42,68,0.18);
-    --font-display:'Kalam', cursive; --font-body:'Noto Sans Bengali','Inter',sans-serif; --font-mono:'JetBrains Mono', monospace;
+    --font-display:'Noto Sans Bengali','Inter',sans-serif; --font-body:'Noto Sans Bengali','Inter',sans-serif; --font-mono:'JetBrains Mono', monospace;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   body{
     font-family:var(--font-body); color:var(--ink);
-    background: repeating-linear-gradient(var(--paper) 0px, var(--paper) 31px, var(--rule) 32px), var(--paper);
+    background: linear-gradient(180deg, #F8FAFD 0%, #EEF2F8 100%);
     min-height:100vh; position:relative; padding:0 0 40px 0;
   }
-  body::before{ content:""; position:fixed; top:0; bottom:0; left:44px; width:2px; background:var(--margin-red); opacity:0.55; z-index:0; }
   body::after{ content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
     background:
       radial-gradient(480px 320px at 88% -6%, rgba(217,164,65,0.14), transparent 70%),
@@ -34,9 +45,8 @@
   .feature-card .ic{ font-size:26px; display:block; margin-bottom:6px; }
   .feature-card .lbl{ font-size:13px; font-weight:600; color:var(--ink); line-height:1.3; }
   .admin-link{ display:inline-flex; align-items:center; gap:5px; font-size:12.5px; color:var(--pencil); text-decoration:underline; cursor:pointer; margin-top:14px; }
-  .holes{ position:fixed; left:14px; top:0; bottom:0; display:flex; flex-direction:column; justify-content:space-evenly; z-index:0; pointer-events:none; }
-  .holes span{ width:12px;height:12px;border-radius:50%; background:var(--paper-edge); box-shadow: inset 0 1px 3px rgba(31,42,68,0.25); }
-  .wrap{ position:relative; z-index:1; max-width:640px; margin:0 auto; padding:28px 20px 20px 64px; }
+  .holes{ display:none; }
+  .wrap{ position:relative; z-index:1; max-width:640px; margin:0 auto; padding:28px 20px 20px 20px; }
   header.top{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:22px; flex-wrap:wrap; }
   .logo{ font-family:var(--font-display); font-weight:700; font-size:30px; color:var(--ink); display:flex; align-items:center; gap:8px; }
   .logo .dot{ color:var(--margin-red); }
@@ -133,9 +143,172 @@
   .review-ans.wrong{ color:var(--red); }
   .detail-wrap{ display:none; margin-top:10px; padding-top:10px; border-top:1px dashed var(--rule); }
   .detail-wrap.open{ display:block; }
-  ::selection{ background:rgba(217,164,65,0.35); }
-  @media (max-width:480px){ .wrap{ padding:20px 14px 20px 50px; } body::before{ left:34px; } .holes{ left:10px; } }
+  /* === NEXT-LEVEL STYLES: DASHBOARD & BOSS BATTLE === */
+  .hero-card{
+    background: linear-gradient(135deg, #1F2A44 0%, #2A3B5C 100%);
+    color: #fff; border-radius: 16px; padding: 22px 20px; margin-bottom: 18px;
+    box-shadow: 0 10px 30px -10px rgba(31,42,68,0.4); position: relative; overflow: hidden;
+  }
+  .hero-card::after{
+    content:""; position: absolute; right: -20px; top: -30px; width: 140px; height: 140px;
+    background: radial-gradient(circle, rgba(217,164,65,0.25) 0%, transparent 70%); pointer-events:none;
+  }
+  .hero-profile-row{ display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+  .hero-avatar{
+    width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--gold), #f39c12);
+    display: flex; align-items: center; justify-content: center; font-size: 24px; color: #fff;
+    box-shadow: 0 4px 12px rgba(217,164,65,0.4); border: 2px solid rgba(255,255,255,0.2);
+  }
+  .hero-stats-row{
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-top: 16px;
+    padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.12);
+  }
+  .stat-badge{
+    background: rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 10px; text-align: center;
+    border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(4px);
+  }
+  .stat-badge .stat-val{ font-family: var(--font-mono); font-size: 16px; font-weight: 700; color: #fff; display: flex; align-items: center; justify-content: center; gap: 4px; }
+  .stat-badge .stat-lbl{ font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 2px; }
+  .streak-fire{ animation: fireGlow 1.2s infinite alternate ease-in-out; }
+  @keyframes fireGlow{ 0%{ transform: scale(1); filter: drop-shadow(0 0 2px #e67e22); } 100%{ transform: scale(1.15); filter: drop-shadow(0 0 8px #f39c12); } }
+  
+  .widget-grid{ display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 18px; }
+  .widget{
+    background: #fff; border-radius: 14px; border: 1.5px solid var(--paper-edge); padding: 18px;
+    box-shadow: 0 4px 16px -6px rgba(31,42,68,0.08); transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .widget:hover{ box-shadow: 0 8px 24px -8px rgba(31,42,68,0.15); }
+  .widget-header{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .widget-title{ font-size: 16px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px; margin: 0; }
+  .widget-tag{ font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 12px; }
+  .tag-green{ background: #E8F6EF; color: var(--green); }
+  .tag-gold{ background: #FEF6E8; color: #9B6A15; }
+  .tag-blue{ background: #EDF3FC; color: #2B5797; }
+  .tag-red{ background: #FDEEEE; color: var(--red); }
+  
+  .tab-group{ display: flex; background: #EEF2F8; border-radius: 10px; padding: 4px; gap: 4px; margin-bottom: 18px; }
+  .tab-btn{
+    flex: 1; padding: 9px 12px; border: none; background: transparent; border-radius: 8px;
+    font-family: var(--font-body); font-size: 13.5px; font-weight: 600; color: var(--pencil);
+    cursor: pointer; transition: all 0.15s ease; text-align: center;
+  }
+  .tab-btn.active{ background: #fff; color: var(--ink); box-shadow: 0 2px 6px rgba(31,42,68,0.12); }
+
+  /* Boss Battle Arena Styles */
+  .battle-stage{
+    background: linear-gradient(180deg, #151C2C 0%, #1F2A44 100%);
+    border-radius: 18px; color: #fff; padding: 22px 18px; margin-bottom: 18px;
+    box-shadow: 0 12px 36px -12px rgba(15,20,35,0.6); position: relative; overflow: hidden;
+  }
+  .battle-header-bar{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .monster-box{ text-align: center; position: relative; padding: 10px 0 16px 0; }
+  .monster-avatar{
+    width: 96px; height: 96px; margin: 0 auto 10px auto; border-radius: 50%;
+    background: radial-gradient(circle, #34495e 0%, #1a252f 100%);
+    border: 3px solid var(--gold); display: flex; align-items: center; justify-content: center;
+    font-size: 48px; box-shadow: 0 0 20px rgba(217,164,65,0.3); transition: transform 0.1s ease;
+  }
+  .monster-speech{
+    display: inline-block; background: rgba(255,255,255,0.12); border-radius: 12px;
+    padding: 6px 14px; font-size: 13px; color: #F5F7FB; margin-bottom: 12px;
+    border: 1px solid rgba(255,255,255,0.15); max-width: 90%;
+  }
+  .hp-bar-wrap{
+    background: rgba(0,0,0,0.4); border-radius: 12px; height: 16px; width: 100%; max-width: 320px;
+    margin: 0 auto; overflow: hidden; border: 1.5px solid rgba(255,255,255,0.15); position: relative;
+  }
+  .hp-bar-fill{
+    height: 100%; border-radius: 10px; transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.4s ease;
+    background: linear-gradient(90deg, #2ecc71, #27ae60);
+  }
+  .hp-bar-fill.mid{ background: linear-gradient(90deg, #f39c12, #e67e22); }
+  .hp-bar-fill.low{ background: linear-gradient(90deg, #e74c3c, #c0392b); }
+  .hp-label{ font-family: var(--font-mono); font-size: 12px; color: #fff; margin-top: 6px; font-weight: 700; }
+  
+  @keyframes monsterHitShake {
+    0% { transform: translate(1px, 1px) rotate(0deg); }
+    20% { transform: translate(-3px, 0px) rotate(1deg); }
+    40% { transform: translate(3px, 2px) rotate(0deg); }
+    60% { transform: translate(-3px, 1px) rotate(0deg); }
+    80% { transform: translate(-1px, -1px) rotate(1deg); }
+    100% { transform: translate(0, 0) rotate(0deg); }
+  }
+  .shake-monster{ animation: monsterHitShake 0.4s ease-in-out; filter: brightness(1.3) drop-shadow(0 0 12px #e74c3c); }
+  
+  @keyframes floatDamage {
+    0% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    50% { opacity: 1; transform: translate(-50%, -28px) scale(1.3); }
+    100% { opacity: 0; transform: translate(-50%, -50px) scale(1); }
+  }
+  .damage-popup {
+    position: absolute; top: 25%; left: 50%; transform: translateX(-50%);
+    font-family: var(--font-mono); font-size: 26px; font-weight: 800; color: #ff4757;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.6); pointer-events: none;
+    animation: floatDamage 0.75s forwards ease-out; z-index: 30;
+  }
+  .damage-popup.crit { color: #ffa502; font-size: 32px; text-shadow: 0 0 16px rgba(255,165,2,0.8); }
+
+  .combo-streak{
+    display: inline-flex; align-items: center; gap: 4px; background: linear-gradient(135deg, #e67e22, #d35400);
+    color: #fff; padding: 4px 10px; border-radius: 14px; font-size: 12px; font-weight: 700;
+    box-shadow: 0 2px 8px rgba(230,126,34,0.4);
+  }
+  .audio-toggle-btn{
+    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+    color: #fff; border-radius: 20px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+  }
+  .world-card{
+    background: #FCFDFE; border: 1.5px solid var(--paper-edge); border-radius: 14px;
+    padding: 16px 14px; margin-bottom: 12px; cursor: pointer; transition: all 0.15s ease;
+  }
+  .world-card:hover{ border-color: var(--gold); transform: translateY(-2px); box-shadow: 0 6px 18px -4px rgba(31,42,68,0.15); }
+  .boss-unlocked-glow{ border-color: var(--gold) !important; box-shadow: 0 0 16px rgba(217,164,65,0.3) !important; }
+
+  /* KaTeX mathematical and chemical equation styles */
+  .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; margin: 0.6em 0; }
+  .katex { font-size: 1.06em; line-height: 1.2; }
+
+  /* PWA installation banner */
+  .pwa-banner {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: linear-gradient(135deg, #1F2A44, #2c3e66); color: #fff;
+    padding: 12px 16px; border-radius: 12px; margin-bottom: 16px;
+    box-shadow: 0 4px 16px rgba(31,42,68,0.22); border: 1px solid rgba(255,255,255,0.15);
+  }
+  .pwa-banner-text { font-size: 13px; font-weight: 500; line-height: 1.4; }
+  .pwa-banner-text strong { color: #fff; font-size: 13.5px; }
+  .pwa-btn {
+    background: var(--gold); color: #3a2a06; font-size: 12px; font-weight: 700;
+    padding: 7px 14px; border-radius: 20px; border: none; cursor: pointer; white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: transform 0.1s ease;
+  }
+  .pwa-btn:hover { transform: scale(1.03); }
+
+  /* Voice Doubt UI */
+  .voice-record-btn {
+    display: inline-flex; align-items: center; gap: 6px; background: #EEF2F8;
+    color: var(--ink); border: 1.5px solid var(--paper-edge); border-radius: 20px;
+    padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .voice-record-btn:hover { background: #E2E8F0; }
+  .voice-record-btn.recording {
+    background: #ff4757; color: #fff; border-color: #ff4757;
+    animation: voicePulse 1.2s infinite ease-in-out;
+  }
+  @keyframes voicePulse {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,71,87,0.7); }
+    70% { transform: scale(1.05); box-shadow: 0 0 0 8px rgba(255,71,87,0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,71,87,0); }
+  }
+  .read-aloud-btn {
+    display: inline-flex; align-items: center; gap: 4px; background: rgba(31,42,68,0.06);
+    border: 1px solid var(--paper-edge); border-radius: 14px; padding: 4px 10px;
+    font-size: 12px; font-weight: 600; color: var(--ink); cursor: pointer; transition: background 0.15s ease;
+  }
+  .read-aloud-btn:hover { background: rgba(31,42,68,0.12); }
 </style>
+
 </head>
 <body>
 <div class="holes" id="holes"></div>
@@ -259,6 +432,175 @@ async function getRemoteResults(code) {
   return [];
 }
 
+function renderAllMath(elem){
+  const target = elem || document.getElementById('app') || document.body;
+  if(window.renderMathInElement && target){
+    try{
+      renderMathInElement(target, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false },
+          { left: '\\(', right: '\\)', display: false },
+          { left: '\\[', right: '\\]', display: true }
+        ],
+        ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+        throwOnError: false
+      });
+    }catch(e){
+      console.warn('KaTeX render error:', e);
+    }
+  }
+}
+
+// ================= PWA INSTALLATION & SERVICE WORKER =================
+let deferredPwaPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPwaPrompt = e;
+  document.querySelectorAll('.pwa-install-banner').forEach(el => el.style.display = 'flex');
+  const hBtn = document.getElementById('headerInstallBtn');
+  if(hBtn) hBtn.style.display = 'inline-flex';
+});
+
+window.installPwa = async function(){
+  if(deferredPwaPrompt){
+    deferredPwaPrompt.prompt();
+    const { outcome } = await deferredPwaPrompt.userChoice;
+    if(outcome === 'accepted'){
+      toast('অ্যাপ সফলভাবে ইনস্টল হয়েছে! 🎉');
+      document.querySelectorAll('.pwa-install-banner').forEach(el => el.style.display = 'none');
+      const hBtn = document.getElementById('headerInstallBtn');
+      if(hBtn) hBtn.style.display = 'none';
+    }
+    deferredPwaPrompt = null;
+    return;
+  }
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  if(isIOS){
+    alert('আইফোনে ইনস্টল করতে:\n১. Safari ব্রাউজারের নিচে "Share" বাটনে চাপুন।\n২. নিচে স্ক্রোল করে "Add to Home Screen" বেছে নিন।');
+  } else {
+    toast('ইনস্টল করতে ব্রাউজারের থ্রি-ডট (⋮) মেন্যু থেকে "Install app" বা "Add to Home Screen" চাপুন');
+  }
+};
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      console.log('PWA ServiceWorker registered with scope:', reg.scope);
+    }).catch(err => {
+      console.log('PWA ServiceWorker not registered:', err);
+    });
+  });
+}
+
+// ================= VOICE DOUBT & SPEECH SYNTHESIS =================
+let recognition = null;
+let isRecordingVoice = false;
+
+window.toggleVoiceInput = function(){
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SpeechRec){
+    toast('আপনার ব্রাউজারে ভয়েস টাইপিং সাপোর্ট নেই (Google Chrome ব্যবহার করুন)');
+    return;
+  }
+  const btn = document.getElementById('voiceInputBtn');
+  const txtArea = document.getElementById('doubtText');
+  if(!txtArea) return;
+
+  if(isRecordingVoice && recognition){
+    recognition.stop();
+    isRecordingVoice = false;
+    if(btn){
+      btn.classList.remove('recording');
+      btn.innerHTML = '🎙️ মুখে বলো (বাংলায়)';
+    }
+    return;
+  }
+
+  try{
+    recognition = new SpeechRec();
+    recognition.lang = 'bn-BD';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = function(){
+      isRecordingVoice = true;
+      if(btn){
+        btn.classList.add('recording');
+        btn.innerHTML = '🔴 শুনছি... কথা বলুন';
+      }
+      toast('কথা বলুন (বাংলায়)...');
+    };
+
+    recognition.onresult = function(event){
+      if(event.results && event.results[0] && event.results[0][0]){
+        const transcript = event.results[0][0].transcript;
+        if(transcript){
+          txtArea.value = (txtArea.value ? txtArea.value + ' ' : '') + transcript;
+          toast('ভয়েস যুক্ত হয়েছে!');
+        }
+      }
+    };
+
+    recognition.onerror = function(event){
+      console.warn('SpeechRec error:', event.error);
+      isRecordingVoice = false;
+      if(btn){
+        btn.classList.remove('recording');
+        btn.innerHTML = '🎙️ মুখে বলো (বাংলায়)';
+      }
+      if(event.error === 'not-allowed'){
+        toast('মাইক্রোফোন পারমিশন দেওয়া হয়নি');
+      } else {
+        toast('ভয়েস বুঝতে সমস্যা হয়েছে, আবার চেষ্টা করো');
+      }
+    };
+
+    recognition.onend = function(){
+      isRecordingVoice = false;
+      if(btn){
+        btn.classList.remove('recording');
+        btn.innerHTML = '🎙️ মুখে বলো (বাংলায়)';
+      }
+    };
+
+    recognition.start();
+  }catch(err){
+    console.error('Speech recognition error:', err);
+    isRecordingVoice = false;
+    if(btn){
+      btn.classList.remove('recording');
+      btn.innerHTML = '🎙️ মুখে বলো (বাংলায়)';
+    }
+  }
+};
+
+window.toggleReadAloud = function(text){
+  if(!('speechSynthesis' in window)){
+    toast('আপনার ব্রাউজারে স্পিচ সুবিধা নেই');
+    return;
+  }
+  if(window.speechSynthesis.speaking){
+    window.speechSynthesis.cancel();
+    toast('পড়া থামানো হয়েছে');
+    return;
+  }
+  const cleanText = (text || '').replace(/<[^>]*>/g, '').replace(/[*_#`$]/g, '').trim();
+  if(!cleanText) return;
+
+  const utter = new SpeechSynthesisUtterance(cleanText);
+  const voices = window.speechSynthesis.getVoices();
+  const bnVoice = voices.find(v => v.lang && v.lang.toLowerCase().includes('bn'));
+  if(bnVoice) utter.voice = bnVoice;
+  utter.rate = 0.95;
+
+  utter.onend = () => { toast('পড়া শেষ হয়েছে'); };
+  utter.onerror = () => { toast('পড়তে সমস্যা হয়েছে'); };
+
+  window.speechSynthesis.speak(utter);
+  toast('🔊 উত্তর পড়ে শোনানো হচ্ছে...');
+};
+
 function genCode(){ const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let c=''; for(let i=0;i<5;i++) c += chars[Math.floor(Math.random()*chars.length)]; return c; }
 function genId(prefix){ return prefix + '_' + Date.now() + '_' + Math.floor(Math.random()*10000); }
 function slugify(name){ return name.trim().toLowerCase().replace(/[^a-z0-9\u0980-\u09FF]+/g,'_').slice(0,40) || 'student'; }
@@ -293,20 +635,57 @@ async function postToScript(action, params){
     return null;
   }
 }
+function formatDate(v){ if(!v) return ''; const d = new Date(v); return isNaN(d.getTime()) ? String(v) : d.toLocaleString('bn-BD'); }
 function fmtTime(totalSec){ const m = Math.floor(totalSec/60), s = totalSec%60; return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'); }
 
-let state = { screen: 'landing' };
+function getLoggedStudent(){
+  try{
+    const raw = localStorage.getItem('tuition_logged_student');
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function setLoggedStudent(stud){
+  try{ localStorage.setItem('tuition_logged_student', JSON.stringify(stud)); }catch(e){}
+}
+function clearLoggedStudent(){
+  try{ localStorage.removeItem('tuition_logged_student'); }catch(e){}
+}
+window.studentLogout = function(){
+  clearLoggedStudent();
+  toast('লগআউট সম্পন্ন হয়েছে');
+  go('landing');
+};
+
+let state = { screen: getLoggedStudent() ? 'studentDashboard' : 'landing' };
 let timerInterval = null;
 function go(screen, data={}){ if(timerInterval){ clearInterval(timerInterval); timerInterval = null; } state = { screen, ...data }; render(); }
-function header(subtitle){ return `
+
+function header(subtitle){
+  const stud = getLoggedStudent();
+  const studChip = stud ? `
+    <div style="display:flex; align-items:center; gap:6px; margin-top:4px; flex-wrap:wrap;">
+      <span style="background:rgba(31,42,68,0.08); padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600; color:var(--ink);">🧑‍🎓 ${escapeHtml(stud.name)}</span>
+      <span style="font-size:11px; font-family:var(--font-mono); color:var(--pencil); background:#EEF2F8; padding:2px 6px; border-radius:6px;">#${stud.studentCode||''}</span>
+      <button class="info-btn" onclick="go('studentDashboard')" style="padding:2px 8px; font-size:11.5px;">🏠 ড্যাশবোর্ড</button>
+      <button class="info-btn" onclick="studentLogout()" style="padding:2px 8px; font-size:11.5px; color:var(--red);">🚪 লগআউট</button>
+    </div>` : '';
+
+  return `
     <header class="top">
-      <div class="logo"><img src="${LOGO_DATA_URI}" class="brand-logo" alt="logo"> পরীক্ষার <span class="dot">খাতা</span></div>
-      <div style="display:flex; align-items:center; gap:10px;">
+      <div>
+        <div class="logo" style="cursor:pointer;" onclick="go(getLoggedStudent()?'studentDashboard':'landing')"><img src="${LOGO_DATA_URI}" class="brand-logo" alt="logo"> পরীক্ষার <span class="dot">খাতা</span></div>
+        ${studChip}
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button class="info-btn" id="headerInstallBtn" onclick="installPwa()" title="অ্যাপ হিসেবে ফোনে ইনস্টল করুন" style="padding:3px 9px; font-size:11.5px; background:var(--gold); color:#3a2a06; font-weight:700; border:none; border-radius:6px; cursor:pointer;">📲 Install</button>
         <div class="tagline">${subtitle || 'টিউশনের অনলাইন পরীক্ষা'}</div>
         <button class="info-btn" onclick="toggleAbout()" title="নির্মাতার সম্পর্কে">ℹ️ <span class="info-label">Creator</span></button>
       </div>
-    </header>`; }
+    </header>`;
+}
+
 function creditFooter(){ return `<div class="credit" onclick="toggleAbout()" style="cursor:pointer;">${CREATOR_CREDIT} · বিস্তারিত জানতে চাপো</div>`; }
+
 window.toggleAbout = function(){
   let ov = document.getElementById('aboutOverlay');
   if(ov){ ov.remove(); return; }
@@ -326,34 +705,64 @@ window.toggleAbout = function(){
     </div>
   `;
   document.body.appendChild(ov);
-}
+};
 
 function renderLanding(){
+  const stud = getLoggedStudent();
+  let studentCardHtml = '';
+  if(stud){
+    studentCardHtml = `
+      <div class="hero-card" style="margin-bottom:16px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+          <div>
+            <div style="font-size:12.5px; color:rgba(255,255,255,0.75);">স্বাগতম ফিরে আসার জন্য 👋</div>
+            <h2 style="color:#fff; margin:2px 0 6px 0; font-size:22px;">${escapeHtml(stud.name)}</h2>
+            <div style="font-size:12px; color:rgba(255,255,255,0.85);">আইডি: <span style="font-family:var(--font-mono); font-weight:700; color:var(--gold);">${stud.studentCode||''}</span></div>
+          </div>
+          <div class="hero-avatar">🎓</div>
+        </div>
+        <button class="btn btn-gold btn-block" style="margin-top:14px; box-shadow:0 4px 14px rgba(0,0,0,0.25);" onclick="go('studentDashboard')">🚀 আমার ড্যাশবোর্ডে যাও</button>
+      </div>
+    `;
+  } else {
+    studentCardHtml = `
+      <div class="card center">
+        <h1>স্বাগতম! 👋</h1>
+        <p class="hint">পরীক্ষা দিতে চাইলে বা একাউন্টে ঢুকতে নিচের বাটনে যাও</p>
+        <button class="btn btn-gold btn-block" onclick="go('studentAuth')">🧑‍🎓 শিক্ষার্থী পোর্টাল (লগইন / নতুন একাউন্ট)</button>
+        <div class="admin-link" onclick="go('teacherGate')">🛠️ শিক্ষক/Admin হলে এখানে যাও</div>
+      </div>
+    `;
+  }
+
   app.innerHTML = `
     ${header()}
-    <div class="card center">
-      <h1>স্বাগতম! 👋</h1>
-      <p class="hint">পরীক্ষা দিতে চাইলে নিচের বাটনে যাও, অথবা আরও অপশন থেকে বেছে নাও।</p>
-      <button class="btn btn-gold btn-block" onclick="go('studentEntry')">🧑‍🎓 Student (Private) — পরীক্ষা শুরু করো</button>
-      <div class="admin-link" onclick="go('teacherGate')">🛠️ শিক্ষক/Admin হলে এখানে যাও</div>
+    <div class="pwa-banner pwa-install-banner" style="display:none;">
+      <div class="pwa-banner-text">
+        <strong>📲 অ্যাপটি ফোনে ইনস্টল করো</strong><br>
+        <span style="opacity:0.85; font-size:12px;">হোম স্ক্রিন থেকে সরাসরি দ্রুত ওপেন ও অফলাইন পড়ার সুবিধা</span>
+      </div>
+      <button class="pwa-btn" onclick="installPwa()">ইনস্টল</button>
     </div>
+    ${studentCardHtml}
     <div class="card">
       <h3 style="margin-bottom:12px;">✨ আরও যা করতে পারো</h3>
       <div class="feature-grid">
         <div class="feature-card" onclick="go('practiceList')"><span class="ic">🎯</span><span class="lbl">Practice</span></div>
         <div class="feature-card" onclick="go('topicsSubject')"><span class="ic">📚</span><span class="lbl">গুরুত্বপূর্ণ Topics</span></div>
-        <div class="feature-card" onclick="go('doubtEntry')"><span class="ic">🤔</span><span class="lbl">Doubt জিজ্ঞেস করো</span></div>
+        <div class="feature-card" onclick="go(getLoggedStudent()?'studentDashboard':'studentAuth')"><span class="ic">📅</span><span class="lbl">উপস্থিতি নিশ্চিত করো</span></div>
         <div class="feature-card" onclick="go('faqList')"><span class="ic">❓</span><span class="lbl">সাধারণ জিজ্ঞাসা</span></div>
         <div class="feature-card" onclick="go('notesGate')"><span class="ic">📝</span><span class="lbl">ক্লাস নোট / স্লাইড</span></div>
-        <div class="feature-card" onclick="go('masteryEntry')"><span class="ic">📊</span><span class="lbl">আমার প্রোগ্রেস</span></div>
+        <div class="feature-card" onclick="go(getLoggedStudent()?'studentDashboard':'masteryEntry')"><span class="ic">📊</span><span class="lbl">আমার প্রোগ্রেস</span></div>
         <div class="feature-card" onclick="go('couponEntry')"><span class="ic">🎁</span><span class="lbl">Treat Coupon</span></div>
         <div class="feature-card" onclick="go('writtenEntry')"><span class="ic">✍️</span><span class="lbl">Written CQ পরীক্ষা</span></div>
-        <div class="feature-card" onclick="go('attendanceStudentEntry')"><span class="ic">📅</span><span class="lbl">উপস্থিতি নিশ্চিত করো</span></div>
+        <div class="feature-card" onclick="go('doubtEntry')"><span class="ic">🤔</span><span class="lbl">Doubt জিজ্ঞেস করো</span></div>
       </div>
     </div>
     ${creditFooter()}
   `;
 }
+
 
 // ================= DOUBT SOLVING (AI — RAG দিয়ে শিক্ষকের নোট থেকে উত্তর) =================
 const DOUBT_SUBJECTS = {
@@ -376,8 +785,11 @@ function renderDoubtEntry(){
         <option value="">— সব বিষয় —</option>
         ${subjectOptions}
       </select>
-      <label class="field-label">তোমার প্রশ্ন</label>
-      <textarea id="doubtText" style="min-height:120px;" placeholder="যেমন: লা-শাতেলিয়ার নীতি ব্যাখ্যা করো..."></textarea>
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:6px;">
+        <label class="field-label" style="margin-bottom:0;">তোমার প্রশ্ন (সমীকরণও লিখতে পারো যেমন: $E=mc^2$)</label>
+        <button type="button" class="voice-record-btn" id="voiceInputBtn" onclick="toggleVoiceInput()">🎙️ মুখে বলো (বাংলায়)</button>
+      </div>
+      <textarea id="doubtText" style="min-height:120px;" placeholder="যেমন: লা-শাতেলিয়ার নীতি ব্যাখ্যা করো... বা $x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}$ বা \ce{H2SO4}"></textarea>
       <button class="btn btn-primary btn-block" onclick="submitDoubt()">🤔 উত্তর জিজ্ঞেস করো</button>
       <div id="doubtAnswerArea" style="margin-top:14px;"></div>
       <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
@@ -394,11 +806,15 @@ window.submitDoubt = async function(){
   const res = await postToScript('aiSolveDoubt', { doubtText, subject });
   if(res && res.answer){
     areaEl.innerHTML = `
-      <div class="card" style="background:#FBFDFF;">
-        <h3 style="margin-bottom:10px;">🤖 উত্তর</h3>
-        <div style="white-space:pre-wrap; font-size:15px; line-height:1.7;">${linkifyText(res.answer)}</div>
+      <div class="card" style="background:#FBFDFF;" id="doubtAnswerCard">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+          <h3 style="margin:0;">🤖 উত্তর</h3>
+          <button class="read-aloud-btn" onclick="toggleReadAloud(document.getElementById('doubtAnswerContent').innerText)">🔊 বাংলায় পড়ে শোনাও</button>
+        </div>
+        <div id="doubtAnswerContent" style="white-space:pre-wrap; font-size:15px; line-height:1.7;">${linkifyText(res.answer)}</div>
       </div>
     `;
+    renderAllMath(document.getElementById('doubtAnswerCard'));
   } else {
     areaEl.innerHTML = `<div class="empty-state">উত্তর পাওয়া যায়নি, আবার চেষ্টা করো।</div>`;
   }
@@ -556,6 +972,10 @@ async function renderTeacherDashboard(){
       <div class="row" style="margin-top:10px;">
         <button class="btn btn-outline btn-block" onclick="go('masteryManage')">🎯 Mastery কোর্স</button>
         <button class="btn btn-gold btn-block" onclick="go('couponManage')">🎁 Treat Coupon</button>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn btn-outline btn-block" onclick="go('teacherRegCodes')">🔑 রেজিস্ট্রেশন কোড জেনারেটর</button>
+        <button class="btn btn-outline btn-block" onclick="go('teacherBattleAudit')">🛡️ ব্যাটেল অডিট ও অ্যান্টি-চিট</button>
       </div>
     </div>
     <div class="card">
@@ -3475,14 +3895,1221 @@ function renderWrittenResult(earnedMarks, totalMarks, couponAmount, title){
 }
 
 
+// ================= SOUND SYNTHESIZER (Web Audio API) =================
+let audioCtx = null;
+let soundEnabled = true;
+function getAudioCtx(){
+  if(!audioCtx){
+    const AudioC = window.AudioContext || window.webkitAudioContext;
+    if(AudioC) audioCtx = new AudioC();
+  }
+  if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+window.toggleSound = function(){
+  soundEnabled = !soundEnabled;
+  toast(soundEnabled ? '🔊 সাউন্ড চালু' : '🔇 সাউন্ড বন্ধ');
+  const btn = document.getElementById('soundToggleBtn');
+  if(btn) btn.innerHTML = soundEnabled ? '🔊 সাউন্ড চালু' : '🔇 সাউন্ড বন্ধ';
+};
+function playSfx(type){
+  if(!soundEnabled) return;
+  try{
+    const ctx = getAudioCtx();
+    if(!ctx) return;
+    const now = ctx.currentTime;
+    if(type === 'slash'){
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(850, now);
+      osc.frequency.exponentialRampToValueAtTime(140, now + 0.12);
+      gain.gain.setValueAtTime(0.35, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.12);
+    } else if(type === 'hit'){
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(190, now);
+      osc.frequency.exponentialRampToValueAtTime(40, now + 0.2);
+      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.2);
+    } else if(type === 'combo'){
+      [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + i * 0.05);
+        gain.gain.setValueAtTime(0.2, now + i * 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.05 + 0.14);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(now + i * 0.05); osc.stop(now + i * 0.05 + 0.14);
+      });
+    } else if(type === 'victory'){
+      [440, 554.37, 659.25, 880].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now + i * 0.08);
+        gain.gain.setValueAtTime(0.25, now + i * 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.08 + 0.25);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(now + i * 0.08); osc.stop(now + i * 0.08 + 0.25);
+      });
+    } else if(type === 'wrong'){
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(130, now);
+      osc.frequency.setValueAtTime(95, now + 0.12);
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.28);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.28);
+    }
+  }catch(e){}
+}
+
+// ================= STUDENT AUTHENTICATION (Login / Registration with Unique Code) =================
+let studentAuthTab = 'login';
+function renderStudentAuth(){
+  const isLogin = studentAuthTab === 'login';
+  app.innerHTML = `
+    ${header('শিক্ষার্থী প্রবেশ')}
+    <div class="card" style="padding: 24px 20px;">
+      <div class="tab-group">
+        <button class="tab-btn ${isLogin?'active':''}" onclick="studentAuthTab='login'; renderStudentAuth();">🔑 লগইন করো</button>
+        <button class="tab-btn ${!isLogin?'active':''}" onclick="studentAuthTab='register'; renderStudentAuth();">✨ নতুন একাউন্ট</button>
+      </div>
+
+      ${isLogin ? `
+        <h2>শিক্ষার্থী লগইন</h2>
+        <p class="hint">পূর্বে তৈরি করা নাম/ইউজারনেম ও পাসওয়ার্ড দিয়ে প্রবেশ করো।</p>
+        <label class="field-label">ইউজারনেম / ডাকনাম</label>
+        <input type="text" id="studLoginSlug" placeholder="যেমন: rahim বা shuvo24" onkeydown="if(event.key==='Enter') submitStudentLogin()">
+        <label class="field-label">পাসওয়ার্ড</label>
+        <input type="password" id="studLoginPass" placeholder="তোমার গোপন পাসওয়ার্ড" onkeydown="if(event.key==='Enter') submitStudentLogin()">
+        <button class="btn btn-primary btn-block" style="margin-top:6px;" onclick="submitStudentLogin()">🚀 লগইন করে ড্যাশবোর্ডে যাও</button>
+        <p class="hint center" style="margin-top:16px;">প্রথমবার এসেছো? <a class="link-back" onclick="studentAuthTab='register'; renderStudentAuth();">শিক্ষকের কোড দিয়ে নতুন একাউন্ট খোলো</a></p>
+      ` : `
+        <h2>নতুন অ্যাকাউন্ট তৈরি</h2>
+        <p class="hint">অ্যাকাউন্ট খোলার জন্য শিক্ষকের দেওয়া রেজিস্ট্রেশন কোড প্রদান করা বাধ্যতামূলক।</p>
+        <label class="field-label">তোমার পুরো নাম</label>
+        <input type="text" id="regFullName" placeholder="যেমন: মো: আব্দুর রহিম">
+        <label class="field-label">ইউজারনেম / রোল (লগইনে লাগবে)</label>
+        <input type="text" id="regSlug" placeholder="যেমন: rahim25">
+        <label class="field-label">পাসওয়ার্ড</label>
+        <input type="password" id="regPass" placeholder="কমপক্ষে ৪ সংখ্যার পাসওয়ার্ড">
+        <label class="field-label">🔑 শিক্ষকের দেওয়া রেজিস্ট্রেশন কোড</label>
+        <input type="text" id="regCodeInput" placeholder="যেমন: TUT-A89K2" style="text-transform:uppercase; font-family:var(--font-mono); font-weight:700; letter-spacing:1px;">
+        <div style="background:#FEF6E8; border-radius:8px; padding:10px 12px; margin-bottom:14px; font-size:12.5px; color:#7B4F06; line-height:1.4;">
+          ⚠️ <b>শিক্ষকের অনুমতি প্রয়োজন:</b> অ্যাকাউন্ট তৈরি করতে আপনার শিক্ষকের কাছ থেকে একটি ইউনিক কোড (যেমন: TUT-XXXXX) সংগ্রহ করুন।
+        </div>
+        <button class="btn btn-gold btn-block" onclick="submitStudentRegister()">🌟 অ্যাকাউন্ট তৈরি ও প্রবেশ</button>
+        <p class="hint center" style="margin-top:16px;">ইতিমধ্যে অ্যাকাউন্ট আছে? <a class="link-back" onclick="studentAuthTab='login'; renderStudentAuth();">লগইন করো</a></p>
+      `}
+      <div class="center" style="margin-top:18px;"><a class="link-back" onclick="go('landing')">← ফিরে যাও</a></div>
+    </div>
+    ${creditFooter()}
+  `;
+}
+
+window.submitStudentLogin = async function(){
+  const slugInput = ((document.getElementById('studLoginSlug')||{}).value||'').trim();
+  const passInput = ((document.getElementById('studLoginPass')||{}).value||'').trim();
+  if(!slugInput || !passInput){ toast('ইউজারনেম ও পাসওয়ার্ড দুটোই দিন'); return; }
+  const slug = slugify(slugInput);
+  toast('যাচাই করা হচ্ছে...');
+  const res = await postToScript('studentLogin', { slug, password: passInput });
+  if(res && res.status === 'success'){
+    setLoggedStudent({ slug: res.slug||slug, name: res.name||slugInput, studentCode: res.studentCode||'' });
+    toast(`স্বাগতম, ${res.name||slug}!`);
+    playSfx('combo');
+    go('studentDashboard');
+  } else if(res && res.message === 'wrong_password'){
+    toast('❌ ভুল পাসওয়ার্ড! আবার চেষ্টা করুন');
+    playSfx('wrong');
+  } else if(res && res.message === 'not_registered'){
+    toast('❌ এই ইউজারনেমে কোনো অ্যাকাউন্ট নেই! আগে সাইন আপ করুন');
+    playSfx('wrong');
+  } else {
+    toast('লগইন ব্যর্থ হয়েছে! ইন্টারনেট কানেকশন চেক করুন');
+  }
+};
+
+window.submitStudentRegister = async function(){
+  const name = ((document.getElementById('regFullName')||{}).value||'').trim();
+  const slugInput = ((document.getElementById('regSlug')||{}).value||'').trim();
+  const pass = ((document.getElementById('regPass')||{}).value||'').trim();
+  const regCode = ((document.getElementById('regCodeInput')||{}).value||'').trim().toUpperCase();
+
+  if(!name || !slugInput || !pass || !regCode){
+    toast('সবগুলো তথ্য এবং রেজিস্ট্রেশন কোড পূরণ করুন');
+    return;
+  }
+  const slug = slugify(slugInput);
+  toast('অ্যাকাউন্ট তৈরি হচ্ছে...');
+  const res = await postToScript('studentSignUp', { name, slug, password: pass, regCode });
+  if(res && res.status === 'success'){
+    setLoggedStudent({ slug, name, studentCode: res.studentCode||'' });
+    toast('🎉 অভিনন্দন! অ্যাকাউন্ট সফলভাবে তৈরি হয়েছে');
+    playSfx('victory');
+    go('studentDashboard');
+  } else if(res && res.message === 'missing_reg_code'){
+    toast('❌ শিক্ষকের দেওয়া রেজিস্ট্রেশন কোড দিন');
+    playSfx('wrong');
+  } else if(res && res.message === 'invalid_reg_code'){
+    toast('❌ রেজিস্ট্রেশন কোডটি সঠিক নয়! শিক্ষককে বলুন');
+    playSfx('wrong');
+  } else if(res && res.message === 'code_already_used'){
+    toast('❌ এই কোডটি আগেই ব্যবহৃত হয়েছে! নতুন কোড নিন');
+    playSfx('wrong');
+  } else if(res && res.message === 'already_registered'){
+    toast('❌ এই ইউজারনেমে আগেই একাউন্ট রয়েছে, লগইন করুন');
+    playSfx('wrong');
+  } else {
+    toast('রেজিস্ট্রেশন ব্যর্থ হয়েছে! আবার চেষ্টা করুন');
+  }
+};
+
+// ================= UNIFIED STUDENT DASHBOARD =================
+window.__studentDashCache = null;
+async function renderStudentDashboard(){
+  const stud = getLoggedStudent();
+  if(!stud){
+    go('studentAuth');
+    return;
+  }
+  const slug = stud.slug;
+
+  if(!window.__studentDashCache || window.__studentDashCache.slug !== slug){
+    app.innerHTML = `
+      ${header('আমার ড্যাশবোর্ড')}
+      <div class="card center" style="padding:40px 20px;">
+        <div style="font-size:32px; animation: pulse 1s infinite;">⏳</div>
+        <h3 style="margin-top:12px;">ড্যাশবোর্ড লোড হচ্ছে...</h3>
+        <p class="hint">হাজিরা, পরীক্ষা ও প্রোগ্রেস ডাটা সংগ্রহ করা হচ্ছে</p>
+      </div>
+      ${creditFooter()}
+    `;
+    const res = await postToScript('getStudentDashboard', { slug });
+    if(res && res.status === 'success'){
+      window.__studentDashCache = { ...res, slug };
+    } else {
+      window.__studentDashCache = {
+        slug,
+        studentName: stud.name,
+        studentCode: stud.studentCode,
+        todayAttended: false,
+        todayStatus: 'none',
+        couponBalance: 0,
+        publicExams: [],
+        recentResults: []
+      };
+    }
+  }
+
+  const d = window.__studentDashCache;
+  const isPresentToday = d.todayAttended;
+  const attStatus = d.todayStatus;
+  const balance = Number(d.couponBalance || 0);
+
+  let attWidgetHtml = '';
+  if(isPresentToday && attStatus === 'approved'){
+    attWidgetHtml = `
+      <div style="background:#EBF7EE; border:1.5px solid #A3E0B5; border-radius:12px; padding:14px; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="font-size:24px;">✅</div>
+          <div>
+            <div style="font-weight:700; color:var(--green); font-size:14.5px;">আজকের ক্লাসে উপস্থিত আছো!</div>
+            <div style="font-size:12px; color:var(--pencil);">হাজিরা শিক্ষক কর্তৃক অনুমোদিত হয়েছে</div>
+          </div>
+        </div>
+        <button class="info-btn" onclick="openStudentAttendanceCalendar('${slug}', '${escapeHtml(d.studentName)}')">📅 ক্যালেন্ডার</button>
+      </div>
+    `;
+  } else if(isPresentToday && attStatus === 'pending'){
+    attWidgetHtml = `
+      <div style="background:#FEF8EC; border:1.5px solid #F8DA9D; border-radius:12px; padding:14px; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="font-size:24px;">⏳</div>
+          <div>
+            <div style="font-weight:700; color:#9B6A15; font-size:14.5px;">হাজিরা জমা হয়েছে</div>
+            <div style="font-size:12px; color:var(--pencil);">শিক্ষকের অনুমোদনের অপেক্ষায় আছে</div>
+          </div>
+        </div>
+        <button class="info-btn" onclick="openStudentAttendanceCalendar('${slug}', '${escapeHtml(d.studentName)}')">📅 ক্যালেন্ডার</button>
+      </div>
+    `;
+  } else {
+    attWidgetHtml = `
+      <div style="background:#FCFDFE; border:1.5px dashed #D9A441; border-radius:12px; padding:16px; text-align:center;">
+        <div style="font-size:26px; margin-bottom:4px;">📅</div>
+        <div style="font-weight:700; color:var(--ink); font-size:15px; margin-bottom:4px;">আজকের ক্লাসে উপস্থিতি দেওয়া হয়নি</div>
+        <p class="hint" style="margin-bottom:12px;">ক্লাসে উপস্থিত থাকলে এখনই নিচের বোতাম চাপো</p>
+        <button class="btn btn-gold btn-block" onclick="dashMarkTodayAttendance('${slug}')">✨ আজকের উপস্থিতি নিশ্চিত করো</button>
+        <div style="margin-top:8px;"><a class="link-back" style="font-size:12px;" onclick="openStudentAttendanceCalendar('${slug}', '${escapeHtml(d.studentName)}')">📅 পুরো মাসের ক্যালেন্ডার দেখো</a></div>
+      </div>
+    `;
+  }
+
+  const examItems = (d.publicExams || []).map(ex => `
+    <div class="exam-item" style="padding:12px 14px; margin-bottom:8px;">
+      <div class="row-top">
+        <div>
+          <div style="font-weight:700; font-size:14.5px; color:var(--ink);">${escapeHtml(ex.title)}</div>
+          <div class="meta">${escapeHtml(ex.subject)} · ${ex.qCount||0}টি প্রশ্ন · ${ex.duration} মিনিট</div>
+        </div>
+        <button class="btn btn-primary" style="padding:6px 14px; font-size:12.5px;" onclick="goPracticeEntry('${ex.code}')">শুরু করো</button>
+      </div>
+    </div>
+  `).join('');
+
+  app.innerHTML = `
+    ${header('আমার ড্যাশবোর্ড')}
+
+    <div class="pwa-banner pwa-install-banner" style="display:none;">
+      <div class="pwa-banner-text">
+        <strong>📲 অ্যাপটি ফোনে ইনস্টল করো</strong><br>
+        <span style="opacity:0.85; font-size:12px;">হোম স্ক্রিন থেকে সরাসরি দ্রুত ওপেন ও অফলাইন পড়ার সুবিধা</span>
+      </div>
+      <button class="pwa-btn" onclick="installPwa()">ইনস্টল</button>
+    </div>
+
+    <!-- Hero Profile & Stats Card -->
+    <div class="hero-card">
+      <div class="hero-profile-row">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div class="hero-avatar">🧑‍🎓</div>
+          <div>
+            <div style="font-size:12.5px; color:rgba(255,255,255,0.75);">স্বাগতম, শিক্ষার্থী</div>
+            <h2 style="color:#fff; margin:0; font-size:22px;">${escapeHtml(d.studentName || stud.name)}</h2>
+            <div style="font-size:12px; margin-top:2px;">
+              <span style="background:rgba(255,255,255,0.15); padding:2px 8px; border-radius:10px; font-family:var(--font-mono); font-weight:700; color:var(--gold);">ID: #${d.studentCode || stud.studentCode || ''}</span>
+            </div>
+          </div>
+        </div>
+        <button class="info-btn" style="color:#fff; border-color:rgba(255,255,255,0.25);" onclick="studentLogout()">🚪 লগআউট</button>
+      </div>
+
+      <div class="hero-stats-row">
+        <div class="stat-badge">
+          <div class="stat-val"><span class="streak-fire">🔥</span> ৩ দিন</div>
+          <div class="stat-lbl">স্টাডি স্ট্রিক</div>
+        </div>
+        <div class="stat-badge" onclick="openMyCoupons('couponBalance')" style="cursor:pointer;">
+          <div class="stat-val" style="color:var(--gold);">🪙 ৳ ${balance}</div>
+          <div class="stat-lbl">ট্রিট ব্যালেন্স</div>
+        </div>
+        <div class="stat-badge" onclick="go('battleWorldMap')" style="cursor:pointer;">
+          <div class="stat-val">⚔️ যোদ্ধা</div>
+          <div class="stat-lbl">ব্যাটেল লেভেল</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Smart Widgets Grid -->
+    <div class="widget-grid">
+      <!-- 1. Today's Attendance Widget -->
+      <div class="widget">
+        <div class="widget-header">
+          <h3 class="widget-title">📅 ক্লাসের উপস্থিতি</h3>
+          <span class="widget-tag ${isPresentToday?'tag-green':'tag-red'}">${isPresentToday?(attStatus==='approved'?'উপস্থিত':'অপেক্ষারত'):'অনুপস্থিত'}</span>
+        </div>
+        ${attWidgetHtml}
+      </div>
+
+      <!-- 2. Boss Battle Gateway Widget -->
+      <div class="widget" style="background: linear-gradient(135deg, #182238 0%, #202F4F 100%); color:#fff; border-color:#2C3E66;">
+        <div class="widget-header">
+          <h3 class="widget-title" style="color:#fff;">⚔️ বস ব্যাটেল (RPG Game Mode)</h3>
+          <span class="widget-tag tag-gold">🎮 লাইভ যুদ্ধ</span>
+        </div>
+        <p style="font-size:13.5px; color:rgba(255,255,255,0.8); margin:0 0 14px 0; line-height:1.5;">
+          পদার্থ, রসায়ন, গণিত, জীববিজ্ঞান ও আইসিটির দানবদের বিরুদ্ধে লড়াই করো। প্রশ্ন সঠিক উত্তর দিয়ে দানবের HP কমাও এবং বিশ্ব বসকে আনলক করো!
+        </p>
+        <button class="btn btn-gold btn-block" style="box-shadow:0 4px 16px rgba(217,164,65,0.35);" onclick="go('battleWorldMap')">🎮 ৫টি বিশ্বের দানব যুদ্ধে নামো ⚔️</button>
+      </div>
+
+      <!-- 3. Exams & Quiz Hub -->
+      <div class="widget">
+        <div class="widget-header">
+          <h3 class="widget-title">📝 পরীক্ষা ও মূল্যায়ন</h3>
+          <span class="widget-tag tag-blue">এমসিকিউ</span>
+        </div>
+        <label class="field-label" style="font-size:12.5px;">🔑 শিক্ষকের দেওয়া এক্সাম কোড দিয়ে সরাসরি পরীক্ষা শুরু করো</label>
+        <div style="display:flex; gap:8px; margin-bottom:14px;">
+          <input type="text" id="dashExamCode" placeholder="যেমন: 7K3PQ" style="text-transform:uppercase; margin-bottom:0; font-family:var(--font-mono); font-weight:700;">
+          <button class="btn btn-primary" style="white-space:nowrap;" onclick="dashStartExamByCode()">শুরু করো</button>
+        </div>
+        ${examItems ? `
+          <div style="font-size:13px; font-weight:700; color:var(--pencil); margin-bottom:8px;">উন্মুক্ত প্র্যাকটিস পরীক্ষা:</div>
+          ${examItems}
+        ` : ''}
+        <button class="btn btn-outline btn-block" style="margin-top:6px;" onclick="go('masteryEntry')">📊 আমার বিগত সব ফলাফল ও র‍্যাঙ্ক</button>
+      </div>
+
+      <!-- 4. Written CQ Exam Widget -->
+      <div class="widget">
+        <div class="widget-header">
+          <h3 class="widget-title">✍️ লিখিত সৃজনশীল পরীক্ষা</h3>
+          <span class="widget-tag tag-gold">Gemini AI Vision</span>
+        </div>
+        <p class="hint" style="margin-bottom:12px;">হাতে লেখা খাতার ছবি তুলে সরাসরি আপলোড করো — এআই তাৎক্ষণিক মূল্যায়ন ও নম্বর প্রদান করবে।</p>
+        <button class="btn btn-outline btn-block" onclick="go('writtenEntry')">📝 লিখিত পরীক্ষায় অংশ নাও ও খাতা আপলোড করো</button>
+      </div>
+
+      <!-- 5. Treat Wallet & Rewards Shop -->
+      <div class="widget">
+        <div class="widget-header">
+          <h3 class="widget-title">🎁 ট্রিট কুপন ও রিওয়ার্ড ওয়ালেট</h3>
+          <span class="widget-tag tag-green">৳ ${balance} জমানো</span>
+        </div>
+        <p class="hint" style="margin-bottom:12px;">পরীক্ষায় ভালো রেজাল্ট করে টাকা জমাও এবং বিকাশ ক্যাশআউট বা শপ থেকে গিফট নাও!</p>
+        <div class="row">
+          <button class="btn btn-gold btn-block" onclick="openMyCoupons('couponBalance')">💸 বিকাশ ক্যাশআউট</button>
+          <button class="btn btn-outline btn-block" onclick="openMyCoupons('shopList')">🛍️ রিওয়ার্ড শপ</button>
+        </div>
+      </div>
+
+      <!-- 6. AI Doubt Solver & Study Notes -->
+      <div class="widget">
+        <div class="widget-header">
+          <h3 class="widget-title">💡 পড়াশোনার সহায়ক</h3>
+        </div>
+        <div class="row">
+          <button class="btn btn-outline btn-block" onclick="go('doubtEntry')">🤖 AI ডাউট সমাধান</button>
+          <button class="btn btn-outline btn-block" onclick="go('notesGate')">📑 ক্লাস নোট ও স্লাইড</button>
+        </div>
+      </div>
+    </div>
+
+    ${creditFooter()}
+  `;
+}
+
+// Dashboard -> coupon wallet / shop. Those screens need name/slug/balance/history in `state`,
+// so fetch the logged-in student's balance first (otherwise they showed "৳undefined").
+window.openMyCoupons = async function(target){
+  const stud = getLoggedStudent();
+  if(!stud){ go('studentAuth'); return; }
+  toast('লোড হচ্ছে...');
+  const data = await getCouponBalanceRemote(stud.slug);
+  go(target || 'couponBalance', { name: stud.name, slug: stud.slug, balance: data.balance, history: data.history });
+};
+
+window.dashMarkTodayAttendance = async function(slug){
+  toast('হাজিরা পাঠানো হচ্ছে...');
+  const today = todayStr();
+  const res = await postToScript('markAttendance', { slug, date: today, source: 'manual' });
+  if(res && res.status === 'success'){
+    playSfx('combo');
+    toast('✅ হাজিরা নিশ্চিত করা হয়েছে!');
+    if(window.__studentDashCache){
+      window.__studentDashCache.todayAttended = true;
+      window.__studentDashCache.todayStatus = res.autoApproved ? 'approved' : 'pending';
+    }
+    renderStudentDashboard();
+  } else {
+    toast('হাজিরা পাঠাতে সমস্যা হয়েছে, আবার চেষ্টা করো');
+  }
+};
+
+window.openStudentAttendanceCalendar = async function(slug, name){
+  toast('ক্যালেন্ডার লোড হচ্ছে...');
+  const records = await listAttendanceRemote(slug);
+  go('attendanceStudentView', { slug, name, records });
+};
+
+window.dashStartExamByCode = async function(){
+  const code = ((document.getElementById('dashExamCode')||{}).value||'').trim().toUpperCase();
+  if(!code){ toast('পরীক্ষার কোড লিখুন'); return; }
+  const stud = getLoggedStudent();
+  if(!stud){ go('studentAuth'); return; }
+  toast('পরীক্ষা খোঁজা হচ্ছে...');
+  const examRaw = await sget('exam:'+code);
+  if(!examRaw){ alert('পরীক্ষা পাওয়া যায়নি! কোডটি সঠিক কিনা যাচাই করুন।'); return; }
+  const exam = JSON.parse(examRaw.value);
+  const slug = stud.slug;
+
+  // 🎁 Treat exams carry real money: still need the teacher's per-exam password
+  if(exam.isTreat){
+    const pass = (prompt('এটা একটা 🎁 Treat পরীক্ষা। শিক্ষকের দেওয়া পাসওয়ার্ড লিখুন:') || '').trim();
+    if(!pass){ return; }
+    if(pass !== String(exam.treatPassword)){ toast('পাসওয়ার্ড ভুল হয়েছে'); return; }
+  }
+
+  // same attempt rules as the normal entry flow
+  const existingResults = await getRemoteResults(code);
+  const myAttempts = existingResults.filter(r => (r.slug ? r.slug === slug : slugify(r.studentName||'') === slug));
+  if(myAttempts.length > 0){
+    myAttempts.sort((a,b)=> b.submittedAt - a.submittedAt);
+    if(exam.isTreat){ go('treatBlocked', { exam, attempt: myAttempts[0] }); return; }
+    go('studentChoice', { exam, slug, name: stud.name, attempts: myAttempts });
+    return;
+  }
+  runCheckingSequence(exam, slug, stud.name, 1);
+};
+
+// ================= TEACHER: REGISTRATION CODE GENERATOR =================
+let teacherRegCodesCache = [];
+async function renderTeacherRegCodes(){
+  app.innerHTML = `
+    ${header('রেজিস্ট্রেশন কোড জেনারেটর')}
+    <div class="card center">কোড তালিকা লোড হচ্ছে...</div>
+    ${creditFooter()}
+  `;
+  const res = await fetch(`${SCRIPT_URL}?action=listRegCodes`);
+  const json = await res.json();
+  teacherRegCodesCache = (json && json.status === 'success') ? json.data : [];
+
+  const listRows = teacherRegCodesCache.map(c => {
+    const isUsed = c.status === 'used';
+    const isRevoked = c.status === 'revoked';
+    const badgeColor = isUsed ? 'var(--pencil)' : (isRevoked ? 'var(--red)' : 'var(--green)');
+    const badgeText = isUsed ? `ব্যবহৃত (${c.usedBySlug||''})` : (isRevoked ? 'বাতিল' : 'সক্রিয়');
+    return `
+      <div class="exam-item" style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; padding:10px 14px;">
+        <div>
+          <div style="font-family:var(--font-mono); font-size:16px; font-weight:700; color:var(--ink); letter-spacing:1px;">${c.code}</div>
+          <div style="font-size:12px; color:var(--pencil); margin-top:2px;">ব্যাচ: ${escapeHtml(c.batch||'সাধারণ')} · <span style="color:${badgeColor}; font-weight:600;">${badgeText}</span></div>
+        </div>
+        <div style="display:flex; gap:6px;">
+          ${!isUsed && !isRevoked ? `
+            <button class="btn btn-primary" style="padding:6px 12px; font-size:12px;" onclick="copyTeacherRegCode('${c.code}', '${escapeHtml(c.batch||'')}')">📋 কপি</button>
+            <button class="btn btn-danger" style="padding:6px 10px; font-size:12px;" onclick="revokeTeacherRegCode('${c.code}')">✕</button>
+          ` : `
+            <span style="font-size:12px; color:var(--pencil);">${isUsed ? 'সম্পন্ন' : 'বাতিল'}</span>
+          `}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  app.innerHTML = `
+    ${header('রেজিস্ট্রেশন কোড জেনারেটর')}
+    <div class="card">
+      <h2>🔑 নতুন রেজিস্ট্রেশন কোড তৈরি করো</h2>
+      <p class="hint">ছাত্রছাত্রীরা এই কোডটি ব্যবহার করে প্রথমবারের মতো তাদের অ্যাকাউন্ট খুলতে পারবে। প্রতি কোড একজন ছাত্রের জন্য কার্যকর।</p>
+      
+      <div class="row">
+        <div>
+          <label class="field-label">কয়টি কোড তৈরি করবে?</label>
+          <select id="regGenCount">
+            <option value="1">১ টি কোড</option>
+            <option value="5" selected>৫ টি কোড</option>
+            <option value="10">১০ টি কোড</option>
+            <option value="20">২০ টি কোড</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">ব্যাচের নাম (ঐচ্ছিক)</label>
+          <input type="text" id="regGenBatch" placeholder="যেমন: ব্যাচ ২০২৫">
+        </div>
+      </div>
+      <button class="btn btn-gold btn-block" onclick="generateNewTeacherCodes()">✨ কোড তৈরি করো</button>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h3 style="margin:0;">বিদ্যমান কোডসমূহ (${teacherRegCodesCache.length}টি)</h3>
+        <button class="info-btn" onclick="renderTeacherRegCodes()">🔄 রিফ্রেশ</button>
+      </div>
+      ${listRows || '<div class="empty-state">এখনো কোনো রেজিস্ট্রেশন কোড তৈরি করা হয়নি। উপরে থেকে কোড তৈরি করো।</div>'}
+    </div>
+
+    <div class="center" style="margin-top:14px;"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক ড্যাশবোর্ডে ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+
+window.generateNewTeacherCodes = async function(){
+  const count = (document.getElementById('regGenCount')||{}).value || 5;
+  const batch = ((document.getElementById('regGenBatch')||{}).value || '').trim() || 'সাধারণ ব্যাচ';
+  toast('কোড তৈরি হচ্ছে...');
+  const res = await postToScript('generateRegCodes', { count, batch, teacherId: (currentTeacher && currentTeacher.name) || 'Teacher' });
+  if(res && res.status === 'success'){
+    playSfx('combo');
+    toast(`🎉 ${res.codes.length}টি নতুন কোড তৈরি হয়েছে!`);
+    renderTeacherRegCodes();
+  } else {
+    toast('কোড তৈরিতে সমস্যা হয়েছে');
+  }
+};
+
+window.copyTeacherRegCode = function(code, batch){
+  const appUrl = window.location.href.split('?')[0];
+  const msg = `পরীক্ষার খাতা অ্যাপে রেজিস্ট্রেশন কোড: ${code}\nব্যাচ: ${batch}\nঅ্যাপ লিংক: ${appUrl}\n\nএই কোডটি প্রদান করে তোমার নতুন অ্যাকাউন্ট তৈরি করো।`;
+  navigator.clipboard.writeText(msg).then(()=>{
+    toast('কোড ও মেসেজ কপি হয়েছে (WhatsApp এ পাঠান)');
+  }).catch(()=> toast('কপি করা সম্ভব হয়নি'));
+};
+
+window.revokeTeacherRegCode = async function(code){
+  if(!confirm(`আপনি কি নিশ্চিত কোড "${code}" বাতিল করতে চান?`)) return;
+  toast('বাতিল করা হচ্ছে...');
+  const res = await postToScript('revokeRegCode', { code });
+  if(res && res.status === 'success'){
+    toast('কোড বাতিল করা হয়েছে');
+    renderTeacherRegCodes();
+  } else {
+    toast('বাতিল করা যায়নি');
+  }
+};
+
+// ================= TEACHER: BATTLE AUDIT & CHEAT LOGS =================
+async function renderTeacherBattleAudit(){
+  app.innerHTML = `${header('ব্যাটেল অডিট ও অ্যান্টি-চিট')}<div class="card center">অডিট লগ লোড হচ্ছে...</div>${creditFooter()}`;
+  const res = await postToScript('getBattleSessions', {});
+  const sessions = (res && res.status === 'success') ? res.data : [];
+
+  const rowsHtml = sessions.map(s => `
+    <div class="exam-item" style="margin-bottom:10px;">
+      <div class="row-top">
+        <div>
+          <div style="font-weight:700; font-size:15px; color:var(--ink);">🧑‍🎓 ${escapeHtml(s.slug)}</div>
+          <div class="meta">${escapeHtml(s.subject)} · ${s.monsterType==='boss'?'👑 বিশ্ব বস':'👾 চ্যাপ্টার দানব'} · ফলাফল: <span style="font-weight:700; color:${s.outcome==='won'?'var(--green)':'var(--red)'};">${s.outcome}</span></div>
+          <div class="meta">প্রশ্ন: ${s.questionsAsked}টি | সঠিক: ${s.questionsCorrect}টি · ${formatDate(s.startedAt)}</div>
+        </div>
+        <button class="btn btn-outline" style="padding:6px 12px; font-size:12px;" onclick="drillIntoBattleSession('${s.id}', '${s.slug}')">🔍 বিস্তারিত</button>
+      </div>
+    </div>
+  `).join('');
+
+  app.innerHTML = `
+    ${header('ব্যাটেল অডিট ও অ্যান্টি-চিট')}
+    <div class="card">
+      <h2>🛡️ ছাত্রছাত্রীদের ব্যাটেল সেশন রিপোর্ট</h2>
+      <p class="hint">কোন ছাত্র কত দ্রুত উত্তর দিয়েছে বা পরীক্ষা চলাকালীন দৃষ্টি বাইরে রেখেছিল কি না তা এখানে অডিট করা যায়।</p>
+      ${rowsHtml || '<div class="empty-state">এখনো কোনো ব্যাটেল সেশন খেলা হয়নি।</div>'}
+    </div>
+    <div class="center" style="margin-top:14px;"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক ড্যাশবোর্ডে ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+
+window.drillIntoBattleSession = async function(sessionId, slug){
+  toast('বিস্তারিত লোড হচ্ছে...');
+  const res = await postToScript('getBattleSessions', { sessionId });
+  const answers = (res && res.data) || [];
+  const flags = (res && res.flags) || [];
+
+  let flagsHtml = flags.length ? `
+    <div style="background:#FDEEEE; border:1px solid #F5C6CB; border-radius:10px; padding:12px; margin-bottom:14px;">
+      <div style="font-weight:700; color:var(--red); font-size:13.5px; margin-bottom:6px;">⚠️ অ্যান্টি-চিট অ্যালার্ট (${flags.length}টি ঘটনা):</div>
+      ${flags.map(f => `<div style="font-size:12px; color:#721C24; margin-bottom:4px;">• <b>${escapeHtml(f.type)}</b>: ${escapeHtml(f.detail)} (${formatDate(f.flaggedAt)})</div>`).join('')}
+    </div>
+  ` : `<div style="background:#E8F6EF; border:1px solid #C3E6CB; border-radius:10px; padding:10px; margin-bottom:14px; color:var(--green); font-size:13px;">✅ কোনো সন্দেহজনক কর্মকাণ্ড বা চিটিং রেকর্ড পাওয়া যায়নি।</div>`;
+
+  const tableRows = answers.map((a, i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td>${a.correct ? '✅ সঠিক' : '❌ ভুল'}</td>
+      <td>${a.timeTakenSec} সেকেন্ড ${a.fastFlag ? '<span style="color:var(--red); font-weight:700;">(দ্রুত দাগানো!)</span>' : ''}</td>
+      <td>${a.isReview ? 'রিভিউ রাউন্ড' : 'স্বাভাবিক'}</td>
+    </tr>
+  `).join('');
+
+  app.innerHTML = `
+    ${header('সেশন অডিট রিপোর্ট')}
+    <div class="card">
+      <h2>স্টুডেন্ট: ${escapeHtml(slug)}</h2>
+      <div style="font-size:12.5px; color:var(--pencil); margin-bottom:14px;">সেশন আইডি: <code>${sessionId}</code></div>
+      ${flagsHtml}
+      <h3>প্রশ্নের উত্তর ও সময় পর্যালোচনা</h3>
+      <table class="results" style="margin-top:8px;">
+        <thead>
+          <tr>
+            <th>নং</th>
+            <th>ফলাফল</th>
+            <th>সময় (সেকেন্ড)</th>
+            <th>ধরণ</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRows || '<tr><td colspan="4" class="center">কোনো তথ্য নেই</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+    <div class="center" style="margin-top:14px;"><a class="link-back" onclick="renderTeacherBattleAudit()">← অডিট তালিকায় ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+};
+
+// ================= REALISTIC BOSS BATTLE: WORLD MAP & COMBAT ARENA =================
+let battleWorldDataCache = null;
+async function renderBattleWorldMap(){
+  const stud = getLoggedStudent();
+  if(!stud){ go('studentAuth'); return; }
+  const slug = stud.slug;
+
+  app.innerHTML = `
+    ${header('বস ব্যাটেল মানচিত্র')}
+    <div class="card center" style="padding:40px 20px;">
+      <div style="font-size:32px; animation: pulse 1s infinite;">🗺️</div>
+      <h3 style="margin-top:10px;">বিশ্ব মানচিত্র উন্মোচিত হচ্ছে...</h3>
+      <p class="hint">বিষয়ভিত্তিক চ্যাপ্টার দানবদের অবস্থা যাচাই করা হচ্ছে</p>
+    </div>
+    ${creditFooter()}
+  `;
+
+  const res = await postToScript('getBattleWorldMap', { slug });
+  const worlds = (res && res.status === 'success') ? res.worlds : [];
+  battleWorldDataCache = worlds;
+
+  const subjectIcons = {
+    physics: '⚡',
+    chemistry: '🧪',
+    mathematics: '📐',
+    math: '📐',
+    biology: '🌿',
+    ict: '💻'
+  };
+
+  const worldsHtml = worlds.map(w => {
+    const sKey = (w.subject || '').toLowerCase();
+    const icon = subjectIcons[sKey] || '🪐';
+    const total = w.totalChapters || 0;
+    const cleared = w.clearedChapters || 0;
+    const pct = total > 0 ? Math.round((cleared / total) * 100) : 0;
+    const isBossReady = w.bossUnlocked;
+
+    return `
+      <div class="world-card ${isBossReady?'boss-unlocked-glow':''}" onclick="go('battleChapterSelect', { courseId:'${w.id}', subject:'${escapeHtml(w.subject)}', title:'${escapeHtml(w.title)}' })">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="font-size:32px;">${icon}</div>
+            <div>
+              <h3 style="margin:0; font-size:17px; color:var(--ink);">${escapeHtml(w.title || w.subject)}</h3>
+              <div style="font-size:12.5px; color:var(--pencil);">${total}টি অধ্যায়ের দানব · ${cleared}টি বধ হয়েছে</div>
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <span class="widget-tag ${pct===100?'tag-gold':(pct>0?'tag-blue':'tag-red')}">${pct}% সম্পূর্ণ</span>
+          </div>
+        </div>
+        
+        <div class="hp-bar-wrap" style="max-width:100%; height:8px; margin-top:8px;">
+          <div class="hp-bar-fill" style="width:${pct}%; background:linear-gradient(90deg, #2ecc71, #27ae60);"></div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; font-size:12px;">
+          <span style="color:${isBossReady?'var(--gold)':'var(--pencil)'}; font-weight:600;">
+            ${isBossReady ? '👑 বিশ্ব বস আনলক হয়েছে!' : '🔒 সব চ্যাপ্টার শেষ হলে বিশ্ব বস আসবে'}
+          </span>
+          <span style="color:var(--ink); font-weight:700;">যুদ্ধে প্রবেশ →</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  app.innerHTML = `
+    ${header('বস ব্যাটেল বিশ্ব মানচিত্র')}
+    <div class="hero-card" style="margin-bottom:16px;">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <div>
+          <div style="font-size:12.5px; color:rgba(255,255,255,0.75);">মো: সায়মন সামিউ প্রণীত</div>
+          <h2 style="color:#fff; margin:2px 0 4px 0; font-size:22px;">⚔️ মাস্টারি দানব ব্যাটেল</h2>
+          <div style="font-size:12.5px; color:rgba(255,255,255,0.85);">যেকোনো অধ্যায়ের দানবের সাথে স্বাধীনভাবে লড়াই করো</div>
+        </div>
+        <div style="font-size:40px;">🏰</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>বিষয় ও বিশ্ব নির্বাচন করো</h2>
+      <p class="hint">যে বিষয়ে যুদ্ধ করতে চাও তা স্পর্শ করো। প্রতিটি সঠিক উত্তর দানবকে ১ HP ক্ষতি করবে।</p>
+      ${worldsHtml || '<div class="empty-state">মাস্টারিতে এখনো কোনো কোর্স যোগ করা হয়নি।</div>'}
+    </div>
+
+    <div class="center" style="margin-top:14px;"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+
+function renderBattleChapterSelect(courseId, subject, title){
+  const stud = getLoggedStudent();
+  if(!stud){ go('studentAuth'); return; }
+  const worlds = battleWorldDataCache || [];
+  const currentWorld = worlds.find(w => w.id === courseId) || { chapters:[], bossUnlocked:false };
+  const chapters = currentWorld.chapters || [];
+  const bossUnlocked = currentWorld.bossUnlocked;
+
+  const monsterTitles = [
+    'অসুর', 'টাইটান', 'দানব', 'গলেম', 'ড্রাগন', 'রক্ষক', 'প্রেতাত্মা', 'জাদুকর'
+  ];
+
+  const monstersHtml = chapters.map((ch, idx) => {
+    const mName = monsterTitles[idx % monsterTitles.length];
+    const fullMonsterTitle = `${escapeHtml(ch.title)}-এর ${mName}`;
+    const pct = ch.maxHp > 0 ? Math.round(((ch.maxHp - ch.hp) / ch.maxHp) * 100) : 0;
+    const isDefeated = ch.defeated;
+
+    return `
+      <div class="exam-item" style="padding:14px; margin-bottom:12px; border:1.5px solid ${isDefeated?'#A3E0B5':'var(--paper-edge)'}; background:${isDefeated?'#F6FBF8':'#FCFDFE'};">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="font-size:32px;">${isDefeated ? '💀' : '👾'}</div>
+            <div>
+              <div style="font-weight:700; font-size:15px; color:var(--ink);">${fullMonsterTitle}</div>
+              <div class="meta">অধ্যায়: ${escapeHtml(ch.title)} · বাকি HP: <b>${ch.hp}</b> / ${ch.maxHp}</div>
+            </div>
+          </div>
+          <button class="btn ${isDefeated?'btn-outline':'btn-primary'}" style="padding:8px 16px; font-size:13px;" onclick="startBattleSessionHandler('${courseId}', '${escapeHtml(subject)}', '${ch.id}', 'chapter', '${escapeHtml(fullMonsterTitle)}', ${ch.hp}, ${ch.maxHp})">
+            ${isDefeated ? 'রিপ্লে ⚔️' : 'আক্রমণ ⚔️'}
+          </button>
+        </div>
+
+        <div class="hp-bar-wrap" style="max-width:100%; height:8px; margin-top:10px;">
+          <div class="hp-bar-fill" style="width:${100-pct}%; background:${ch.hp<3?'linear-gradient(90deg, #e74c3c, #c0392b)':'linear-gradient(90deg, #2ecc71, #27ae60)'};"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  app.innerHTML = `
+    ${header(title || subject)}
+    
+    ${bossUnlocked ? `
+      <div class="hero-card boss-unlocked-glow" style="margin-bottom:16px; background:linear-gradient(135deg, #3d1b1b 0%, #1F2A44 100%);">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <div>
+            <span class="widget-tag tag-gold" style="margin-bottom:6px; display:inline-block;">👑 চূড়ান্ত যুদ্ধ</span>
+            <h2 style="color:#fff; margin:0; font-size:22px;">বিশ্ব বস মনস্টার</h2>
+            <p style="font-size:12.5px; color:rgba(255,255,255,0.85); margin:4px 0 10px 0;">সব অধ্যায়ের সম্মিলিত ও কঠিন প্রশ্ন নিয়ে চূড়ান্ত যুদ্ধ।</p>
+          </div>
+          <div style="font-size:46px;">🐉</div>
+        </div>
+        <button class="btn btn-gold btn-block" style="box-shadow:0 4px 16px rgba(229,142,38,0.5);" onclick="startBattleSessionHandler('${courseId}', '${escapeHtml(subject)}', 'boss', 'boss', '${escapeHtml(subject)} বিশ্ব বস', 35, 35)">👑 বিশ্ব বসের বিরুদ্ধে লড়াই করো ⚔️</button>
+      </div>
+    ` : ''}
+
+    <div class="card">
+      <h2>চ্যাপ্টার দানবদের তালিকা</h2>
+      <p class="hint">যেকোনো অধ্যায় নির্বাচন করে লড়াই শুরু করতে পারো। তোমার অগ্রগতি সার্ভারে সংরক্ষিত থাকবে।</p>
+      ${monstersHtml || '<div class="empty-state">এই কোর্সে কোনো অধ্যায় পাওয়া যায়নি।</div>'}
+    </div>
+
+    <div class="center" style="margin-top:14px;"><a class="link-back" onclick="go('battleWorldMap')">← বিশ্ব মানচিত্রে ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+
+// Global battle context
+window.__battleCtx = null;
+
+window.startBattleSessionHandler = async function(courseId, subject, monsterRef, monsterType, monsterTitle, hp, maxHp){
+  const stud = getLoggedStudent();
+  if(!stud){ go('studentAuth'); return; }
+  const slug = stud.slug;
+
+  toast('যুদ্ধক্ষেত্র তৈরি হচ্ছে...');
+  const res = await postToScript('startBattleSession', {
+    slug,
+    subject,
+    monsterType,
+    monsterRef
+  });
+
+  if(!res || res.status !== 'success'){
+    toast('যুদ্ধ শুরু করতে সমস্যা হয়েছে');
+    return;
+  }
+
+  window.__battleCtx = {
+    sessionId: res.sessionId,
+    slug,
+    courseId,
+    subject,
+    monsterRef,
+    monsterType,
+    monsterTitle,
+    currentHp: hp || 10,
+    maxHp: maxHp || 10,
+    combo: 0,
+    questionsAnswered: 0,
+    recentBatchCorrect: 0,
+    isReviewRound: false,
+    reviewQuestionsPool: [],
+    recentQuestionIds: [],
+    currentQuestion: null,
+    timerSeconds: 50,
+    timerHandle: null
+  };
+
+  playSfx('combo');
+  fetchNextBattleQuestion();
+};
+
+async function fetchNextBattleQuestion(){
+  const ctx = window.__battleCtx;
+  if(!ctx) return;
+
+  if(ctx.timerHandle){ clearInterval(ctx.timerHandle); ctx.timerHandle = null; }
+
+  // Check Review Round mechanic (§3.3): Every 5 questions within a battle
+  if(!ctx.isReviewRound && ctx.questionsAnswered > 0 && ctx.questionsAnswered % 5 === 0 && ctx.reviewQuestionsPool.length > 0){
+    ctx.isReviewRound = true;
+    toast('⚡ কুইক রিকল / রিভিশন রাউন্ড!');
+    playSfx('combo');
+    // Pop a question from review pool
+    const revItem = ctx.reviewQuestionsPool.shift();
+    // the review question must become the "current" one, otherwise its answer would be
+    // graded against the previous question
+    ctx.currentQuestion = revItem.q;
+    ctx.currentTopicId = revItem.topicId;
+    renderBattleQuestionStage(revItem.q, true);
+    return;
+  }
+
+  ctx.isReviewRound = false;
+  app.innerHTML = `
+    ${header('যুদ্ধ চলছে')}
+    <div class="battle-stage center" style="padding:50px 20px;">
+      <div style="font-size:36px; animation:pulse 1s infinite;">⚔️</div>
+      <h3 style="color:#fff; margin-top:12px;">পরবর্তী প্রশ্ন আসছে...</h3>
+    </div>
+    ${creditFooter()}
+  `;
+
+  const excludeStr = ctx.recentQuestionIds.slice(-4).join(',');
+  const params = {
+    slug: ctx.slug,
+    monsterType: ctx.monsterType,
+    excludeIds: excludeStr
+  };
+  if(ctx.monsterType === 'chapter') params.topicId = ctx.monsterRef;
+  if(ctx.monsterType === 'boss') params.courseId = ctx.courseId;
+
+  const res = await postToScript('getQuestionForBattle', params);
+  if(!res || res.status !== 'success'){
+    toast('প্রশ্ন লোড করা যায়নি');
+    go('battleWorldMap');
+    return;
+  }
+
+  if(res.defeated){
+    showMonsterDefeatedVictory(ctx);
+    return;
+  }
+
+  if(res.hp !== undefined) ctx.currentHp = res.hp;
+  if(res.maxHp !== undefined) ctx.maxHp = res.maxHp;
+
+  ctx.currentQuestion = res.question;
+  ctx.currentTopicId = res.topicId || ctx.monsterRef;
+  ctx.recentQuestionIds.push(res.question.id);
+
+  renderBattleQuestionStage(res.question, false);
+}
+
+function renderBattleQuestionStage(question, isReview){
+  const ctx = window.__battleCtx;
+  const hpPct = ctx.maxHp > 0 ? Math.max(0, Math.min(100, Math.round((ctx.currentHp / ctx.maxHp) * 100))) : 0;
+  const hpClass = hpPct > 50 ? '' : (hpPct > 25 ? 'mid' : 'low');
+
+  // Dynamic monster reaction quotes
+  let monsterQuote = 'তুমি আমার প্রশ্নের উত্তর দিতে পারবে না!';
+  if(ctx.currentHp <= 2) monsterQuote = 'আমার শক্তি প্রায় শেষ... এটাই তোমার শেষ সুযোগ!';
+  else if(ctx.combo >= 2) monsterQuote = 'উফ! তোমার কম্বো আঘাত আমাকে দুর্বল করে দিচ্ছে!';
+  else if(hpPct <= 50) monsterQuote = 'আহ! শক্তিশালী আক্রমণ!';
+
+  const monsterAvatarIcon = ctx.monsterType === 'boss' ? '🐉' : '👹';
+  const duration = isReview ? 30 : 50;
+  ctx.timerSeconds = duration;
+
+  const optionsHtml = (question.options || []).map((opt, idx) => `
+    <div class="bubble-opt battle-opt-btn" id="optBtn${idx}" onclick="submitBattleAnswerOption(${idx})" style="background:#fff; border:1.5px solid var(--rule); margin-bottom:10px; padding:12px 14px; border-radius:10px; transition:all 0.1s ease;">
+      <div class="bubble" id="bubble${idx}">${String.fromCharCode(65+idx)}</div>
+      <div class="opt-text" style="font-weight:600;">${escapeHtml(opt)}</div>
+    </div>
+  `).join('');
+
+  app.innerHTML = `
+    ${header('বস ব্যাটেল')}
+
+    <div class="battle-stage" id="battleArenaStage">
+      <!-- Floating damage container -->
+      <div id="damagePopupContainer"></div>
+
+      <!-- Top HUD Bar -->
+      <div class="battle-header-bar">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button class="audio-toggle-btn" id="soundToggleBtn" onclick="toggleSound()">${soundEnabled?'🔊 সাউন্ড চালু':'🔇 সাউন্ড বন্ধ'}</button>
+          ${ctx.combo >= 2 ? `<span class="combo-streak">🔥 ${ctx.combo}x কম্বো!</span>` : ''}
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          ${isReview ? '<span class="widget-tag tag-gold" style="font-size:11px;">⚡ কুইক রিকল রাউন্ড</span>' : ''}
+          <div class="timer-chip ${ctx.timerSeconds<=10?'low':''}" id="battleTimerBadge" style="position:static; padding:5px 12px; font-size:13px;">
+            <span class="timer-dot"></span> <span id="timerNum">${ctx.timerSeconds}s</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Monster Avatar & Status -->
+      <div class="monster-box">
+        <div class="monster-avatar" id="monsterAvatarElem">${monsterAvatarIcon}</div>
+        <div style="font-size:16px; font-weight:700; color:#fff; margin-bottom:6px;">${escapeHtml(ctx.monsterTitle)}</div>
+        <div class="monster-speech" id="monsterSpeechBubble">"${monsterQuote}"</div>
+        
+        <div class="hp-bar-wrap">
+          <div class="hp-bar-fill ${hpClass}" id="battleHpBarFill" style="width:${hpPct}%;"></div>
+        </div>
+        <div class="hp-label">HP: <span id="hpNumDisplay">${ctx.currentHp}</span> / ${ctx.maxHp}</div>
+      </div>
+    </div>
+
+    <!-- Question Card -->
+    <div class="card" style="margin-top:-6px; position:relative; z-index:2;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <span class="q-tag">প্রশ্ন #${ctx.questionsAnswered + 1}</span>
+        <span style="font-size:12px; color:var(--pencil);">${isReview ? '৩০ সেকেন্ড দ্রুত রিটেনশন' : '৫০ সেকেন্ড সময়'}</span>
+      </div>
+
+      <div class="q-text" style="font-size:16.5px; line-height:1.5;">${escapeHtml(question.text || '')}</div>
+      ${question.image ? `<img src="${escapeHtml(question.image)}" style="max-width:100%; border-radius:8px; margin-bottom:12px;" alt="প্রশ্নের ছবি">` : ''}
+
+      <div style="margin-top:14px;" id="optionsGroup">
+        ${optionsHtml}
+      </div>
+
+      <div style="margin-top:14px; text-align:center;">
+        <a class="link-back" onclick="abandonBattlePrompt()">🏳️ যুদ্ধ ছেড়ে বের হও</a>
+      </div>
+    </div>
+
+    ${creditFooter()}
+  `;
+
+  renderAllMath(document.getElementById('app'));
+
+  // Start Countdown Timer
+  const timerBadge = document.getElementById('battleTimerBadge');
+  const timerNum = document.getElementById('timerNum');
+  ctx.timerStartTime = Date.now();
+  ctx.timerHandle = setInterval(() => {
+    ctx.timerSeconds--;
+    if(timerNum) timerNum.innerText = ctx.timerSeconds + 's';
+    if(ctx.timerSeconds <= 10 && timerBadge) timerBadge.classList.add('low');
+    if(ctx.timerSeconds <= 0){
+      clearInterval(ctx.timerHandle);
+      ctx.timerHandle = null;
+      handleBattleTimeout();
+    }
+  }, 1000);
+}
+
+window.submitBattleAnswerOption = async function(chosenIndex){
+  const ctx = window.__battleCtx;
+  if(!ctx || ctx.isSubmitting) return;
+  ctx.isSubmitting = true;
+
+  if(ctx.timerHandle){ clearInterval(ctx.timerHandle); ctx.timerHandle = null; }
+
+  const timeTakenSec = Math.max(1, Math.round((Date.now() - ctx.timerStartTime) / 1000));
+  const q = ctx.currentQuestion;
+  const isReview = ctx.isReviewRound;
+
+  // Disable options visually
+  const optBtns = document.querySelectorAll('.battle-opt-btn');
+  optBtns.forEach(b => b.style.pointerEvents = 'none');
+
+  const res = await postToScript('submitBattleAnswer', {
+    sessionId: ctx.sessionId,
+    slug: ctx.slug,
+    topicId: ctx.currentTopicId,
+    questionId: q.id,
+    chosenIndex,
+    timeTakenSec,
+    isReview: isReview ? 'true' : 'false',
+    monsterType: ctx.monsterType
+  });
+
+  ctx.isSubmitting = false;
+  ctx.questionsAnswered++;
+
+  const chosenBtn = document.getElementById('optBtn' + chosenIndex);
+  const chosenBubble = document.getElementById('bubble' + chosenIndex);
+
+  if(!res || res.status !== 'success'){
+    toast('উত্তর যাচাই করতে সমস্যা হয়েছে');
+    fetchNextBattleQuestion();
+    return;
+  }
+
+  const isCorrect = res.correct;
+  const correctIdx = res.correctIndex;
+
+  if(isCorrect){
+    // Play sound
+    playSfx('slash');
+    setTimeout(() => playSfx('hit'), 80);
+
+    ctx.combo++;
+    if(!isReview) ctx.reviewQuestionsPool.push({ q, topicId: ctx.currentTopicId });
+
+    // Visual styles
+    if(chosenBtn){
+      chosenBtn.style.background = '#EBF7EE';
+      chosenBtn.style.borderColor = 'var(--green)';
+    }
+    if(chosenBubble){
+      chosenBubble.style.background = 'var(--green)';
+      chosenBubble.style.color = '#fff';
+    }
+
+    // Monster hit reaction
+    triggerMonsterDamageAnimation(ctx.combo >= 3);
+
+    // Update HP locally
+    if(res.hpUpdate){
+      ctx.currentHp = res.hpUpdate.hp;
+      ctx.maxHp = res.hpUpdate.maxHp;
+      const hpFill = document.getElementById('battleHpBarFill');
+      const hpNum = document.getElementById('hpNumDisplay');
+      if(hpFill){
+        const pct = Math.max(0, Math.round((ctx.currentHp / ctx.maxHp) * 100));
+        hpFill.style.width = pct + '%';
+        if(pct <= 25) hpFill.className = 'hp-bar-fill low';
+        else if(pct <= 50) hpFill.className = 'hp-bar-fill mid';
+      }
+      if(hpNum) hpNum.innerText = ctx.currentHp;
+    }
+
+    // Check defeat
+    if(res.hpUpdate && res.hpUpdate.defeated){
+      setTimeout(() => {
+        showMonsterDefeatedVictory(ctx);
+      }, 700);
+      return;
+    }
+  } else {
+    // Wrong answer
+    playSfx('wrong');
+    ctx.combo = 0;
+
+    if(chosenBtn){
+      chosenBtn.style.background = '#FDEEEE';
+      chosenBtn.style.borderColor = 'var(--red)';
+    }
+    if(chosenBubble){
+      chosenBubble.style.background = 'var(--red)';
+      chosenBubble.style.color = '#fff';
+    }
+
+    // Highlight correct answer
+    const rightBtn = document.getElementById('optBtn' + correctIdx);
+    if(rightBtn){
+      rightBtn.style.background = '#EBF7EE';
+      rightBtn.style.borderColor = 'var(--green)';
+    }
+  }
+
+  // Next question after 1.4s delay
+  setTimeout(() => {
+    fetchNextBattleQuestion();
+  }, 1400);
+};
+
+function triggerMonsterDamageAnimation(isCrit){
+  const avatar = document.getElementById('monsterAvatarElem');
+  if(avatar){
+    avatar.classList.remove('shake-monster');
+    void avatar.offsetWidth; // trigger reflow
+    avatar.classList.add('shake-monster');
+  }
+
+  const container = document.getElementById('damagePopupContainer');
+  if(container){
+    const popup = document.createElement('div');
+    popup.className = 'damage-popup' + (isCrit ? ' crit' : '');
+    popup.innerText = isCrit ? '🔥 CRITICAL! -2 HP' : '-1 HP';
+    container.appendChild(popup);
+    setTimeout(() => popup.remove(), 800);
+  }
+}
+
+function handleBattleTimeout(){
+  toast('⏰ সময় শেষ!');
+  playSfx('wrong');
+  const ctx = window.__battleCtx;
+  if(!ctx) return;
+  ctx.combo = 0;
+  ctx.questionsAnswered++;
+  setTimeout(() => fetchNextBattleQuestion(), 1200);
+}
+
+window.abandonBattlePrompt = function(){
+  if(confirm('তুমি কি নিশ্চিত যুদ্ধ ছেড়ে বের হতে চাও? (বর্তমান অগ্রগতি সংরক্ষিত থাকবে)')){
+    const ctx = window.__battleCtx;
+    if(ctx && ctx.timerHandle) clearInterval(ctx.timerHandle);
+    if(ctx) postToScript('endBattleSession', { sessionId: ctx.sessionId, outcome: 'abandoned' });
+    window.__battleCtx = null;
+    go('battleWorldMap');
+  }
+};
+
+function showMonsterDefeatedVictory(ctx){
+  if(ctx.timerHandle) clearInterval(ctx.timerHandle);
+  playSfx('victory');
+  postToScript('endBattleSession', { sessionId: ctx.sessionId, outcome: 'won' });
+
+  app.innerHTML = `
+    ${header('বিজয় অর্জন!')}
+    <div class="battle-stage center" style="padding:40px 20px;">
+      <div style="font-size:64px; animation: fireGlow 1s infinite alternate;">🏆</div>
+      <h1 style="color:var(--gold); margin:12px 0 6px 0;">মহাবিজয়! দানব পরাস্ত হয়েছে!</h1>
+      <p style="color:#F5F7FB; font-size:15px; margin-bottom:18px;">
+        অভিনন্দন! তুমি সফলভাবে <b>${escapeHtml(ctx.monsterTitle)}</b> কে বধ করেছ। এই অধ্যায়টি এখন জয় করা হয়েছে!
+      </p>
+      <div style="background:rgba(255,255,255,0.1); border-radius:12px; padding:12px; margin-bottom:20px; font-size:13px; color:#fff;">
+        মোট উত্তর দেওয়া প্রশ্ন: <b>${ctx.questionsAnswered}</b>টি
+      </div>
+      <button class="btn btn-gold btn-block" onclick="go('battleWorldMap')">🗺️ বিশ্ব মানচিত্রে ফিরে যাও</button>
+    </div>
+    ${creditFooter()}
+  `;
+}
+
+// ================= ANTI-CHEAT LOOK-AWAY DETECTOR =================
+document.addEventListener('visibilitychange', function(){
+  const ctx = window.__battleCtx;
+  if(!ctx) return;
+  if(document.hidden){
+    ctx._hiddenStart = Date.now();
+  } else if(ctx._hiddenStart){
+    const elapsed = Math.round((Date.now() - ctx._hiddenStart) / 1000);
+    ctx._hiddenStart = null;
+    if(elapsed >= 3){
+      postToScript('logCheatFlag', {
+        sessionId: ctx.sessionId,
+        type: 'lookAway',
+        questionId: ctx.currentQuestion ? ctx.currentQuestion.id : '',
+        detail: `ট্যাব পরিবর্তন বা স্ক্রিন থেকে দৃষ্টি সরানো (${elapsed} সেকেন্ড)`
+      });
+    }
+  }
+});
+
 function syncLogoutFab(){
   const fab = document.getElementById('logoutFab');
   if(fab) fab.style.display = currentTeacher ? 'block' : 'none';
 }
+
 function render(){
   syncLogoutFab();
   const s = state.screen;
   if(s==='landing') renderLanding();
+  else if(s==='studentAuth') renderStudentAuth();
+  else if(s==='studentDashboard') renderStudentDashboard();
+  else if(s==='teacherRegCodes') renderTeacherRegCodes();
+  else if(s==='teacherBattleAudit') renderTeacherBattleAudit();
+  else if(s==='battleWorldMap') renderBattleWorldMap();
+  else if(s==='battleChapterSelect') renderBattleChapterSelect(state.courseId, state.subject, state.title);
   else if(s==='teacherGate') renderTeacherGate();
   else if(s==='teacherDashboard') renderTeacherDashboard();
   else if(s==='teacherNewExam') renderTeacherNewExam(state.editingExam);
@@ -3546,6 +5173,15 @@ function render(){
     if(state.step==='questions') renderLibraryQuestionList(state.subjectVal, state.courseId, state.courseTitle, state.topicId);
     else renderLibraryPicker(state.step, state.subjectVal, state.courseId, state.courseTitle);
   }
+
+  if(deferredPwaPrompt){
+    setTimeout(() => {
+      document.querySelectorAll('.pwa-install-banner').forEach(el => el.style.display = 'flex');
+      const hBtn = document.getElementById('headerInstallBtn');
+      if(hBtn) hBtn.style.display = 'inline-flex';
+    }, 50);
+  }
+  setTimeout(renderAllMath, 50);
 }
 
 render();
