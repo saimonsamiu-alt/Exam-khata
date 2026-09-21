@@ -326,6 +326,11 @@
     body.lib-open .wrap{ margin-left:24px; margin-right:auto; }
     .lib-panel{ left:680px; right:auto; width:min(560px, calc(100vw - 696px)); box-shadow:var(--card-shadow); }
   }
+  /* [NEW] class-days summary chips */
+  .cls-chips{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .cls-chip{ border-radius:10px; padding:8px 4px; text-align:center; display:flex; flex-direction:column; gap:2px; }
+  .cls-chip b{ font-family:var(--font-mono); font-size:19px; }
+  .cls-chip span{ font-size:11px; font-weight:600; line-height:1.25; }
 </style>
 
 
@@ -683,7 +688,7 @@ function go(screen, data={}){
   if(typeof closeLibraryPanel==='function') closeLibraryPanel();
   // ড্যাশবোর্ডে ঢোকার সময় সবসময় নতুন ডাটা আনো (নাহলে পরীক্ষা দিয়ে কুপন পেলেও পুরনো ব্যালেন্স দেখাত)
   if(screen==='studentDashboard') window.__studentDashCache = null;
-  state = { screen, ...data };
+  state = { ...data, screen }; // [NEW] target screen wins (go('shopList', state) used to re-open the old screen)
   render();
 }
 
@@ -775,6 +780,7 @@ function renderLanding(){
     <div class="card">
       <h3 style="margin-bottom:12px;">✨ আরও যা করতে পারো</h3>
       <div class="feature-grid">
+        <div class="feature-card" onclick="go('studentEntry')"><span class="ic">📋</span><span class="lbl">পরীক্ষা দাও<br><small style="font-weight:500; color:var(--pencil);">কোড দিয়ে, লগইন ছাড়া</small></span></div> <!-- [NEW] -->
         <div class="feature-card" onclick="go('practiceList')"><span class="ic">🎯</span><span class="lbl">Practice</span></div>
         <div class="feature-card" onclick="go('topicsSubject')"><span class="ic">📚</span><span class="lbl">গুরুত্বপূর্ণ Topics</span></div>
         <div class="feature-card" onclick="go(getLoggedStudent()?'studentDashboard':'studentAuth')"><span class="ic">📅</span><span class="lbl">উপস্থিতি নিশ্চিত করো</span></div>
@@ -913,7 +919,7 @@ window.startPracticeFromEntry = async function(){
   if(!name){ toast('নাম লেখো'); return; }
   const exam = state.exam;
   const slug = slugify(name);
-  runCheckingSequence(exam, slug, name, 1);
+  runCheckingSequence(exam, slug, name, 1, { practice: true }); // [NEW] practice never marks attendance
 }
 
 let currentTeacher = null; // { id, name } -- persists across teacher screens regardless of state resets
@@ -954,7 +960,9 @@ async function renderTeacherDashboard(){
   app.innerHTML = ` ${header('শিক্ষক প্যানেল')} <div class="card center">পরীক্ষার তালিকা লোড হচ্ছে...</div>`;
   const teacherId = currentTeacher ? currentTeacher.id : 'admin';
   const teacherName = currentTeacher ? currentTeacher.name : CREATOR_NAME;
-  const exams = await getExamsByTeacher(teacherId);
+  const [exams, wdAll] = await Promise.all([getExamsByTeacher(teacherId), getWithdrawRequestsRemote()]); // [NEW] also load withdraw requests
+  const wdPending = wdAll.filter(w=> w.status === 'pending');
+  const wdLate = wdPending.filter(w=> w.dueAt < Date.now()).length;
   exams.sort((a,b)=> (b.createdAt||0) - (a.createdAt||0));
   window.__examListCache = exams;
 
@@ -985,6 +993,14 @@ async function renderTeacherDashboard(){
 
   app.innerHTML = `
     ${header('শিক্ষক প্যানেল · ' + escapeHtml(teacherName))}
+    ${wdPending.length ? `
+    <div onclick="go('withdrawManage')" style="cursor:pointer; background:linear-gradient(135deg,#FFF3D6,#FFE4A8); border:1.5px solid #E9B949; border-radius:12px; padding:14px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px;">
+      <div style="font-size:28px;">🔔</div>
+      <div style="flex:1;">
+        <div style="font-weight:700; color:#6B4A05;">${wdPending.length}টি Withdraw অনুরোধ Pending — মোট ৳${wdPending.reduce((a,w)=> a + w.amount, 0)}</div>
+        <div style="font-size:12.5px; color:#7B5A10;">${wdLate ? `⚠️ ${wdLate}টির ১৪ দিন পার হয়ে গেছে! ` : ''}চাপ দিয়ে নম্বর দেখো ও টাকা পাঠাও →</div>
+      </div>
+    </div>` : ''}
     <div class="card">
       <h2>⚡ দ্রুত অ্যাকশন</h2>
       <button class="btn btn-primary btn-block" onclick="draftQuestions=[]; go('teacherNewExam')">+ নতুন পরীক্ষা সাজাও</button>
@@ -999,6 +1015,9 @@ async function renderTeacherDashboard(){
       <div class="row" style="margin-top:10px;">
         <button class="btn btn-outline btn-block" onclick="go('masteryManage')">🎯 Mastery কোর্স</button>
         <button class="btn btn-gold btn-block" onclick="go('couponManage')">🎁 Treat Coupon</button>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn btn-gold btn-block" onclick="go('withdrawManage')">💸 Withdraw অনুরোধ${wdPending.length ? ` (${wdPending.length})` : ''}</button>
       </div>
       <div class="row" style="margin-top:10px;">
         <button class="btn btn-outline btn-block" onclick="go('teacherRegCodes')">🔑 রেজিস্ট্রেশন কোড জেনারেটর</button>
@@ -1455,16 +1474,19 @@ window.saveManualScore = async function(resultId, examCode, slug, total){
 }
 
 function renderStudentEntry(){
+  const loggedStud = getLoggedStudent(); // [NEW] logged-in students keep their own account; others just type a name (no login needed)
   app.innerHTML = `
     ${header('স্টুডেন্ট')}
     <div class="card">
       <h2>পরীক্ষা শুরু করো</h2>
+      <p class="hint">লগইন না করেই শিক্ষকের দেওয়া এক্সাম কোড ও পাসওয়ার্ড দিয়ে পরীক্ষা দিতে পারো। পরীক্ষা দিলে সেদিনের উপস্থিতিও নিজে থেকে মার্ক হয়ে যাবে।</p>
+      ${loggedStud ? `<div class="hint" style="margin-bottom:12px;">🧑‍🎓 <b>${escapeHtml(loggedStud.name)}</b> হিসেবে পরীক্ষা দিচ্ছো</div>` : `
       <label class="field-label">তোমার নাম</label>
-      <input type="text" id="studName" placeholder="পুরো নাম লেখো">
+      <input type="text" id="studName" placeholder="পুরো নাম লেখো">`}
       <label class="field-label">এক্সাম কোড</label>
       <input type="text" id="studCode" placeholder="যেমন: 7K3PQ" style="text-transform:uppercase;">
       <label class="field-label">পাসওয়ার্ড</label>
-      <input type="password" id="studPass" placeholder="কমপক্ষে ৪ সংখ্যার পাসওয়ার্ড">
+      <input type="password" id="studPass" placeholder="শিক্ষকের দেওয়া পরীক্ষার পাসওয়ার্ড">
       <button class="btn btn-primary btn-block" onclick="verifyStudentLogin()">পরীক্ষা শুরু করো</button>
       <div style="margin-top:14px;"><a class="link-back" onclick="go('landing')">← ফিরে যাও</a></div>
     </div>
@@ -1472,7 +1494,8 @@ function renderStudentEntry(){
   `;
 }
 async function verifyStudentLogin(){
-  const name = document.getElementById('studName').value.trim();
+  const loggedStud = getLoggedStudent(); // [NEW]
+  const name = loggedStud ? loggedStud.name : ((document.getElementById('studName')||{}).value||'').trim();
   const code = document.getElementById('studCode').value.trim().toUpperCase();
   const pass = document.getElementById('studPass').value.trim();
   if(!name || !code || !pass){ toast('সবগুলো পূরণ করো'); return; }
@@ -1486,7 +1509,7 @@ async function verifyStudentLogin(){
   const requiredPassword = exam.isTreat ? exam.treatPassword : STUDENT_PASSWORD;
   if(pass !== requiredPassword){ toast('পাসওয়ার্ড ভুল হয়েছে'); return; }
 
-  const slug = slugify(name);
+  const slug = loggedStud ? loggedStud.slug : slugify(name); // [NEW]
 
   const existingResults = await getRemoteResults(code);
   const myAttempts = existingResults.filter(r => (r.slug ? r.slug === slug : slugify(r.studentName||'') === slug));
@@ -1503,7 +1526,7 @@ async function verifyStudentLogin(){
     return;
   }
 
-  runCheckingSequence(exam, slug, name, 1);
+  runCheckingSequence(exam, slug, name, 1); // code exam -> counts as attendance
 }
 
 function renderTreatBlocked(exam, attempt){
@@ -1562,7 +1585,7 @@ window.viewAttemptDetail = function(tryNo){
 }
 window.startPracticeAttempt = function(){
   const { exam, slug, name, attempts } = window.__choiceCtx;
-  runCheckingSequence(exam, slug, name, attempts.length + 1);
+  runCheckingSequence(exam, slug, name, attempts.length + 1, { practice: true }); // [NEW] re-takes are practice
 }
 
 function renderStudentAlready(exam, prev, tryNo, totalTries){
@@ -1586,7 +1609,7 @@ function renderStudentAlready(exam, prev, tryNo, totalTries){
   `;
 }
 
-function runCheckingSequence(exam, slug, name, attemptNumber){
+function runCheckingSequence(exam, slug, name, attemptNumber, opts){
   app.innerHTML = `
     ${header('যাচাই হচ্ছে')}
     <div class="card check-seq">
@@ -1602,6 +1625,7 @@ function runCheckingSequence(exam, slug, name, attemptNumber){
   setTimeout(async ()=>{
     go('studentExam', {
       exam, slug, name, attemptNumber: attemptNumber || 1,
+      viaCode: !(opts && opts.practice), // [NEW] only code-based exams mark attendance
       answers: new Array(exam.questions.length).fill(null),
       locked: new Array(exam.questions.length).fill(false),
       startedAt: Date.now(),
@@ -1733,7 +1757,7 @@ function updateTimerDisplay(sec){
 
 window.submitExam = async function(auto){
   if(timerInterval){ clearInterval(timerInterval); timerInterval=null; }
-  const { exam, slug, name, answers, attemptNumber } = state;
+  const { exam, slug, name, answers, attemptNumber, viaCode } = state;
   let score = 0;
   exam.questions.forEach((q,i)=>{ if(answers[i] === q.correct) score++; });
   const resultObj = { id: genId('res'), studentName: name, slug, score, total: exam.questions.length, submittedAt: Date.now(), answers, attemptNumber: attemptNumber||1 };
@@ -1742,7 +1766,7 @@ window.submitExam = async function(auto){
 
   const res = await sset('result:'+exam.code+':'+slug, JSON.stringify(resultObj));
   if(!res){
-    window.__pendingResult = { exam, slug, resultObj, auto };
+    window.__pendingResult = { exam, slug, resultObj, auto, viaCode };
     app.innerHTML = `
       ${header('জমা ব্যর্থ হয়েছে')}
       <div class="card center">
@@ -1753,10 +1777,10 @@ window.submitExam = async function(auto){
     `;
     return;
   }
-  await finalizeExamSubmission(exam, slug, resultObj, auto);
+  await finalizeExamSubmission(exam, slug, resultObj, auto, viaCode);
 }
 window.retrySubmit = async function(){
-  const { exam, slug, resultObj, auto } = window.__pendingResult;
+  const { exam, slug, resultObj, auto, viaCode } = window.__pendingResult;
   app.innerHTML = `${header('জমা হচ্ছে')} <div class="card center">আবার চেষ্টা করা হচ্ছে...</div>`;
   const res = await sset('result:'+exam.code+':'+slug, JSON.stringify(resultObj));
   if(!res){
@@ -1770,9 +1794,9 @@ window.retrySubmit = async function(){
     `;
     return;
   }
-  await finalizeExamSubmission(exam, slug, resultObj, auto);
+  await finalizeExamSubmission(exam, slug, resultObj, auto, viaCode);
 }
-async function finalizeExamSubmission(exam, slug, resultObj, auto){
+async function finalizeExamSubmission(exam, slug, resultObj, auto, viaCode){
   let couponAmount = 0;
   if(exam.isTreat && (resultObj.attemptNumber||1) === 1){
     const percent = Math.round((resultObj.score/exam.questions.length)*100);
@@ -1782,8 +1806,8 @@ async function finalizeExamSubmission(exam, slug, resultObj, auto){
     // name has completed this Treat exam, they're blocked from re-entering
     // (checked in verifyStudentLogin), so a fixed shared password is safe.
   }
-  // taking any exam today counts as proof of attendance for that day, auto-approved (blue)
-  markAttendanceRemote(slug, todayStr(), 'exam').catch(()=>{});
+  // [NEW] taking a CODE exam today counts as proof of attendance (blue). Practice exams / retakes do not.
+  if(viaCode) markAttendanceRemote(slug, todayStr(), 'exam').catch(()=>{});
   go('studentResult', { exam, result: resultObj, auto, couponAmount });
 }
 
@@ -2181,8 +2205,10 @@ window.goCalNav = function(y, m, targetScreen){
 async function renderAttendanceDashboard(){
   window.__calYear = null; window.__calMonth = null;
   app.innerHTML = `${header('উপস্থিতি ও বেতন')}<div class="card center">লোড হচ্ছে...</div>`;
-  const students = await listStudentsRemote();
+  const [students, sumRes] = await Promise.all([listStudentsRemote(), getJson('listClassSummaries', { month: todayStr().slice(0,7) })]); // [NEW]
   window.__attendanceStudents = students;
+  const sumBySlug = {};
+  ((sumRes && sumRes.status === 'success') ? sumRes.data : []).forEach(x=>{ sumBySlug[x.slug] = x; });
 
   let studentRows = '';
   if(students.length === 0){
@@ -2191,7 +2217,10 @@ async function renderAttendanceDashboard(){
     studentRows = students.map(s=>{
       return `<div class="exam-item">
         <div class="row-top">
-          <div><h3 style="margin-bottom:2px;">${escapeHtml(s.name)}</h3></div>
+          <div><h3 style="margin-bottom:2px;">${escapeHtml(s.name)}</h3>
+            ${(()=>{ const c = sumBySlug[s.slug]; if(!c) return ''; if(!c.hasPlan) return `<div class="meta">এই মাসে ক্লাস: ${c.held} দিন · পরিকল্পনা ঠিক করা হয়নি</div>`;
+              return `<div class="meta">📘 এই মাস: <b>${c.held}/${c.planned}</b> দিন · ${c.remaining>0 ? `বাকি <b>${c.remaining}</b>` : (c.extraThisMonth>0 ? `extra <b>+${c.extraThisMonth}</b>` : '✓ সম্পূর্ণ')}${c.extraCarriedIn>0 ? ` · আগের extra <b>${c.extraCarriedIn}</b>` : ''}</div>`; })()}
+          </div>
         </div>
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="openAttendanceMark('${s.slug}')">📅 ক্যালেন্ডার খোলো</button>
       </div>`;
@@ -2239,6 +2268,7 @@ async function renderAttendanceMark(slug, studentName, records){
 
   const calHtml = buildMiniCalendar(year, month, records, 'teacherToggleDay', 'attendanceMark', { slug, studentName });
   state.records = records; // stash so teacherToggleDay can inspect the clicked day's current state
+  const planCardHtml = await buildClassPlanCard(slug, `${year}-${String(month+1).padStart(2,'0')}`, year, month); // [NEW]
 
   app.innerHTML = `
     ${header('উপস্থিতি মার্ক করো')}
@@ -2246,6 +2276,7 @@ async function renderAttendanceMark(slug, studentName, records){
       <h2>${escapeHtml(studentName)}</h2>
       <p class="hint">ফাঁকা দিনে ক্লিক করলে মার্ক হবে। ইতিমধ্যে মার্ক করা দিনে ক্লিক করলে বাতিল করার অপশন আসবে। এই মাসে অনুমোদিত: <b>${approvedThisMonth}</b>টা।</p>
     </div>
+    ${planCardHtml}
     ${calHtml}
     <div class="center"><a class="link-back" onclick="go('attendanceDashboard')">← স্টুডেন্ট তালিকায় ফিরে যাও</a></div>
     ${creditFooter()}
@@ -2307,11 +2338,13 @@ function renderAttendanceStudentView(slug, name, records){
       <h2>${escapeHtml(name)}</h2>
       <p class="hint">এই মাসে অনুমোদিত ক্লাস: <b>${approvedThisMonth}</b>টা</p>
       <p class="hint">🟨 হলুদ দিনে ক্লিক করে confirm করো যে সেদিন ক্লাস হয়েছিল। 🟦 নীল দিন মানে সেদিন পরীক্ষা দিয়েছো, তাই স্বয়ংক্রিয়ভাবে উপস্থিতি নিশ্চিত হয়ে গেছে।</p>
+      <div id="clsSummarySlot"></div>
     </div>
     ${calHtml}
-    <div class="center"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
+    <div class="center"><a class="link-back" onclick="go(getLoggedStudent()?'studentDashboard':'landing')">← ফিরে যাও</a></div>
     ${creditFooter()}
   `;
+  fillClassSummary(slug, `${year}-${String(month+1).padStart(2,'0')}`, 'clsSummarySlot'); // [NEW]
 }
 window.studentToggleDay = async function(dateStr){
   const { slug, name, records } = state;
@@ -2904,24 +2937,11 @@ window.importMasteryBulk = async function(){
   const existing = await getMasteryTopics(courseId);
   let nextOrder = existing.length + 1;
   toast(`${parsedTopics.length}টা টপিক সেভ হচ্ছে...`);
-  // Sheets-এর এক cell-এ ৫০,০০০ অক্ষরের বেশি ধরে না, তাই বড় টপিক নিজে নিজে "অংশ ১, অংশ ২..." ভাগ হয়
-  let savedCount = 0, failedCount = 0;
   for(const t of parsedTopics){
-    const chunks = [];
-    let cur = [], len = 0;
-    for(const q of t.questions){
-      const l = JSON.stringify(q).length + 45;
-      if(cur.length && len + l > 40000){ chunks.push(cur); cur = []; len = 0; }
-      cur.push(q); len += l;
-    }
-    if(cur.length) chunks.push(cur);
-    for(let ci=0; ci<chunks.length; ci++){
-      const title = chunks.length === 1 ? t.title : `${t.title} (অংশ ${ci+1})`;
-      const res = await saveMasteryTopicRemote(courseId, nextOrder, title, chunks[ci], MASTERY_PASS_PERCENT);
-      if(res){ savedCount++; nextOrder++; } else { failedCount++; }
-    }
+    await saveMasteryTopicRemote(courseId, nextOrder, t.title, t.questions, MASTERY_PASS_PERCENT);
+    nextOrder++;
   }
-  toast(failedCount ? `${savedCount}টা সেভ হয়েছে, ${failedCount}টা ব্যর্থ ⚠️` : `${savedCount}টা টপিক সেভ হয়েছে ✅`);
+  toast(`${parsedTopics.length}টা টপিক সেভ হয়েছে ✅`);
   go('masteryManageCourse');
 }
 
@@ -3292,47 +3312,50 @@ window.checkCouponBalance = async function(){
   const slug = slugify(name);
   toast('লোড হচ্ছে...');
   const data = await getCouponBalanceRemote(slug);
-  go('couponBalance', { name, slug, balance: data.balance, history: data.history });
+  go('couponBalance', couponState(name, slug, data)); // [NEW]
 }
 function renderCouponBalance(){
   const { name, slug, balance, history } = state;
+  const pw = state.pendingWithdrawal || null;          // [NEW]
+  const wds = (state.withdrawals || []);                // [NEW]
   const rows = (history||[]).sort((a,b)=> b.createdAt - a.createdAt).map(h=> {
-    const statusLabel = h.status==='settled' ? 'পরিশোধিত ✓' : (h.status==='requested' ? `ব্যবহারের অনুরোধ করা হয়েছে (কোড: ${escapeHtml(h.requestCode||'')})` : 'জমা আছে');
+    const statusLabel = h.status==='settled' ? 'পরিশোধিত ✓' : (h.status==='requested' ? 'Withdraw অনুরোধ — Pending ⏳' : 'জমা আছে');
     return `<div class="review-block">
       <div class="q-text" style="font-size:14px;">পরীক্ষা: ${escapeHtml(h.examCode)} · স্কোর: ${h.percent}%</div>
       <div class="review-ans ${h.status==='settled'?'right':'wrong'}">৳${h.amount} — ${statusLabel}</div>
     </div>`;
   }).join('');
-  const activeRequest = (history||[]).find(h=> h.status==='requested');
+  const wdRows = wds.map(w=> `
+    <div class="review-block" style="display:flex; justify-content:space-between; gap:10px;">
+      <div><b>${w.method==='nagad'?'Nagad':'bKash'}</b> <span class="meta">${escapeHtml(w.number)} · ${fmtBnDate(w.requestedAt)}</span></div>
+      <div class="review-ans ${w.status==='paid'?'right':'wrong'}" style="margin:0;">৳${w.amount} — ${w.status==='paid' ? 'পাঠানো হয়েছে ✓' : 'Pending ⏳'}</div>
+    </div>`).join('');
+  // old "gift box" request-code flow (only shown if such an old request is still open)
+  const oldRequest = (history||[]).find(h=> h.status==='requested' && String(h.requestCode||'').indexOf('TREAT-') === 0);
   app.innerHTML = `
     ${header('আমার Treat Coupon')}
     <div class="card center">
       <h2>${escapeHtml(name)}</h2>
       <div class="stamp">৳${balance}</div>
-      <p class="hint" style="margin-top:10px;">এই টাকা জমা রাখতে পারো (পরে বেশি জমিয়ে ব্যবহার করতে পারবে), অথবা এখনই ব্যবহার করতে পারো।</p>
-      ${balance>0 ? `
+      <p class="hint" style="margin-top:10px;">এই টাকা জমা রাখতে পারো (পরে বেশি জমিয়ে তুলতে পারবে), অথবা এখনই Withdraw করতে পারো।</p>
+      ${pw ? withdrawPendingHtml(pw) : (balance>0 ? `
         <div id="giftBoxArea">
-          <button class="btn btn-gold btn-block" style="font-size:20px; padding:20px;" onclick="openGiftBox()">🎁 ব্যবহার করবো (bKash-এ নাও)</button>
+          ${withdrawPanelHtml(balance)}
           <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('shopList', state)">🛍️ প্রোডাক্ট কিনো</button>
         </div>
-      ` : ''}
-      ${activeRequest ? `
-        <div class="say" style="margin-top:14px; text-align:start;">
-          🎁 <b>তোমার কোড:</b> ${escapeHtml(activeRequest.requestCode)}<br><br>
-          <b>যা করতে হবে:</b><br>
-          ১. bKash অ্যাপ খুলে <b>Request Money</b>-তে যাও<br>
-          ২. নম্বর দাও: <b>০১৮৭৮৭৪৯৪৪৫</b><br>
-          ৩. Amount-এ লেখো: <b>৳${balance}</b><br>
-          ৪. Reference/Note-এ অবশ্যই এই কোডটা লেখো: <b>${escapeHtml(activeRequest.requestCode)}</b><br><br>
-          শিক্ষক কোডটা মিলিয়ে দেখে টাকা পাঠিয়ে দেবেন।
-        </div>
-      ` : ''}
+      ` : '')}
+      ${pw ? `<p class="hint" style="margin-top:10px;">Withdraw অনুরোধ Pending থাকা অবস্থায় শপ থেকে কেনা যাবে না।</p>` : ''}
+      ${oldRequest ? `
+        <div style="margin-top:14px; text-align:start; font-size:13.5px; line-height:1.7; background:#F5F9FE; border-radius:10px; padding:12px;">
+          🎁 <b>আগের অনুরোধের কোড:</b> ${escapeHtml(oldRequest.requestCode)} — শিক্ষক এই কোড মিলিয়ে টাকা পাঠাবেন।
+        </div>` : ''}
     </div>
+    ${wdRows ? `<div class="card" style="text-align:start;"><h3>Withdraw ইতিহাস</h3>${wdRows}</div>` : ''}
     <div class="card" style="text-align:start;">
       <h3>ইতিহাস</h3>
       ${rows || `<div class="empty-state">এখনো কোনো কুপন অর্জন করোনি।</div>`}
     </div>
-    <div class="center"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
+    <div class="center"><a class="link-back" onclick="go(getLoggedStudent()?'studentDashboard':'landing')">← ফিরে যাও</a></div>
     ${creditFooter()}
   `;
 }
@@ -3359,7 +3382,7 @@ async function renderCouponManage(){
       <div class="row-top">
         <div>
           <h3 style="margin-bottom:2px;">${escapeHtml(b.name)}</h3>
-          ${b.requestCode ? `<div class="meta">🎁 ব্যবহারের অনুরোধ — কোড: <b>${escapeHtml(b.requestCode)}</b> (bKash-এ এই কোড রেফারেন্সে খুঁজো)</div>` : `<div class="meta">এখনো জমা আছে, ব্যবহারের অনুরোধ করেনি</div>`}
+          ${b.requestCode ? (String(b.requestCode).indexOf('wd_') === 0 ? `<div class="meta">💸 Withdraw অনুরোধ Pending — <a class="link-back" onclick="go('withdrawManage')">নম্বর দেখো ও পাঠাও</a></div>` : `<div class="meta">🎁 ব্যবহারের অনুরোধ — কোড: <b>${escapeHtml(b.requestCode)}</b> (bKash-এ এই কোড রেফারেন্সে খুঁজো)</div>`) : `<div class="meta">এখনো জমা আছে, ব্যবহারের অনুরোধ করেনি</div>`}
         </div>
         <div class="score-big score-pass">৳${b.balance}</div>
       </div>
@@ -3372,7 +3395,8 @@ async function renderCouponManage(){
       <h2>অপরিশোধিত ব্যালেন্স</h2>
       <p class="hint">নিয়ম: শুধু "🎁 Treat" হিসেবে চিহ্নিত পরীক্ষায় প্রথমবার ৮০%-এর বেশি পেলে কুপন পাবে — সূত্র: n = (নম্বর% − ৮০), কুপন = n×(n+1)/2 টাকা। ১০০% পেলে সর্বোচ্চ ৳210। যখন কেউ "ব্যবহার করবো" চাপবে, একটা কোড দেখাবে — bKash Request Money-তে সেই কোড রেফারেন্সে থাকবে, মিলিয়ে দেখে তুমি পাঠিয়ে "পরিশোধ করা হলো" চাপবে।</p>
       ${rows}
-      <button class="btn btn-outline btn-block" style="margin-top:14px;" onclick="go('shopManage')">🛍️ শপ প্রোডাক্ট ম্যানেজ করো</button>
+      <button class="btn btn-gold btn-block" style="margin-top:14px;" onclick="go('withdrawManage')">💸 Withdraw অনুরোধ (bKash / Nagad)</button>
+      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('shopManage')">🛍️ শপ প্রোডাক্ট ম্যানেজ করো</button>
       <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('writtenManage')">✍️ Written CQ ম্যানেজ করো (AI দিয়ে খাতা চেক)</button>
     </div>
     <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>
@@ -3531,13 +3555,13 @@ async function renderShopList(){
   const products = await getShopProducts();
   window.__shopProductsCache = products;
   let rows = products.map((p,idx)=> {
-    const canAfford = balance >= p.price;
+    const canAfford = balance >= p.price && !state.pendingWithdrawal; // [NEW]
     return `<div class="exam-item">
       ${p.imageUrl ? `<img src="${escapeHtml(p.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:8px;" alt="${escapeHtml(p.title)}">`:''}
       <h3 style="margin-bottom:4px;">${escapeHtml(p.title)}</h3>
       <div class="meta">${escapeHtml(p.description||'')}</div>
       <div class="score-big ${canAfford?'score-pass':'score-fail'}" style="margin-top:6px;">৳${p.price}</div>
-      <button class="btn ${canAfford?'btn-primary':'btn-outline'} btn-block" style="margin-top:8px;" ${canAfford?'':'disabled'} onclick="buyProduct(${idx})">${canAfford ? '🛍️ কিনো' : 'পর্যাপ্ত ব্যালেন্স নেই'}</button>
+      <button class="btn ${canAfford?'btn-primary':'btn-outline'} btn-block" style="margin-top:8px;" ${canAfford?'':'disabled'} onclick="buyProduct(${idx})">${canAfford ? '🛍️ কিনো' : (state.pendingWithdrawal ? 'Withdraw Pending — এখন কেনা যাবে না' : 'পর্যাপ্ত ব্যালেন্স নেই')}</button>
     </div>`;
   }).join('');
   if(products.length===0) rows = `<div class="empty-state">এখনো কোনো প্রোডাক্ট যোগ করা হয়নি।</div>`;
@@ -3557,14 +3581,14 @@ window.buyProduct = async function(idx){
   const p = window.__shopProductsCache[idx];
   if(!confirm(`${p.title} — ৳${p.price} দিয়ে কিনতে চাও? তোমার ব্যালেন্স থেকে এই টাকা কেটে নেওয়া হবে।`)) return;
   toast('অর্ডার করা হচ্ছে...');
-  const res = await placeOrderRemote(slug, p.id);
+  const res = await postToScriptRaw('placeOrder', { slug, productId: p.id }); // [NEW] raw, so we can show the real reason
   if(res && res.status === 'success'){
     toast('অর্ডার সফল হয়েছে ✅');
     const data = await getCouponBalanceRemote(slug);
-    go('shopList', { slug, name, balance: data.balance, history: data.history });
+    go('shopList', couponState(name, slug, data));
     alert('অর্ডার সফল হয়েছে! তোমার শিক্ষক শীঘ্রই এটা পৌঁছে দেবেন।');
   } else {
-    toast('ব্যর্থ হয়েছে — ব্যালেন্স যথেষ্ট নেই হয়তো');
+    toast(res && res.message === 'withdraw_pending' ? 'Withdraw অনুরোধ Pending থাকায় এখন কেনা যাবে না' : 'ব্যর্থ হয়েছে — ব্যালেন্স যথেষ্ট নেই হয়তো');
   }
 }
 
@@ -4224,23 +4248,21 @@ async function renderStudentDashboard(){
           <div style="font-size:24px;">✅</div>
           <div>
             <div style="font-weight:700; color:var(--green); font-size:14.5px;">আজকের ক্লাসে উপস্থিত আছো!</div>
-            <div style="font-size:12px; color:var(--pencil);">হাজিরা শিক্ষক কর্তৃক অনুমোদিত হয়েছে</div>
+            <div style="font-size:12px; color:var(--pencil);">আজকের হাজিরা নেওয়া হয়েছে ✓</div>
           </div>
         </div>
         <button class="info-btn" onclick="openStudentAttendanceCalendar('${slug}', '${escapeHtml(d.studentName)}')">📅 ক্যালেন্ডার</button>
       </div>
     `;
   } else if(isPresentToday && attStatus === 'pending'){
+    // [NEW] the teacher already marked today as a class day -> one tap from the student confirms it
     attWidgetHtml = `
-      <div style="background:#FEF8EC; border:1.5px solid #F8DA9D; border-radius:12px; padding:14px; display:flex; align-items:center; justify-content:space-between; gap:10px;">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <div style="font-size:24px;">⏳</div>
-          <div>
-            <div style="font-weight:700; color:#9B6A15; font-size:14.5px;">হাজিরা জমা হয়েছে</div>
-            <div style="font-size:12px; color:var(--pencil);">শিক্ষকের অনুমোদনের অপেক্ষায় আছে</div>
-          </div>
-        </div>
-        <button class="info-btn" onclick="openStudentAttendanceCalendar('${slug}', '${escapeHtml(d.studentName)}')">📅 ক্যালেন্ডার</button>
+      <div style="background:#FEF8EC; border:1.5px solid #F8DA9D; border-radius:12px; padding:14px; text-align:center;">
+        <div style="font-size:24px;">📌</div>
+        <div style="font-weight:700; color:#9B6A15; font-size:14.5px; margin:4px 0;">শিক্ষক আজকের ক্লাস মার্ক করেছেন</div>
+        <p class="hint" style="margin-bottom:10px;">তুমি উপস্থিত থাকলে নিচের বোতাম চেপে নিশ্চিত করো</p>
+        <button class="btn btn-gold btn-block" onclick="dashMarkTodayAttendance('${slug}')">✅ হ্যাঁ, আমি উপস্থিত ছিলাম</button>
+        <div style="margin-top:8px;"><a class="link-back" style="font-size:12px;" onclick="openStudentAttendanceCalendar('${slug}', '${escapeHtml(d.studentName)}')">📅 ক্যালেন্ডার দেখো</a></div>
       </div>
     `;
   } else {
@@ -4254,6 +4276,8 @@ async function renderStudentDashboard(){
       </div>
     `;
   }
+
+  attWidgetHtml += classSummaryHtml(d.classSummary); // [NEW] total classes this month, remaining / extra
 
   const examItems = (d.publicExams || []).map(ex => `
     <div class="exam-item" style="padding:12px 14px; margin-bottom:8px;">
@@ -4316,7 +4340,7 @@ async function renderStudentDashboard(){
       <div class="widget">
         <div class="widget-header">
           <h3 class="widget-title">📅 ক্লাসের উপস্থিতি</h3>
-          <span class="widget-tag ${isPresentToday?'tag-green':'tag-red'}">${isPresentToday?(attStatus==='approved'?'উপস্থিত':'অপেক্ষারত'):'অনুপস্থিত'}</span>
+          <span class="widget-tag ${isPresentToday?'tag-green':'tag-red'}">${isPresentToday?(attStatus==='approved'?'উপস্থিত':'নিশ্চিত করো'):'অনুপস্থিত'}</span>
         </div>
         ${attWidgetHtml}
       </div>
@@ -4348,7 +4372,10 @@ async function renderStudentDashboard(){
           <div style="font-size:13px; font-weight:700; color:var(--pencil); margin-bottom:8px;">উন্মুক্ত প্র্যাকটিস পরীক্ষা:</div>
           ${examItems}
         ` : ''}
-        <button class="btn btn-outline btn-block" style="margin-top:6px;" onclick="go('masteryEntry')">📊 আমার বিগত সব ফলাফল ও র‍্যাঙ্ক</button>
+        <div class="row" style="margin-top:6px;">
+          <button class="btn btn-primary btn-block" onclick="go('pastExams')">📜 Past Exams</button>
+          <button class="btn btn-outline btn-block" onclick="openMyMastery()">📊 মাস্টারি প্রোগ্রেস</button>
+        </div>
       </div>
 
       <!-- 4. Written CQ Exam Widget -->
@@ -4397,21 +4424,17 @@ window.openMyCoupons = async function(target){
   if(!stud){ go('studentAuth'); return; }
   toast('লোড হচ্ছে...');
   const data = await getCouponBalanceRemote(stud.slug);
-  go(target || 'couponBalance', { name: stud.name, slug: stud.slug, balance: data.balance, history: data.history });
+  go(target || 'couponBalance', couponState(stud.name, stud.slug, data)); // [NEW] carries pending-withdraw info
 };
 
 window.dashMarkTodayAttendance = async function(slug){
   toast('হাজিরা পাঠানো হচ্ছে...');
-  const today = todayStr();
-  const res = await postToScript('markAttendance', { slug, date: today, source: 'manual' });
+  // [NEW] source 'self': the student's own tap counts right away (no waiting for approval)
+  const res = await postToScript('markAttendance', { slug, date: todayStr(), source: 'self' });
   if(res && res.status === 'success'){
     playSfx('combo');
-    toast('✅ হাজিরা নিশ্চিত করা হয়েছে!');
-    if(window.__studentDashCache){
-      window.__studentDashCache.todayAttended = true;
-      window.__studentDashCache.todayStatus = res.autoApproved ? 'approved' : 'pending';
-    }
-    renderStudentDashboard();
+    toast('✅ হাজিরা নেওয়া হয়েছে!');
+    await refreshStudentDashboard(slug); // re-loads so this month's class count updates too
   } else {
     toast('হাজিরা পাঠাতে সমস্যা হয়েছে, আবার চেষ্টা করো');
   }
@@ -5198,6 +5221,481 @@ function syncLogoutFab(){
   if(fab) fab.style.display = currentTeacher ? 'block' : 'none';
 }
 
+// ===================================================================================
+// ===== NEW FEATURES (start) — Past Exams · class plan / extra days · withdraw ======
+// ===================================================================================
+// Everything below was added as one block so it is easy to copy into another version of index.html.
+// (Small edits to existing functions are marked with "// [NEW]" comments.)
+
+// POST that returns the server's JSON even on errors (postToScript() hides the error message)
+async function postToScriptRaw(action, params){
+  try{
+    const r = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action, ...params })
+    });
+    const text = await r.text();
+    try{ return JSON.parse(text); }catch(e){ return { status:'error', message:'bad_response' }; }
+  }catch(e){
+    return { status:'error', message:'network' };
+  }
+}
+async function getJson(action, params){
+  try{
+    const qs = Object.keys(params||{}).map(k=> k+'='+encodeURIComponent(params[k])).join('&');
+    const r = await fetch(`${SCRIPT_URL}?action=${action}${qs?'&'+qs:''}`);
+    return await r.json();
+  }catch(e){ return null; }
+}
+function fmtBnDate(ms){
+  if(!ms) return '';
+  const d = new Date(ms);
+  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('bn-BD', { day:'numeric', month:'long', year:'numeric' });
+}
+function monthKeyFromCal(){
+  const now = new Date();
+  const y = window.__calYear !== null && window.__calYear !== undefined ? window.__calYear : now.getFullYear();
+  const m = window.__calMonth !== null && window.__calMonth !== undefined ? window.__calMonth : now.getMonth();
+  return y + '-' + String(m+1).padStart(2,'0');
+}
+function couponState(name, slug, data){
+  return { name, slug, balance: data.balance, history: data.history,
+           pendingWithdrawal: data.pendingWithdrawal || null, withdrawals: data.withdrawals || [] };
+}
+
+// ---------------- Past Exams (student) ----------------
+async function renderPastExams(){
+  const stud = getLoggedStudent();
+  if(!stud){ go('studentAuth'); return; }
+  app.innerHTML = `${header('Past Exams')}<div class="card center">তোমার আগের পরীক্ষাগুলো লোড হচ্ছে...</div>`;
+  const [mcqRes, wrRes] = await Promise.all([
+    getJson('listMyResults', { slug: stud.slug }),
+    getJson('listMyWrittenResults', { slug: stud.slug })
+  ]);
+  const mcq = (mcqRes && mcqRes.status === 'success') ? mcqRes.data : [];
+  const wr = (wrRes && wrRes.status === 'success') ? wrRes.data : [];
+
+  // one row per exam (best attempt shown); open practice exams are not listed here
+  const groups = {};
+  mcq.filter(r=> !r.isPublic).forEach(r=>{ (groups[r.examCode] = groups[r.examCode] || []).push(r); });
+  const items = Object.keys(groups).map(code=>{
+    const list = groups[code].sort((a,b)=> b.submittedAt - a.submittedAt);
+    const best = list.reduce((m,r)=> (r.score/r.total > m.score/m.total ? r : m), list[0]);
+    return { kind:'mcq', code, title:list[0].title, subject:list[0].subject, isTreat:!!list[0].isTreat,
+             attempts:list.length, score:best.score, total:best.total,
+             pct: best.total ? Math.round((best.score/best.total)*100) : 0, when:list[0].submittedAt };
+  });
+  wr.forEach(w=>{
+    const answered = w.answeredCount || 0;
+    const marks = percentToMarks(w.avgPercent) * answered;
+    items.push({ kind:'written', code:w.examCode, title:w.title, subject:w.subject, isTreat:true,
+                 attempts:1, score:marks, total:answered*5, pct:w.avgPercent, when:w.lastSubmittedAt,
+                 answered, totalQ:w.totalQ });
+  });
+  items.sort((a,b)=> (b.when||0) - (a.when||0));
+  window.__pastItems = items;
+
+  const avg = items.length ? Math.round(items.reduce((a,b)=> a + b.pct, 0) / items.length) : 0;
+  const rows = items.map((it,idx)=> `
+    <div class="exam-item">
+      <div class="row-top">
+        <div style="min-width:0;">
+          <h3 style="margin-bottom:4px;">${escapeHtml(it.title)}</h3>
+          <div class="meta">
+            <span class="q-tag">${it.kind==='written' ? '✍️ Written' : '📝 MCQ'}</span>
+            ${it.isTreat && it.kind==='mcq' ? '<span class="q-tag">🎁 Treat</span>' : ''}
+            ${escapeHtml(it.subject||'')} · ${it.when ? new Date(it.when).toLocaleDateString('bn-BD') : ''}
+            ${it.attempts>1 ? ` · ${it.attempts}বার দিয়েছো` : ''}
+            ${it.kind==='written' && it.answered < it.totalQ ? ` · ${it.answered}/${it.totalQ} প্রশ্ন জমা` : ''}
+          </div>
+        </div>
+        <div style="text-align:end;">
+          <div class="score-big ${it.pct>=50?'score-pass':'score-fail'}" style="font-size:18px;">${it.score}/${it.total}</div>
+          <div class="meta" style="margin-top:0;">${it.pct}%</div>
+        </div>
+      </div>
+      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="${it.kind==='written' ? 'openPastWritten' : 'openPastExam'}(${idx})">📄 খাতা ও নম্বর দেখো</button>
+    </div>`).join('');
+
+  app.innerHTML = `
+    ${header('Past Exams')}
+    <div class="card">
+      <h2>📜 আমার আগের পরীক্ষা</h2>
+      <p class="hint">কোড দিয়ে দেওয়া পরীক্ষা ও Written পরীক্ষার নম্বর এখানে থাকে। (প্র্যাকটিস পরীক্ষা এখানে দেখানো হয় না — সেগুলো ড্যাশবোর্ডের "প্র্যাকটিস" অংশে আছে।)</p>
+      ${items.length ? `<div class="meta" style="margin-bottom:12px;">মোট <b>${items.length}</b>টা পরীক্ষা · গড় <b>${avg}%</b></div>` : ''}
+      ${rows || `<div class="empty-state">এখনো কোনো পরীক্ষা দাওনি।<br>শিক্ষকের দেওয়া কোড দিয়ে পরীক্ষা দিলে এখানে নম্বর জমা থাকবে।</div>`}
+    </div>
+    <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+window.openPastExam = async function(idx){
+  const it = (window.__pastItems||[])[idx];
+  const stud = getLoggedStudent();
+  if(!it || !stud) return;
+  toast('খাতা লোড হচ্ছে...');
+  const examRaw = await sget('exam:'+it.code);
+  if(!examRaw){ toast('এই পরীক্ষাটা আর পাওয়া যাচ্ছে না'); return; }
+  const exam = JSON.parse(examRaw.value);
+  const all = await getRemoteResults(it.code);
+  const mine = all.filter(r=> (r.slug ? r.slug === stud.slug : slugify(r.studentName||'') === stud.slug))
+                  .sort((a,b)=> b.submittedAt - a.submittedAt);
+  if(!mine.length){ toast('খাতা পাওয়া যায়নি'); return; }
+  go('pastExamDetail', { exam, attempts: mine });
+};
+function renderPastExamDetail(exam, attempts){
+  const blocks = attempts.map((r,i)=>{
+    const pct = Math.round((r.score/r.total)*100);
+    const tryNo = attempts.length - i;
+    return `<details ${i===0?'open':''} style="border:1px solid var(--paper-edge); border-radius:10px; padding:10px 14px; margin-bottom:10px; background:#FCFDFE;">
+      <summary style="cursor:pointer; font-weight:700; list-style-position:inside;">
+        চেষ্টা ${tryNo} · <span class="score-big ${pct>=50?'score-pass':'score-fail'}">${r.score}/${r.total}</span> (${pct}%)
+        <span class="meta" style="font-weight:400;"> · ${new Date(r.submittedAt).toLocaleString('bn-BD')}</span>
+      </summary>
+      <div style="margin-top:10px;">${buildAnswerReview(exam, r.answers || [])}</div>
+    </details>`;
+  }).join('');
+  app.innerHTML = `
+    ${header('Past Exams')}
+    <div class="card">
+      <h2>${escapeHtml(exam.title)}</h2>
+      <p class="hint">${escapeHtml(exam.subject||'')} · কোন প্রশ্নে কী দাগিয়েছিলে আর সঠিক উত্তর কী ছিল নিচে দেখো।</p>
+      ${blocks}
+    </div>
+    <div class="center"><a class="link-back" onclick="go('pastExams')">← Past Exams-এ ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+  renderAllMath(document.getElementById('app'));
+}
+window.openPastWritten = async function(idx){
+  const it = (window.__pastItems||[])[idx];
+  const stud = getLoggedStudent();
+  if(!it || !stud) return;
+  toast('লোড হচ্ছে...');
+  const subs = (await getWrittenSubmissionsRemote(it.code)).filter(s=> s.slug === stud.slug).sort((a,b)=> a.questionIndex - b.questionIndex);
+  go('pastWrittenDetail', { title: it.title, subs });
+};
+function renderPastWrittenDetail(title, subs){
+  const rows = (subs||[]).map(s=> `
+    <div class="review-block">
+      <div class="q-text" style="font-size:14px;">প্রশ্ন ${s.questionIndex+1} · ${percentToMarks(s.percent)}/৫ নম্বর <span class="meta">(AI ${s.percent}%)</span>
+        ${s.driveUrl ? ` · <a href="${escapeHtml(s.driveUrl)}" target="_blank" rel="noopener">তোমার খাতার ছবি</a>` : ''}</div>
+      <div class="review-ans ${s.percent>=50?'right':'wrong'}">${escapeHtml(s.aiFeedback||'')}</div>
+    </div>`).join('');
+  app.innerHTML = `
+    ${header('Past Exams')}
+    <div class="card">
+      <h2>${escapeHtml(title)}</h2>
+      ${rows || `<div class="empty-state">কোনো উত্তর পাওয়া যায়নি।</div>`}
+    </div>
+    <div class="center"><a class="link-back" onclick="go('pastExams')">← Past Exams-এ ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+// Mastery progress for the logged-in student without asking for the name again
+window.openMyMastery = function(){
+  const stud = getLoggedStudent();
+  if(!stud){ go('masteryEntry'); return; }
+  window.__masterySession = { slug: stud.slug, name: stud.name };
+  go('masteryCourseList');
+};
+
+// ---------------- Class plan: days per month, remaining / extra ----------------
+function classSummaryHtml(cs){
+  if(!cs) return '';
+  const monthName = BN_MONTHS[Number(String(cs.month).slice(5,7)) - 1] || '';
+  if(!cs.hasPlan){
+    return `<div style="margin-top:12px; background:#F5F9FE; border:1px solid var(--paper-edge); border-radius:10px; padding:10px 12px; font-size:13.5px;">
+      📚 ${monthName} মাসে মোট ক্লাস হয়েছে: <b>${cs.held}</b> দিন</div>`;
+  }
+  const done = cs.held + cs.extraApplied;
+  const pct = cs.planned > 0 ? Math.min(100, Math.round((done / cs.planned) * 100)) : 100;
+  let third;
+  if(cs.remaining > 0)          third = `<div class="cls-chip" style="background:#FEF6E8; color:#9B6A15;"><b>${cs.remaining}</b><span>⏳ বাকি (দিন)</span></div>`;
+  else if(cs.extraThisMonth > 0) third = `<div class="cls-chip" style="background:#E8F6EF; color:var(--green);"><b>+${cs.extraThisMonth}</b><span>➕ Extra (দিন)</span></div>`;
+  else                           third = `<div class="cls-chip" style="background:#E8F6EF; color:var(--green);"><b>✓</b><span>🎉 সম্পূর্ণ</span></div>`;
+  const notes = [];
+  if(cs.extraCarriedIn > 0) notes.push(`আগের মাস(গুলো) থেকে extra জমা আছে: <b>${cs.extraCarriedIn} দিন</b>`);
+  if(cs.extraApplied > 0)   notes.push(`extra থেকে <b>${cs.extraApplied} দিন</b> যোগ করে এই মাসের হিসাব মেলানো হয়েছে`);
+  if(cs.extraThisMonth > 0) notes.push(`এই মাসের বাড়তি <b>${cs.extraThisMonth} দিন</b> পরের মাসে extra হিসেবে যাবে`);
+  return `
+    <div style="margin-top:12px; border:1px solid var(--paper-edge); border-radius:12px; padding:12px; background:#FCFDFE;">
+      <div style="font-weight:700; font-size:14px; margin-bottom:8px;">📘 ${monthName} মাসের ক্লাস হিসাব</div>
+      <div class="cls-chips">
+        <div class="cls-chip" style="background:#EDF3FC; color:#2B5797;"><b>${cs.held}</b><span>✅ ক্লাস হয়েছে (দিন)</span></div>
+        <div class="cls-chip" style="background:#F1F3F8; color:var(--ink);"><b>${cs.planned}</b><span>🎯 পরিকল্পিত (দিন)</span></div>
+        ${third}
+      </div>
+      <div class="hp-bar-wrap" style="max-width:100%; height:8px; margin:10px 0 0 0; background:#E3E8F1; border-color:#E3E8F1;">
+        <div class="hp-bar-fill" style="width:${pct}%;"></div>
+      </div>
+      ${notes.length ? `<div style="font-size:12.5px; color:var(--pencil); margin-top:8px; line-height:1.6;">${notes.map(n=> '• ' + n).join('<br>')}</div>` : ''}
+    </div>`;
+}
+async function fillClassSummary(slug, monthKey, slotId){
+  const res = await getJson('getClassSummary', { slug, month: monthKey });
+  const slot = document.getElementById(slotId);
+  if(slot && res && res.status === 'success') slot.innerHTML = classSummaryHtml(res.summary);
+}
+async function refreshStudentDashboard(slug){
+  const fresh = await postToScript('getStudentDashboard', { slug });
+  if(fresh){
+    if(fresh.couponBalance === null || fresh.couponBalance === undefined || !isFinite(Number(fresh.couponBalance))){
+      const cb = await getCouponBalanceRemote(slug);
+      fresh.couponBalance = cb.balance;
+    }
+    window.__studentDashCache = { ...fresh, slug };
+  }
+  renderStudentDashboard();
+}
+
+// teacher: card on a student's calendar page
+async function buildClassPlanCard(slug, monthKey, year, month){
+  const res = await getJson('getClassSummary', { slug, month: monthKey });
+  const cs = (res && res.status === 'success') ? res.summary : null;
+  const title = `📘 মাসিক ক্লাস পরিকল্পনা — ${BN_MONTHS[month]} ${year}`;
+  if(!cs){
+    return `<div class="card"><h3>${title}</h3><p class="hint">হিসাব লোড করা যায়নি, পেজ রিফ্রেশ করে দেখো।</p></div>`;
+  }
+  if(!cs.hasPlan){
+    return `<div class="card">
+      <h3>${title}</h3>
+      <p class="hint">এই স্টুডেন্টকে প্রতি মাসে কতদিন পড়ানোর কথা সেটা ঠিক করে দাও — তাহলে বাকি বা extra দিনের হিসাব নিজে থেকেই চলবে, আর স্টুডেন্টও তার ড্যাশবোর্ডে দেখতে পাবে। (এই মাসে এখন পর্যন্ত মার্ক করা ক্লাস: <b>${cs.held}</b> দিন)</p>
+      <div class="row">
+        <div><label class="field-label">প্রতি মাসে কত দিন?</label><input type="number" id="planDays" min="0" max="31" value="12"></div>
+        <div><label class="field-label">হিসাব শুরুর মাস</label><input type="month" id="planStart" value="${monthKey}"></div>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="saveClassPlanUI()">✅ পরিকল্পনা সেভ করো</button>
+    </div>`;
+  }
+  const canApply = cs.remaining > 0 && cs.extraCarriedIn > 0;
+  const maxApply = Math.min(cs.extraCarriedIn, cs.planned - cs.held);
+  return `<div class="card">
+    <h3>${title}</h3>
+    ${classSummaryHtml(cs)}
+
+    ${canApply || cs.extraApplied > 0 ? `
+    <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--rule);">
+      <label class="field-label">➕ জমানো extra থেকে এই মাসে কত দিন যোগ করবে? (সর্বোচ্চ ${Math.max(maxApply, cs.extraApplied)})</label>
+      <div class="row">
+        <input type="number" id="extraDays" min="0" max="${Math.max(maxApply, cs.extraApplied)}" value="${cs.extraApplied || maxApply}" style="margin-bottom:0;">
+        <button class="btn btn-gold" onclick="applyExtraUI()">extra ব্যবহার করো</button>
+      </div>
+      <p class="hint" style="margin-top:6px;">ইচ্ছা না হলে কিছু না করলেই হয় — extra যেমন আছে তেমনই জমা থাকবে। ${cs.extraApplied>0 ? '০ দিয়ে সেভ করলে আগের যোগ করা extra ফেরত যাবে।' : ''}</p>
+    </div>` : ''}
+
+    <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--rule);">
+      <div class="row">
+        <div><label class="field-label">প্রতি মাসে কত দিন (ডিফল্ট)</label><input type="number" id="planDays" min="0" max="31" value="${cs.defaultPlanned}" style="margin-bottom:0;"></div>
+        <div><label class="field-label">হিসাব শুরুর মাস</label><input type="month" id="planStart" value="${cs.startMonth}" style="margin-bottom:0;"></div>
+      </div>
+      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="saveClassPlanUI()">💾 ডিফল্ট পরিকল্পনা আপডেট করো</button>
+    </div>
+
+    <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--rule);">
+      <label class="field-label">শুধু এই মাসের জন্য আলাদা দিন (ঐচ্ছিক, যেমন ছুটির মাস)</label>
+      <div class="row">
+        <input type="number" id="monthPlanDays" min="0" max="31" placeholder="${cs.planned}" value="${cs.hasOverride ? cs.planned : ''}" style="margin-bottom:0;">
+        <button class="btn btn-outline" onclick="saveMonthPlanUI(false)">সেট করো</button>
+        ${cs.hasOverride ? `<button class="btn btn-danger" onclick="saveMonthPlanUI(true)">মুছো</button>` : ''}
+      </div>
+      <p class="hint" style="margin-top:6px;">হিসাব: মার্ক করা প্রতিটা ক্লাস-দিন গোনা হয়। পরিকল্পিতের চেয়ে বেশি হলে বাড়তি দিন পরের মাসে extra হিসেবে জমা হয়।</p>
+    </div>
+  </div>`;
+}
+window.saveClassPlanUI = async function(){
+  const { slug, studentName } = state;
+  const days = parseInt((document.getElementById('planDays')||{}).value, 10);
+  const start = (((document.getElementById('planStart')||{}).value) || '').trim();
+  if(isNaN(days) || days < 0 || days > 31){ toast('০ থেকে ৩১ এর মধ্যে দিন দাও'); return; }
+  if(start && !/^\d{4}-\d{2}$/.test(start)){ toast('শুরুর মাস 2026-09 এই ফরম্যাটে দাও'); return; }
+  toast('সেভ হচ্ছে...');
+  const res = await postToScript('saveClassPlan', { slug, planned: days, startMonth: start, month: monthKeyFromCal() });
+  if(res){ toast('পরিকল্পনা সেভ হয়েছে ✅'); go('attendanceMark', { slug, studentName }); }
+};
+window.saveMonthPlanUI = async function(clear){
+  const { slug, studentName } = state;
+  let planned = '';
+  if(!clear){
+    planned = parseInt((document.getElementById('monthPlanDays')||{}).value, 10);
+    if(isNaN(planned) || planned < 0 || planned > 31){ toast('০ থেকে ৩১ এর মধ্যে দিন দাও'); return; }
+  }
+  toast('সেভ হচ্ছে...');
+  const res = await postToScript('saveMonthPlan', { slug, month: monthKeyFromCal(), planned });
+  if(res){ toast(clear ? 'আলাদা দিন মুছে ফেলা হয়েছে' : 'এই মাসের দিন সেট হয়েছে ✅'); go('attendanceMark', { slug, studentName }); }
+};
+window.applyExtraUI = async function(){
+  const { slug, studentName } = state;
+  const days = parseInt((document.getElementById('extraDays')||{}).value, 10);
+  if(isNaN(days) || days < 0){ toast('সঠিক দিন সংখ্যা দাও'); return; }
+  toast('আপডেট হচ্ছে...');
+  const res = await postToScript('setExtraUsed', { slug, month: monthKeyFromCal(), days });
+  if(res){
+    toast(res.summary && res.summary.extraApplied ? `extra থেকে ${res.summary.extraApplied} দিন যোগ হয়েছে ✅` : 'extra যোগ করা হয়নি');
+    go('attendanceMark', { slug, studentName });
+  }
+};
+
+// ---------------- Withdraw (bKash / Nagad) — student ----------------
+function normalizeBdPhone(raw){
+  let n = String(raw||'').replace(/[০-৯]/g, d=> '০১২৩৪৫৬৭৮৯'.indexOf(d)).replace(/[^\d+]/g, '');
+  return n.replace(/^\+?88/, '');
+}
+function withdrawPendingHtml(pw){
+  const label = pw.method === 'nagad' ? 'Nagad' : 'bKash';
+  const daysLeft = Math.max(0, Math.ceil((pw.dueAt - Date.now()) / 86400000));
+  return `<div style="margin-top:14px; text-align:start; background:#FEF8EC; border:1.5px solid #F8DA9D; border-left:5px solid var(--gold); border-radius:10px; padding:12px 14px; line-height:1.7;">
+    <div style="font-weight:700; color:#9B6A15; font-size:15px;">⏳ Withdraw অনুরোধ — Pending</div>
+    <div>৳${pw.amount} → <b>${label}</b> <span style="font-family:var(--font-mono); font-weight:700;">${escapeHtml(pw.number)}</span></div>
+    <div style="font-size:13px;">অনুরোধের তারিখ: ${fmtBnDate(pw.requestedAt)}</div>
+    <div style="font-size:13.5px; margin-top:4px;"><b>১৪ দিনের মধ্যে</b> টাকা পাঠিয়ে দেওয়া হবে — সর্বোচ্চ <b>${fmtBnDate(pw.dueAt)}</b> পর্যন্ত (বাকি ${daysLeft} দিন)।</div>
+    <div style="font-size:12px; color:var(--pencil); margin-top:4px;">শিক্ষক টাকা পাঠালে এটা "পরিশোধিত" হয়ে যাবে। শিক্ষককে ইতিমধ্যে জানানো হয়েছে।</div>
+  </div>`;
+}
+function withdrawPanelHtml(balance){
+  return `
+    <button id="wdOpenBtn" class="btn btn-gold btn-block" style="font-size:18px; padding:18px;" onclick="wdToggle()">💸 Request Withdraw</button>
+    <div id="wdPanel" style="display:none; text-align:start; margin-top:14px; border:1px solid var(--paper-edge); border-radius:12px; padding:14px; background:#FCFDFE;">
+      <div class="field-label" style="margin-bottom:8px;">কোথায় টাকা নিতে চাও?</div>
+      <div class="row">
+        <button id="wdBtnBkash" class="btn btn-outline" onclick="wdPickMethod('bkash')">bKash</button>
+        <button id="wdBtnNagad" class="btn btn-outline" onclick="wdPickMethod('nagad')">Nagad</button>
+      </div>
+      <div id="wdNumberBox" style="display:none; margin-top:14px;">
+        <label class="field-label" id="wdNumLabel">নম্বর</label>
+        <input type="tel" id="wdNumber" inputmode="numeric" maxlength="16" placeholder="01XXXXXXXXX" style="font-family:var(--font-mono); font-weight:700;">
+        <p class="hint">পরিমাণ: <b>৳${balance}</b> (পুরো ব্যালেন্স)। নম্বরটা যে অ্যাকাউন্টে টাকা নেবে সেটার ব্যক্তিগত নম্বর হতে হবে।</p>
+        <button id="wdSubmitBtn" class="btn btn-primary btn-block" onclick="wdSubmit()">✅ Request পাঠাও</button>
+      </div>
+      <div id="wdStatus" style="margin-top:10px;"></div>
+    </div>`;
+}
+window.__wdMethod = null;
+window.wdToggle = function(){
+  const p = document.getElementById('wdPanel');
+  if(p) p.style.display = (p.style.display === 'none') ? 'block' : 'none';
+};
+window.wdPickMethod = function(method){
+  window.__wdMethod = method;
+  const label = method === 'nagad' ? 'Nagad' : 'bKash';
+  const colors = { bkash:'#E2136E', nagad:'#F6921E' };
+  ['bkash','nagad'].forEach(m=>{
+    const b = document.getElementById(m === 'bkash' ? 'wdBtnBkash' : 'wdBtnNagad');
+    if(!b) return;
+    const on = m === method;
+    b.style.background = on ? colors[m] : 'transparent';
+    b.style.color = on ? '#fff' : 'var(--ink)';
+    b.style.borderColor = on ? colors[m] : 'var(--rule)';
+  });
+  document.getElementById('wdNumberBox').style.display = 'block';
+  document.getElementById('wdNumLabel').textContent = `তোমার ${label} নম্বর`;
+  const inp = document.getElementById('wdNumber'); if(inp) inp.focus();
+};
+window.wdSubmit = async function(){
+  const { slug, name, balance } = state;
+  const method = window.__wdMethod;
+  if(!method){ toast('আগে bKash বা Nagad বাছো'); return; }
+  const number = normalizeBdPhone((document.getElementById('wdNumber')||{}).value);
+  if(!/^01[3-9]\d{8}$/.test(number)){ toast('সঠিক ১১ সংখ্যার মোবাইল নম্বর দাও (01XXXXXXXXX)'); return; }
+  const label = method === 'nagad' ? 'Nagad' : 'bKash';
+  if(!confirm(`৳${balance} — ${label} নম্বর ${number}-এ পাঠানোর অনুরোধ করবে? (১৪ দিনের মধ্যে পাঠানো হবে)`)) return;
+
+  const btn = document.getElementById('wdSubmitBtn'), st = document.getElementById('wdStatus');
+  if(btn) btn.disabled = true;
+  if(st) st.innerHTML = `<div style="text-align:center; padding:10px;"><span style="font-size:22px; display:inline-block; animation:pulse 1s infinite;">⏳</span><div style="font-weight:700; margin-top:4px;">প্রসেসিং হচ্ছে...</div><div class="hint">একটু অপেক্ষা করো, পেজ বন্ধ কোরো না</div></div>`;
+
+  const res = await postToScriptRaw('requestWithdrawal', { slug, studentName: name, method, number });
+  if(res.status === 'success'){
+    playSfx('victory');
+    toast('✅ অনুরোধ জমা হয়েছে — Pending');
+    const data = await getCouponBalanceRemote(slug);
+    go('couponBalance', couponState(name, slug, data));
+    return;
+  }
+  if(btn) btn.disabled = false;
+  const msgs = {
+    invalid_number: 'নম্বরটা সঠিক নয় — ১১ সংখ্যার (01XXXXXXXXX) নম্বর দাও',
+    invalid_method: 'bKash বা Nagad বাছো',
+    no_balance: 'তোমার ব্যালেন্স নেই',
+    already_pending: 'তোমার একটা Withdraw অনুরোধ আগে থেকেই Pending আছে',
+    network: 'ইন্টারনেট সমস্যা — আবার চেষ্টা করো',
+  };
+  if(st) st.innerHTML = `<div style="color:var(--red); font-weight:600;">❌ ${msgs[res.message] || 'অনুরোধ পাঠানো যায়নি, আবার চেষ্টা করো'}</div>`;
+  if(res.message === 'already_pending'){
+    const data = await getCouponBalanceRemote(slug);
+    go('couponBalance', couponState(name, slug, data));
+  }
+};
+
+// ---------------- Withdraw (bKash / Nagad) — teacher ----------------
+async function getWithdrawRequestsRemote(){
+  const r = await getJson('listWithdrawRequests', {});
+  return (r && r.status === 'success') ? r.data : [];
+}
+async function renderWithdrawManage(){
+  app.innerHTML = `${header('Withdraw অনুরোধ')}<div class="card center">লোড হচ্ছে...</div>`;
+  const list = await getWithdrawRequestsRemote();
+  const pending = list.filter(w=> w.status === 'pending').sort((a,b)=> a.dueAt - b.dueAt);
+  const paid = list.filter(w=> w.status === 'paid').slice(0, 15);
+  const total = pending.reduce((a,w)=> a + w.amount, 0);
+  const now = Date.now();
+  window.__wdList = pending;
+
+  const pendingRows = pending.map((w,idx)=>{
+    const late = w.dueAt < now;
+    const days = Math.ceil(Math.abs(w.dueAt - now) / 86400000);
+    const label = w.method === 'nagad' ? 'Nagad' : 'bKash';
+    const color = w.method === 'nagad' ? '#F6921E' : '#E2136E';
+    return `<div class="exam-item" style="border:1.5px solid ${late ? 'var(--red)' : '#F8DA9D'}; background:${late ? '#FFF6F5' : '#FFFBF3'};">
+      <div class="row-top">
+        <div>
+          <h3 style="margin-bottom:2px;">${escapeHtml(w.studentName)}</h3>
+          <div class="meta"><span style="background:${color}; color:#fff; border-radius:10px; padding:1px 9px; font-weight:700; font-size:11.5px;">${label}</span>
+            <span style="font-family:var(--font-mono); font-weight:700; font-size:14.5px; color:var(--ink);">${escapeHtml(w.number)}</span>
+            <a class="link-back" onclick="copyWdNumber(${idx})">📋 কপি</a></div>
+        </div>
+        <div class="score-big score-pass" style="font-size:19px;">৳${w.amount}</div>
+      </div>
+      <div class="meta" style="margin-top:6px;">অনুরোধ: ${fmtBnDate(w.requestedAt)} · শেষ তারিখ: <b>${fmtBnDate(w.dueAt)}</b> ·
+        ${late ? `<b style="color:var(--red);">⚠️ ${days} দিন দেরি হয়েছে</b>` : `বাকি ${days} দিন`}</div>
+      <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="markWdPaid('${w.id}', ${idx})">✅ টাকা পাঠিয়েছি (Paid)</button>
+    </div>`;
+  }).join('');
+  const paidRows = paid.map(w=> `
+    <div class="review-block" style="display:flex; justify-content:space-between; gap:10px;">
+      <div><b>${escapeHtml(w.studentName)}</b> <span class="meta">· ${w.method==='nagad'?'Nagad':'bKash'} ${escapeHtml(w.number)}</span><br>
+        <span class="meta">পাঠানো: ${fmtBnDate(w.paidAt || w.requestedAt)}</span></div>
+      <div class="score-big score-pass">৳${w.amount} ✓</div>
+    </div>`).join('');
+
+  app.innerHTML = `
+    ${header('Withdraw অনুরোধ')}
+    <div class="card">
+      <h2>💸 Pending অনুরোধ ${pending.length ? `<span class="q-tag">${pending.length}টি · মোট ৳${total}</span>` : ''}</h2>
+      <p class="hint">স্টুডেন্ট bKash/Nagad নম্বর দিয়ে অনুরোধ করলে এখানে আসে (সাথে তোমার ইমেইলেও নোটিফিকেশন যায়)। অনুরোধের পর <b>১৪ দিনের মধ্যে</b> টাকা পাঠাতে হবে — সবচেয়ে আগে শেষ হবে যেটা সেটা উপরে দেখানো হয়। টাকা পাঠানোর পর "Paid" চাপো।</p>
+      ${pendingRows || `<div class="empty-state">এখন কোনো Pending অনুরোধ নেই ✅</div>`}
+    </div>
+    ${paidRows ? `<div class="card"><h3>সর্বশেষ পরিশোধিত</h3>${paidRows}</div>` : ''}
+    <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+window.copyWdNumber = function(idx){
+  const w = (window.__wdList||[])[idx]; if(!w) return;
+  navigator.clipboard.writeText(w.number).then(()=> toast('নম্বর কপি হয়েছে')).catch(()=> toast('কপি করা যায়নি'));
+};
+window.markWdPaid = async function(id, idx){
+  const w = (window.__wdList||[])[idx];
+  if(!confirm(`${w ? w.studentName + ' — ৳' + w.amount + ' ' + (w.method==='nagad'?'Nagad':'bKash') + ' ' + w.number + '-এ' : ''} টাকা পাঠিয়ে দিয়েছো? এটা "পরিশোধিত" হয়ে যাবে।`)) return;
+  toast('আপডেট হচ্ছে...');
+  const res = await postToScript('markWithdrawalPaid', { id });
+  if(res){ toast('পরিশোধিত হিসেবে মার্ক হয়েছে ✅'); go('withdrawManage'); }
+};
+// ===================================================================================
+// ===== NEW FEATURES (end) ==========================================================
+// ===================================================================================
+
 function render(){
   syncLogoutFab();
   const s = state.screen;
@@ -5267,6 +5765,10 @@ function render(){
   else if(s==='writtenSolve') renderWrittenSolve(state.exam, state.slug, state.name);
   else if(s==='writtenResult') renderWrittenResult(state.earnedMarks, state.totalMarks, state.couponAmount, state.title);
   else if(s==='doubtEntry') renderDoubtEntry();
+  else if(s==='pastExams') renderPastExams();
+  else if(s==='pastExamDetail') renderPastExamDetail(state.exam, state.attempts);
+  else if(s==='pastWrittenDetail') renderPastWrittenDetail(state.title, state.subs);
+  else if(s==='withdrawManage') renderWithdrawManage();
 
   if(deferredPwaPrompt){
     setTimeout(() => {
