@@ -4933,11 +4933,14 @@ async function renderBattleWorldMap(){
 
   // Group worlds by subject (e.g. "chemistry — paper1" + "chemistry — paper2" both
   // have subject "chemistry") to get one subject-level percentage, then sum everything
-  // for a single overall (e.g. HSC-wide) percentage.
+  // for a single overall (e.g. HSC-wide) percentage. Normalize case/whitespace so
+  // "Chemistry" and "chemistry" (however a teacher happened to type it) merge into
+  // one row instead of showing up as two separate subjects.
   const bySubject = {};
   worlds.forEach(w=>{
-    const key = (w.subject || 'অন্যান্য');
-    if(!bySubject[key]) bySubject[key] = { totalQ:0, solvedQ:0 };
+    const raw = (w.subject || 'অন্যান্য').trim();
+    const key = raw.toLowerCase();
+    if(!bySubject[key]) bySubject[key] = { label: raw.charAt(0).toUpperCase() + raw.slice(1), totalQ:0, solvedQ:0 };
     bySubject[key].totalQ += (w.totalQuestions || 0);
     bySubject[key].solvedQ += (w.solvedQuestions || 0);
   });
@@ -4945,7 +4948,7 @@ async function renderBattleWorldMap(){
     const s = bySubject[key];
     const pct = s.totalQ > 0 ? Math.round((s.solvedQ / s.totalQ) * 100) : 0;
     return `<div class="meta" style="display:flex; justify-content:space-between; padding:4px 0;">
-      <span>${escapeHtml(key)}</span><span><b>${s.solvedQ}/${s.totalQ}</b> (${pct}%)</span>
+      <span>${escapeHtml(s.label)}</span><span><b>${s.solvedQ}/${s.totalQ}</b> (${pct}%)</span>
     </div>`;
   }).join('');
   const overallTotalQ = worlds.reduce((a,w)=> a + (w.totalQuestions||0), 0);
