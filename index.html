@@ -366,6 +366,38 @@ for(let i=0;i<10;i++){ const s=document.createElement('span'); holesEl.appendChi
 
 function toast(msg){ toastEl.textContent = msg; toastEl.classList.add('show'); setTimeout(()=>toastEl.classList.remove('show'), 1800); }
 
+// Some Android WebViews / installed PWAs report navigator.clipboard.writeText()
+// as resolved (so our toast says "কপি হয়েছে") without actually placing anything
+// on the system clipboard. This wraps the modern API with the older
+// textarea+execCommand('copy') fallback, and always verifies the fallback
+// actually worked before resolving, so the toast never lies about the result.
+function copyText(text){
+  return new Promise((resolve, reject)=>{
+    const tryFallback = ()=>{
+      try{
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '0';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ta.setSelectionRange(0, text.length); // needed on some mobile browsers
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        ok ? resolve() : reject();
+      }catch(e){ reject(e); }
+    };
+    if(navigator.clipboard && window.isSecureContext){
+      navigator.clipboard.writeText(text).then(resolve).catch(tryFallback);
+    } else {
+      tryFallback();
+    }
+  });
+}
+
 async function sget(key) {
   if (key.startsWith('exam:')) {
     const code = key.split(':')[1];
@@ -1040,7 +1072,7 @@ async function renderTeacherDashboard(){
 function shareExam(code, title){
   const url = window.location.href.split('?')[0];
   const msg = `${title}\nএক্সাম কোড: ${code}\nস্টুডেন্ট পাসওয়ার্ড: ${STUDENT_PASSWORD}\nএই লিংকে গিয়ে পরীক্ষা দাও:\n${url}`;
-  navigator.clipboard.writeText(msg).then(()=> toast('লিংক ও কোড কপি হয়েছে')).catch(()=> toast('কপি করতে সমস্যা হয়েছে'));
+  copyText(msg).then(()=> toast('লিংক ও কোড কপি হয়েছে')).catch(()=> toast('কপি করতে সমস্যা হয়েছে'));
 }
 window.shareExamByCode = function(code){
   const ex = (window.__examListCache||[]).find(e=> e.code === code);
@@ -4566,7 +4598,7 @@ window.generateNewTeacherCodes = async function(){
 window.copyTeacherRegCode = function(code, batch){
   const appUrl = window.location.href.split('?')[0];
   const msg = `পরীক্ষার খাতা অ্যাপে রেজিস্ট্রেশন কোড: ${code}\nব্যাচ: ${batch}\nঅ্যাপ লিংক: ${appUrl}\n\nএই কোডটি প্রদান করে তোমার নতুন অ্যাকাউন্ট তৈরি করো।`;
-  navigator.clipboard.writeText(msg).then(()=>{
+  copyText(msg).then(()=>{
     toast('কোড ও মেসেজ কপি হয়েছে (WhatsApp এ পাঠান)');
   }).catch(()=> toast('কপি করা সম্ভব হয়নি'));
 };
@@ -5697,7 +5729,7 @@ async function renderWithdrawManage(){
 }
 window.copyWdNumber = function(idx){
   const w = (window.__wdList||[])[idx]; if(!w) return;
-  navigator.clipboard.writeText(w.number).then(()=> toast('নম্বর কপি হয়েছে')).catch(()=> toast('কপি করা যায়নি'));
+  copyText(w.number).then(()=> toast('নম্বর কপি হয়েছে')).catch(()=> toast('কপি করা যায়নি'));
 };
 window.markWdPaid = async function(id, idx){
   const w = (window.__wdList||[])[idx];
