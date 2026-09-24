@@ -2577,9 +2577,11 @@ async function renderFAQView(id){
 
 // ================= CLASS NOTES / SLIDES =================
 const NOTES_SUBJECTS = {
+  physics: { label: 'পদার্থবিজ্ঞান (Physics)', icon: '⚛️' },
   chemistry: { label: 'রসায়ন (Chemistry)', icon: '🧪' },
-  mathematics: { label: 'গণিত (Mathematics)', icon: '📐' },
-  biology: { label: 'জীববিজ্ঞান (Biology)', icon: '🌿' }
+  mathematics: { label: 'উচ্চতর গণিত (Higher Math)', icon: '📐' },
+  biology: { label: 'জীববিজ্ঞান (Biology)', icon: '🌿' },
+  ict: { label: 'তথ্য ও যোগাযোগ প্রযুক্তি (ICT)', icon: '💻' }
 };
 async function getAllNotes(){
   try{
@@ -5962,7 +5964,12 @@ function render(){
   else if(s==='notesManage') renderNotesManage();
   else if(s==='notesManageSubject') renderNotesManageSubject(state.subject);
   else if(s==='notesEdit') renderNotesEdit(state.subject, state.noteId, state.mode, state.existingTitle, state.existingContent);
-  else if(s==='notesGate') renderNotesGate();
+  else if(s==='notesGate'){
+    // Student আগে থেকেই লগইন করা থাকলে (dashboard/session আছে) পাসওয়ার্ড ছাড়াই সরাসরি
+    // ঢুকতে দাও — পাসওয়ার্ড শুধু guest mode-এ (লগইন ছাড়া ব্রাউজ করলে) লাগবে।
+    if(getLoggedStudent()){ go('notesSubject'); }
+    else{ renderNotesGate(); }
+  }
   else if(s==='notesSubject') renderNotesSubject();
   else if(s==='notesList') renderNotesList(state.subject);
   else if(s==='notesSlideView') renderNotesSlideView(state.subject, state.title, state.slides, state.slideIndex);
