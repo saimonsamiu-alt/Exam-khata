@@ -5603,16 +5603,18 @@ function classSummaryHtml(cs){
     return `<div style="margin-top:12px; background:#F5F9FE; border:1px solid var(--paper-edge); border-radius:10px; padding:10px 12px; font-size:13.5px;">
       📚 ${monthName} মাসে মোট ক্লাস হয়েছে: <b>${cs.held}</b> দিন</div>`;
   }
-  const done = cs.held + cs.extraApplied;
+  const done = cs.held;
   const pct = cs.planned > 0 ? Math.min(100, Math.round((done / cs.planned) * 100)) : 100;
   let third;
   if(cs.remaining > 0)          third = `<div class="cls-chip" style="background:#FEF6E8; color:#9B6A15;"><b>${cs.remaining}</b><span>⏳ বাকি (দিন)</span></div>`;
   else if(cs.extraThisMonth > 0) third = `<div class="cls-chip" style="background:#E8F6EF; color:var(--green);"><b>+${cs.extraThisMonth}</b><span>➕ Extra (দিন)</span></div>`;
   else                           third = `<div class="cls-chip" style="background:#E8F6EF; color:var(--green);"><b>✓</b><span>🎉 সম্পূর্ণ</span></div>`;
   const notes = [];
-  if(cs.extraCarriedIn > 0) notes.push(`আগের মাস(গুলো) থেকে extra জমা আছে: <b>${cs.extraCarriedIn} দিন</b>`);
-  if(cs.extraApplied > 0)   notes.push(`extra থেকে <b>${cs.extraApplied} দিন</b> যোগ করে এই মাসের হিসাব মেলানো হয়েছে`);
-  if(cs.extraThisMonth > 0) notes.push(`এই মাসের বাড়তি <b>${cs.extraThisMonth} দিন</b> পরের মাসে extra হিসেবে যাবে`);
+  if(cs.carriedIn > 0) notes.push(`আগের মাসের ঘাটতি থেকে <b>${cs.carriedIn} দিন</b> এই মাসের লক্ষ্যে যোগ করা হয়েছে`);
+  if(cs.carriedIn < 0) notes.push(`আগের মাসের extra থেকে <b>${-cs.carriedIn} দিন</b> এই মাসের লক্ষ্য থেকে কমানো হয়েছে`);
+  if(cs.extraThisMonth > 0) notes.push(`এই মাসে <b>${cs.extraThisMonth} দিন</b> বাড়তি ক্লাস হয়েছে`);
+  if(cs.carried > 0) notes.push(`এই মাসের ঘাটতি <b>${cs.carried} দিন</b> পরের মাসের লক্ষ্যে যোগ করা হয়েছে`);
+  if(cs.carried < 0) notes.push(`এই মাসের extra <b>${-cs.carried} দিন</b> পরের মাসের লক্ষ্য থেকে কমানো হয়েছে`);
   return `
     <div style="margin-top:12px; border:1px solid var(--paper-edge); border-radius:12px; padding:12px; background:#FCFDFE;">
       <div style="font-weight:700; font-size:14px; margin-bottom:8px;">📘 ${monthName} মাসের ক্লাস হিসাব</div>
@@ -5663,21 +5665,27 @@ async function buildClassPlanCard(slug, monthKey, year, month){
       <button class="btn btn-primary btn-block" onclick="saveClassPlanUI()">✅ পরিকল্পনা সেভ করো</button>
     </div>`;
   }
-  const canApply = cs.remaining > 0 && cs.extraCarriedIn > 0;
-  const maxApply = Math.min(cs.extraCarriedIn, cs.planned - cs.held);
   return `<div class="card">
     <h3>${title}</h3>
     ${classSummaryHtml(cs)}
 
-    ${canApply || cs.extraApplied > 0 ? `
+    ${cs.carried !== 0 ? `
     <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--rule);">
-      <label class="field-label">➕ জমানো extra থেকে এই মাসে কত দিন যোগ করবে? (সর্বোচ্চ ${Math.max(maxApply, cs.extraApplied)})</label>
-      <div class="row">
-        <input type="number" id="extraDays" min="0" max="${Math.max(maxApply, cs.extraApplied)}" value="${cs.extraApplied || maxApply}" style="margin-bottom:0;">
-        <button class="btn btn-gold" onclick="applyExtraUI()">extra ব্যবহার করো</button>
-      </div>
-      <p class="hint" style="margin-top:6px;">ইচ্ছা না হলে কিছু না করলেই হয় — extra যেমন আছে তেমনই জমা থাকবে। ${cs.extraApplied>0 ? '০ দিয়ে সেভ করলে আগের যোগ করা extra ফেরত যাবে।' : ''}</p>
-    </div>` : ''}
+      <p class="hint" style="margin:0 0 8px 0;">${cs.carried > 0
+        ? `✅ এই মাসের <b>${cs.carried} দিন</b> ঘাটতি পরের মাসের লক্ষ্যে যোগ করা হয়েছে — পরের মাসে ${cs.carried} দিন বেশি ক্লাস নিলে হিসাব মিলবে।`
+        : `✅ এই মাসের <b>${-cs.carried} দিন</b> extra পরের মাসে যোগ করা হয়েছে — পরের মাসে ${-cs.carried} দিন কম ক্লাস নিলেই চলবে।`}</p>
+      <button class="btn btn-outline btn-block" onclick="undoCarryUI()">↩️ ভুল হলে বাতিল করো</button>
+    </div>` : (cs.extraThisMonth > 0 ? `
+    <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--rule);">
+      <label class="field-label">🎉 এই মাসে <b>${cs.extraThisMonth} দিন</b> extra ক্লাস হয়েছে</label>
+      <button class="btn btn-gold btn-block" onclick="carryToNextMonthUI()">➡️ এই ${cs.extraThisMonth} দিন পরের মাসের সাথে যোগ করো</button>
+      <p class="hint" style="margin-top:6px;">চাপলে পরের মাসের লক্ষ্য ${cs.extraThisMonth} দিন কমে যাবে। না চাইলে কিছু না করলেই হয় — কিছুই বদলাবে না।</p>
+    </div>` : (cs.remaining > 0 ? `
+    <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--rule);">
+      <label class="field-label">⚠️ এই মাসে <b>${cs.remaining} দিন</b> কম হয়েছে (ঘাটতি)</label>
+      <button class="btn btn-outline btn-block" onclick="carryToNextMonthUI()">➡️ এই ${cs.remaining} দিন পরের মাসের সাথে যোগ করো</button>
+      <p class="hint" style="margin-top:6px;">চাপলে পরের মাসের লক্ষ্য ${cs.remaining} দিন বেড়ে যাবে। না চাইলে কিছু না করলেই হয় — কিছুই বদলাবে না।</p>
+    </div>` : ''))}
 
     <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--rule);">
       <div class="row">
@@ -5719,15 +5727,28 @@ window.saveMonthPlanUI = async function(clear){
   const res = await postToScript('saveMonthPlan', { slug, month: monthKeyFromCal(), planned });
   if(res){ toast(clear ? 'আলাদা দিন মুছে ফেলা হয়েছে' : 'এই মাসের দিন সেট হয়েছে ✅'); go('attendanceMark', { slug, studentName }); }
 };
-window.applyExtraUI = async function(){
+window.carryToNextMonthUI = async function(){
   const { slug, studentName } = state;
-  const days = parseInt((document.getElementById('extraDays')||{}).value, 10);
-  if(isNaN(days) || days < 0){ toast('সঠিক দিন সংখ্যা দাও'); return; }
-  toast('আপডেট হচ্ছে...');
-  const res = await postToScript('setExtraUsed', { slug, month: monthKeyFromCal(), days });
-  if(res){
-    toast(res.summary && res.summary.extraApplied ? `extra থেকে ${res.summary.extraApplied} দিন যোগ হয়েছে ✅` : 'extra যোগ করা হয়নি');
+  toast('যোগ করা হচ্ছে...');
+  const res = await postToScriptRaw('carryToNextMonth', { slug, month: monthKeyFromCal() });
+  if(res && res.status === 'success'){
+    toast(res.carried > 0 ? `✅ ${res.carried} দিন ঘাটতি পরের মাসের লক্ষ্যে যোগ হয়েছে` : `✅ ${-res.carried} দিন extra পরের মাসে যোগ হয়েছে`);
     go('attendanceMark', { slug, studentName });
+  } else {
+    const msgs = { already_carried: 'এই মাসের জন্য আগেই যোগ করা হয়ে গেছে', nothing_to_carry: 'যোগ করার মতো কিছু নেই', no_plan: 'আগে মাসিক পরিকল্পনা সেট করো' };
+    toast(msgs[res && res.message] || 'যোগ করা যায়নি, আবার চেষ্টা করো');
+  }
+};
+window.undoCarryUI = async function(){
+  if(!confirm('পরের মাসে যোগ/বিয়োগ করা দিনগুলো আবার আগের অবস্থায় ফেরাতে চাও?')) return;
+  const { slug, studentName } = state;
+  toast('বাতিল করা হচ্ছে...');
+  const res = await postToScriptRaw('undoCarry', { slug, month: monthKeyFromCal() });
+  if(res && res.status === 'success'){
+    toast('বাতিল হয়েছে ✅');
+    go('attendanceMark', { slug, studentName });
+  } else {
+    toast('বাতিল করা যায়নি, আবার চেষ্টা করো');
   }
 };
 
