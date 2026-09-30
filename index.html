@@ -1058,6 +1058,9 @@ async function renderTeacherDashboard(){
         <button class="btn btn-outline btn-block" onclick="go('teacherRegCodes')">🔑 রেজিস্ট্রেশন কোড জেনারেটর</button>
         <button class="btn btn-outline btn-block" onclick="go('teacherBattleAudit')">🛡️ ব্যাটেল অডিট ও অ্যান্টি-চিট</button>
       </div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn btn-outline btn-block" onclick="go('dailyHwManage')">📅 Daily HW জমা দেখো</button>
+      </div>
     </div>
     <div class="card">
       <h2>তোমার পরীক্ষাসমূহ</h2>
@@ -2828,6 +2831,29 @@ async function uploadSubmissionRemote(slug, courseId, topicId, base64, mimeType,
   const res = await postToScript('uploadSubmission', { slug, courseId, topicId, base64, mimeType, fileName });
   return res;
 }
+
+// ---- Daily Homework (student uploads today's question + their own answer) ----
+async function submitDailyHomeworkRemote(slug, date, qBase64, qMime, aBase64, aMime){
+  return await postToScript('submitDailyHomework', { slug, date, questionBase64:qBase64, questionMimeType:qMime, answerBase64:aBase64, answerMimeType:aMime });
+}
+async function getMyDailyHomeworkRemote(slug, month){
+  try{
+    const url = `${SCRIPT_URL}?action=listMyDailyHomework&slug=${encodeURIComponent(slug)}` + (month?`&month=${encodeURIComponent(month)}`:'');
+    const r = await fetch(url);
+    const j = await r.json();
+    if(j.status==='success') return j.data;
+  }catch(e){}
+  return [];
+}
+async function listAllDailyHomeworkRemote(slug){
+  try{
+    const url = `${SCRIPT_URL}?action=listAllDailyHomework` + (slug?`&slug=${encodeURIComponent(slug)}`:'');
+    const r = await fetch(url);
+    const j = await r.json();
+    if(j.status==='success') return j.data;
+  }catch(e){}
+  return [];
+}
 async function getSubmissionsRemote(courseId, topicId){
   try{
     const r = await fetch(`${SCRIPT_URL}?action=listSubmissions&courseId=${encodeURIComponent(courseId)}&topicId=${encodeURIComponent(topicId||'')}`);
@@ -3840,18 +3866,22 @@ function parseWrittenBulk(raw){
   const questions = [];
   for(const block of blocks){
     const lines = block.split('\n').map(l=>l.trim()).filter(Boolean);
-    let text='', imageUrl='', modelAnswerText='', modelAnswerImageUrl='';
+    let text='', imageUrl='', modelAnswerText='', modelAnswerImageUrl='', marks=5, markingScheme='';
     for(const line of lines){
       const qm = line.match(/^Q[:.]?\s*(.*)$/i);
       const qim = line.match(/^QIMG[:.]?\s*(.*)$/i);
       const mm = line.match(/^MODEL[:.]?\s*(.*)$/i);
       const mim = line.match(/^MIMG[:.]?\s*(.*)$/i);
+      const markm = line.match(/^MARKS[:.]?\s*(\d+(?:\.\d+)?)/i);
+      const rubm = line.match(/^RUBRIC[:.]?\s*(.*)$/i);
       if(qm) text = qm[1];
       else if(qim) imageUrl = qim[1].trim();
       else if(mm) modelAnswerText = mm[1];
       else if(mim) modelAnswerImageUrl = mim[1].trim();
+      else if(markm) marks = parseFloat(markm[1]);
+      else if(rubm) markingScheme = rubm[1];
     }
-    if(text || imageUrl){ questions.push({ text, imageUrl, modelAnswerText, modelAnswerImageUrl }); }
+    if(text || imageUrl){ questions.push({ text, imageUrl, modelAnswerText, modelAnswerImageUrl, marks, markingScheme }); }
   }
   return questions;
 }
@@ -3911,7 +3941,7 @@ function questionsToBulkText(questions){
   }).join('\n\n');
 }
 let writtenDraftQuestions = [];
-function blankWrittenQuestion(){ return { text:'', imageUrl:'', modelAnswerText:'', modelAnswerImageUrl:'' }; }
+function blankWrittenQuestion(){ return { text:'', imageUrl:'', modelAnswerText:'', modelAnswerImageUrl:'', marks:5, markingScheme:'' }; }
 function renderWrittenEdit(examId, existing){
   existing = existing || {};
   writtenDraftQuestions = (existing.questions && existing.questions.length) ? existing.questions.map(q=>({...q})) : [ blankWrittenQuestion() ];
@@ -3977,11 +4007,15 @@ function renderWrittenQList(){
       <label class="field-label">প্রশ্নের ছবি আপলোড করো (ঐচ্ছিক)</label>
       <input type="file" accept="image/*" onchange="handleWrittenQImageUpload(this, ${i})" style="margin-bottom:6px;">
       <div id="wqImgPrev${i}">${q.imageUrl ? `<img src="${escapeHtml(q.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="প্রশ্নের ছবি">`:''}</div>
+      <label class="field-label">এই প্রশ্নের নম্বর</label>
+      <input type="number" min="0.5" step="0.5" value="${q.marks!=null?q.marks:5}" oninput="writtenDraftQuestions[${i}].marks=parseFloat(this.value)||0" style="max-width:120px;">
       <label class="field-label">মডেল উত্তর (AI এটার সাথে তুলনা করবে)</label>
       <textarea oninput="writtenDraftQuestions[${i}].modelAnswerText=this.value" style="min-height:90px;" placeholder="ধাপে ধাপে সঠিক সমাধান লেখো...">${escapeHtml(q.modelAnswerText)}</textarea>
       <label class="field-label">মডেল উত্তরের ছবি আপলোড করো (ঐচ্ছিক)</label>
       <input type="file" accept="image/*" onchange="handleWrittenModelImageUpload(this, ${i})" style="margin-bottom:6px;">
       <div id="wqModelImgPrev${i}">${q.modelAnswerImageUrl ? `<img src="${escapeHtml(q.modelAnswerImageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="মডেল উত্তরের ছবি">`:''}</div>
+      <label class="field-label">নম্বর বণ্টন (ঐচ্ছিক — যেমন: "[HNO₃] ও [H₂SO₄] বের করার জন্য ৪+৪=৮ নম্বর, ppm-এ প্রকাশের জন্য ২ নম্বর")</label>
+      <textarea oninput="writtenDraftQuestions[${i}].markingScheme=this.value" style="min-height:70px;" placeholder="ধাপে ধাপে কোন অংশে কত নম্বর তা লেখো — AI ও তুমি দুজনেই এটা দেখে মূল্যায়ন করতে পারবে...">${escapeHtml(q.markingScheme||'')}</textarea>
     </div>
   `).join('');
 }
@@ -4034,30 +4068,46 @@ window.saveWrittenExamItem = async function(examId){
 }
 
 // ---- Teacher: view written submissions with AI score + manual override ----
-function percentToMarks(percent){ return Math.round((percent/100)*5*2)/2; } // nearest 0.5, out of 5
+function percentToMarks(percent, maxMarks){ maxMarks = Number(maxMarks) || 5; return Math.round((percent/100)*maxMarks*2)/2; } // nearest 0.5
 async function renderWrittenSubmissions(code){
   app.innerHTML = `${header('জমা দেওয়া খাতা')}<div class="card center">লোড হচ্ছে...</div>`;
 
-  const subs = await getWrittenSubmissionsRemote(code);
+  const [subs, examData] = await Promise.all([getWrittenSubmissionsRemote(code), getWrittenQuestionByCode(code)]);
   subs.sort((a,b)=> b.submittedAt - a.submittedAt);
   window.__writtenSubsCache = subs;
+  const examQuestions = (examData && examData.questions) || [];
+  window.__writtenExamQuestionsCache = examQuestions;
 
   const bySlug = {};
   subs.forEach(s=>{ (bySlug[s.slug] = bySlug[s.slug]||[]).push(s); });
 
   let rows = Object.keys(bySlug).map(slug=>{
     const list = bySlug[slug];
-    const totalMarks = list.length * 5;
-    const earnedMarks = list.reduce((a,b)=>a+percentToMarks(b.percent),0);
+    let totalMarks = 0, earnedMarks = 0;
     const qRows = list.sort((a,b)=>a.questionIndex-b.questionIndex).map((s)=>{
       const idxInCache = window.__writtenSubsCache.indexOf(s);
-      const marks = percentToMarks(s.percent);
+      const q = examQuestions[s.questionIndex] || {};
+      const maxMarks = Number(q.marks) || 5;
+      const marks = percentToMarks(s.percent, maxMarks);
+      totalMarks += maxMarks;
+      earnedMarks += marks;
       return `<div class="review-block">
-        <div class="q-text" style="font-size:13.5px;">প্রশ্ন ${s.questionIndex+1} · <a href="${escapeHtml(s.driveUrl)}" target="_blank" rel="noopener">ছবি দেখো</a> ${s.reviewRequested ? '<span class="q-tag">🚩 রিভিউ চাওয়া হয়েছে</span>':''}</div>
-        <div class="review-ans wrong">🤖 ${marks}/5 নম্বর (AI ${s.percent}%) — ${escapeHtml(s.aiFeedback||'')}</div>
+        <div class="q-text" style="font-size:13.5px;">প্রশ্ন ${s.questionIndex+1} (${maxMarks} নম্বর) ${s.reviewRequested ? '<span class="q-tag">🚩 রিভিউ চাওয়া হয়েছে</span>':''}</div>
+        <details style="margin:6px 0;">
+          <summary style="cursor:pointer; font-size:12.5px; color:var(--pencil);">📖 প্রশ্ন, মডেল উত্তর ও নম্বর বণ্টন দেখো</summary>
+          <div style="margin-top:8px; padding:10px; background:#F5F9FE; border-radius:8px; font-size:13px;">
+            ${q.text ? `<div><b>প্রশ্ন:</b> ${escapeHtml(q.text)}</div>` : ''}
+            ${q.imageUrl ? `<img src="${escapeHtml(q.imageUrl)}" style="max-width:100%; border-radius:6px; margin:6px 0;" alt="প্রশ্নের ছবি">` : ''}
+            ${q.modelAnswerText ? `<div style="margin-top:6px;"><b>মডেল উত্তর:</b> ${escapeHtml(q.modelAnswerText)}</div>` : ''}
+            ${q.modelAnswerImageUrl ? `<img src="${escapeHtml(q.modelAnswerImageUrl)}" style="max-width:100%; border-radius:6px; margin:6px 0;" alt="মডেল উত্তরের ছবি">` : ''}
+            ${q.markingScheme ? `<div style="margin-top:6px;"><b>নম্বর বণ্টন:</b> ${escapeHtml(q.markingScheme)}</div>` : ''}
+          </div>
+        </details>
+        <a href="${escapeHtml(s.driveUrl)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="margin-bottom:8px;">🖼️ ছাত্রের খাতার ছবি দেখো</a>
+        <div class="review-ans wrong">🤖 ${marks}/${maxMarks} নম্বর (AI ${s.percent}%) — ${escapeHtml(s.aiFeedback||'')}</div>
         <div class="row" style="margin-top:6px;">
-          <input type="number" id="wmarks${idxInCache}" value="${marks}" min="0" max="5" step="0.5" style="margin-bottom:0;">
-          <button class="btn btn-outline" onclick="saveWrittenManualScore('${s.id}',${idxInCache},'${code}')">✅ নম্বর ঠিক করো</button>
+          <input type="number" id="wmarks${idxInCache}" value="${marks}" min="0" max="${maxMarks}" step="0.5" style="margin-bottom:0;">
+          <button class="btn btn-outline" onclick="saveWrittenManualScore('${s.id}',${idxInCache},'${code}',${maxMarks})">✅ নম্বর ঠিক করো</button>
         </div>
       </div>`;
     }).join('');
@@ -4075,10 +4125,11 @@ async function renderWrittenSubmissions(code){
     ${creditFooter()}
   `;
 }
-window.saveWrittenManualScore = async function(submissionId, idx, code){
+window.saveWrittenManualScore = async function(submissionId, idx, code, maxMarks){
+  maxMarks = Number(maxMarks) || 5;
   const marks = parseFloat(document.getElementById('wmarks'+idx).value);
-  if(isNaN(marks) || marks<0 || marks>5){ toast('০ থেকে ৫ এর মধ্যে নম্বর দাও'); return; }
-  const newPercent = Math.round((marks/5)*100);
+  if(isNaN(marks) || marks<0 || marks>maxMarks){ toast(`০ থেকে ${maxMarks} এর মধ্যে নম্বর দাও`); return; }
+  const newPercent = Math.round((marks/maxMarks)*100);
   toast('আপডেট হচ্ছে...');
   await updateWrittenScoreRemote(submissionId, newPercent);
   toast('আপডেট হয়েছে ✅ (কুপনও পুনঃগণনা হয়েছে)');
@@ -4122,8 +4173,13 @@ window.startWrittenExam = async function(){
   const answered = {};
   mine.forEach(s=>{ answered[s.questionIndex] = { percent: s.percent, aiFeedback: s.aiFeedback }; });
   if(Object.keys(answered).length >= q.questions.length){
-    const avgPercent = Math.round(mine.reduce((a,b)=>a+b.percent,0)/mine.length);
-    go('treatBlocked', { exam: { title: q.title, isWritten: true }, attempt: { score: percentToMarks(avgPercent)*q.questions.length, total: q.questions.length*5 } });
+    let totalMarks = 0, earnedMarks = 0;
+    q.questions.forEach((qq,i)=>{
+      const m = Number(qq.marks) || 5;
+      totalMarks += m;
+      if(answered[i]) earnedMarks += percentToMarks(answered[i].percent, m);
+    });
+    go('treatBlocked', { exam: { title: q.title, isWritten: true }, attempt: { score: earnedMarks, total: totalMarks } });
     return;
   }
   window.__writtenSolveCtx = { exam: q, slug, name, answered };
@@ -4139,14 +4195,16 @@ function redrawWrittenSolve(){
   const { exam, answered } = window.__writtenSolveCtx;
   const total = exam.questions.length;
   const doneCount = Object.keys(answered).length;
+  const totalMarksAll = exam.questions.reduce((a,qq)=> a + (Number(qq.marks)||5), 0);
   const qHtml = exam.questions.map((q,idx)=>{
     const done = answered[idx];
-    const marks = done ? percentToMarks(done.percent) : null;
+    const maxMarks = Number(q.marks) || 5;
+    const marks = done ? percentToMarks(done.percent, maxMarks) : null;
     return `<div class="q-block">
-      <div class="q-text">${idx+1}. ${escapeHtml(q.text||'')}</div>
+      <div class="q-text">${idx+1}. ${escapeHtml(q.text||'')} <span class="q-tag">${maxMarks} নম্বর</span></div>
       ${q.imageUrl ? `<img src="${escapeHtml(q.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="প্রশ্নের ছবি">`:''}
       ${done
-        ? `<div class="say">✅ জমা হয়েছে — নম্বর: ${marks}/5<br>${escapeHtml(done.aiFeedback||'')}</div>
+        ? `<div class="say">✅ জমা হয়েছে — নম্বর: ${marks}/${maxMarks}<br>${escapeHtml(done.aiFeedback||'')}</div>
            ${!done.reviewRequested ? `<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="requestReviewForQuestion(${idx})">🚩 এই নম্বর নিয়ে রিভিউ চাও</button>` : `<p class="hint" style="margin-top:6px;">🚩 রিভিউ চাওয়া হয়েছে, শিক্ষক দেখবেন।</p>`}`
         : `<input type="file" id="wFile${idx}" accept="image/*" style="margin-bottom:8px;">
            <button class="btn btn-primary btn-block" onclick="submitWrittenQuestion(${idx})">📤 এই প্রশ্নের উত্তর জমা দাও</button>
@@ -4158,7 +4216,7 @@ function redrawWrittenSolve(){
     ${header('Written CQ পরীক্ষা')}
     <div class="card">
       <h2>${escapeHtml(exam.title)}</h2>
-      <p class="hint">${doneCount} / ${total} প্রশ্নের উত্তর জমা দেওয়া হয়েছে (প্রতি প্রশ্ন ৫ নম্বর)। প্রতিটা প্রশ্নের ছবি আলাদাভাবে আপলোড করো।</p>
+      <p class="hint">${doneCount} / ${total} প্রশ্নের উত্তর জমা দেওয়া হয়েছে (মোট ${totalMarksAll} নম্বর)। প্রতিটা প্রশ্নের ছবি আলাদাভাবে আপলোড করো।</p>
     </div>
     <div class="card">${qHtml}</div>
     <div class="center"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
@@ -4178,8 +4236,13 @@ window.submitWrittenQuestion = async function(idx){
   if(res && res.status === 'success'){
     window.__writtenSolveCtx.answered[idx] = { percent: res.percent, aiFeedback: res.aiFeedback, subId: res.subId };
     if(res.allDone){
-      const totalMarks = exam.questions.length * 5;
-      const earnedMarks = percentToMarks(res.avgPercent) * exam.questions.length;
+      let totalMarks = 0, earnedMarks = 0;
+      exam.questions.forEach((qq,i)=>{
+        const m = Number(qq.marks) || 5;
+        totalMarks += m;
+        const sub = window.__writtenSolveCtx.answered[i];
+        if(sub) earnedMarks += percentToMarks(sub.percent, m);
+      });
       go('writtenResult', { earnedMarks, totalMarks, couponAmount: res.couponAmount, title: exam.title });
     } else {
       redrawWrittenSolve();
@@ -4207,7 +4270,7 @@ function renderWrittenResult(earnedMarks, totalMarks, couponAmount, title){
       <h2>${escapeHtml(title)}</h2>
       <p class="hint">সব প্রশ্ন জমা হয়ে গেছে ✅</p>
       <div class="stamp ${passed?'':'fail'}">${earnedMarks}/${totalMarks}</div>
-      <p class="hint" style="margin-top:10px;">এটা তোমার সব প্রশ্নের মোট AI-মূল্যায়িত নম্বর (প্রতি প্রশ্নে ৫ নম্বর করে)।</p>
+      <p class="hint" style="margin-top:10px;">এটা তোমার সব প্রশ্নের মোট AI-মূল্যায়িত নম্বর।</p>
       ${couponAmount>0 ? `<div class="say" style="margin-top:10px;">🎁 <b>অভিনন্দন!</b> তুমি ৳${couponAmount} Treat Coupon পেয়েছো!</div>` : ''}
       <p class="hint" style="margin-top:10px;">কোনো প্রশ্নের নম্বর নিয়ে দ্বিমত থাকলে, ঐ প্রশ্নে গিয়ে "🚩 রিভিউ চাও" চাপতে পারতে — শিক্ষক ম্যানুয়ালি দেখে ঠিক করে দেবেন।</p>
     </div>
@@ -4592,6 +4655,15 @@ async function renderStudentDashboard(){
         <button class="btn btn-outline btn-block" onclick="go('writtenEntry')">📝 লিখিত পরীক্ষায় অংশ নাও ও খাতা আপলোড করো</button>
       </div>
 
+      <!-- 4.5 Daily Homework Widget -->
+      <div class="widget">
+        <div class="widget-header">
+          <h3 class="widget-title">📅 আজকের Daily HW</h3>
+          <span class="widget-tag tag-blue" id="dailyHwStatusTag">চেক হচ্ছে...</span>
+        </div>
+        <div id="dailyHwWidgetBody"><p class="hint">লোড হচ্ছে...</p></div>
+      </div>
+
       <!-- 5. Treat Wallet & Rewards Shop -->
       <div class="widget">
         <div class="widget-header">
@@ -4619,9 +4691,189 @@ async function renderStudentDashboard(){
 
     ${creditFooter()}
   `;
+  fillDailyHwWidget();
 }
 
-// Dashboard -> coupon wallet / shop. Those screens need name/slug/balance/history in `state`,
+// ---- Daily Homework: dashboard widget + submit/history screens ----
+async function fillDailyHwWidget(){
+  const stud = getLoggedStudent();
+  if(!stud) return;
+  const today = todayStr();
+  const list = await getMyDailyHomeworkRemote(stud.slug, today.slice(0,7));
+  const todayEntry = list.find(x=> x.date === today);
+  const tag = document.getElementById('dailyHwStatusTag');
+  const body = document.getElementById('dailyHwWidgetBody');
+  if(!tag || !body) return; // user navigated away before this resolved
+  if(todayEntry){
+    tag.textContent = '✅ সম্পন্ন';
+    tag.className = 'widget-tag tag-green';
+    body.innerHTML = `
+      <div class="say">🤖 ${escapeHtml(todayEntry.aiFeedback||'')}</div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn btn-outline btn-block" onclick="go('dailyHwSubmit')">🔁 আবার জমা দাও</button>
+        <button class="btn btn-outline btn-block" onclick="go('dailyHwCalendar')">📅 HW ইতিহাস</button>
+      </div>
+    `;
+  } else {
+    tag.textContent = 'বাকি আছে';
+    tag.className = 'widget-tag tag-red';
+    body.innerHTML = `
+      <p class="hint" style="margin-bottom:10px;">আজকের হোমওয়ার্কের প্রশ্ন আর তোমার সমাধানের ছবি আপলোড করো — AI সাথে সাথে দেখে ফিডব্যাক দেবে।</p>
+      <button class="btn btn-gold btn-block" onclick="go('dailyHwSubmit')">📤 আজকের HW জমা দাও</button>
+      <div style="margin-top:8px; text-align:center;"><a class="link-back" onclick="go('dailyHwCalendar')">📅 আগের HW ইতিহাস দেখো</a></div>
+    `;
+  }
+}
+
+function renderDailyHwSubmit(){
+  const stud = getLoggedStudent();
+  if(!stud){ go('studentAuth'); return; }
+  app.innerHTML = `
+    ${header('Daily HW জমা দাও')}
+    <div class="card">
+      <h2>আজকের হোমওয়ার্ক</h2>
+      <p class="hint">প্রশ্নের ছবি আর তোমার হাতে লেখা সমাধানের ছবি — দুটোই আপলোড করো। AI প্রশ্নটা নিজে সমাধান করে তোমার উত্তরের সাথে মিলিয়ে ফিডব্যাক দেবে।</p>
+      <label class="field-label">প্রশ্নের ছবি</label>
+      <input type="file" id="hwQFile" accept="image/*" style="margin-bottom:14px;">
+      <label class="field-label">তোমার সমাধানের ছবি</label>
+      <input type="file" id="hwAFile" accept="image/*" style="margin-bottom:14px;">
+      <button class="btn btn-primary btn-block" onclick="submitDailyHw()">📤 জমা দাও</button>
+      <div id="hwSubmitStatus" style="margin-top:12px;"></div>
+    </div>
+    <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+window.submitDailyHw = async function(){
+  const stud = getLoggedStudent();
+  if(!stud) return;
+  const qFile = (document.getElementById('hwQFile')||{}).files[0];
+  const aFile = (document.getElementById('hwAFile')||{}).files[0];
+  if(!qFile || !aFile){ toast('প্রশ্ন ও উত্তর দুটো ছবিই দাও'); return; }
+  const statusEl = document.getElementById('hwSubmitStatus');
+  statusEl.innerHTML = `<p class="hint">ছবি প্রস্তুত করা হচ্ছে...</p>`;
+  const qC = await compressImageFile(qFile, 1200, 0.75);
+  const aC = await compressImageFile(aFile, 1200, 0.75);
+  statusEl.innerHTML = `<p class="hint">AI দিয়ে চেক করা হচ্ছে, একটু অপেক্ষা করো...</p>`;
+  const today = todayStr();
+  const res = await submitDailyHomeworkRemote(stud.slug, today, qC.base64, qC.mimeType, aC.base64, aC.mimeType);
+  if(res && res.status === 'success'){
+    statusEl.innerHTML = `<div class="say">🤖 <b>AI ফিডব্যাক:</b> ${escapeHtml(res.aiFeedback||'')}</div><p class="hint" style="margin-top:10px;">✅ আজকের HW জমা হয়ে গেছে।</p>`;
+    window.__studentDashCache = null; // dashboard will refetch (and re-check today's HW) next visit
+  } else {
+    statusEl.innerHTML = `<p class="hint">জমা দিতে সমস্যা হয়েছে, আবার চেষ্টা করো।</p>`;
+  }
+};
+
+function buildHwCalendar(year, month, records){
+  const recByDate = {};
+  records.forEach(r=> recByDate[r.date] = r);
+  const first = new Date(year, month, 1);
+  const startWeekday = first.getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const todayS = todayStr();
+
+  let cells = '';
+  for(let i=0;i<startWeekday;i++){ cells += `<div></div>`; }
+  for(let d=1; d<=daysInMonth; d++){
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const rec = recByDate[dateStr];
+    const bg = rec ? 'var(--green)' : '#F5F9FE';
+    const color = rec ? '#fff' : 'var(--ink)';
+    const border = rec ? 'none' : '1px solid var(--rule)';
+    const isToday = dateStr === todayS;
+    const clickAttr = rec ? `onclick="viewHwDay('${dateStr}')" style="cursor:pointer;` : `style="cursor:default;`;
+    cells += `<div ${clickAttr} background:${bg}; color:${color}; border:${border}; ${isToday?'outline:2px solid var(--margin-red);':''} border-radius:7px; display:flex; align-items:center; justify-content:center; height:34px; font-size:13px; font-family:var(--font-mono);">${d}</div>`;
+  }
+
+  const prevM = month===0 ? 11 : month-1, prevY = month===0 ? year-1 : year;
+  const nextM = month===11 ? 0 : month+1, nextY = month===11 ? year+1 : year;
+
+  return `
+    <div class="card" style="padding:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <a class="link-back" onclick="goHwCalNav(${prevY},${prevM})">‹</a>
+        <b style="font-family:var(--font-display); font-size:16px;">${BN_MONTHS[month]} ${year}</b>
+        <a class="link-back" onclick="goHwCalNav(${nextY},${nextM})">›</a>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:6px;">
+        ${BN_WEEKDAYS.map(w=>`<div style="text-align:center; font-size:11px; color:var(--pencil); font-weight:600;">${w}</div>`).join('')}
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:4px;">${cells}</div>
+      <div style="margin-top:12px; font-size:12px; color:var(--pencil);">🟩 এই দিনে HW জমা দেওয়া হয়েছে — চাপলে দেখা যাবে</div>
+    </div>
+  `;
+}
+window.__hwCalYear = null; window.__hwCalMonth = null;
+window.goHwCalNav = function(y, m){
+  window.__hwCalYear = y; window.__hwCalMonth = m;
+  go('dailyHwCalendar');
+};
+async function renderDailyHwCalendar(){
+  const stud = getLoggedStudent();
+  if(!stud){ go('studentAuth'); return; }
+  app.innerHTML = `${header('Daily HW ইতিহাস')}<div class="card center">লোড হচ্ছে...</div>`;
+  const now = new Date();
+  const year = window.__hwCalYear !== null ? window.__hwCalYear : now.getFullYear();
+  const month = window.__hwCalMonth !== null ? window.__hwCalMonth : now.getMonth();
+  window.__hwCalYear = year; window.__hwCalMonth = month;
+  const monthKey = `${year}-${String(month+1).padStart(2,'0')}`;
+  const records = await getMyDailyHomeworkRemote(stud.slug, monthKey);
+  window.__hwRecordsCache = records;
+  const calHtml = buildHwCalendar(year, month, records);
+  app.innerHTML = `
+    ${header('Daily HW ইতিহাস')}
+    <div class="card center">
+      <h2>${escapeHtml(stud.name)}</h2>
+      <p class="hint">এই মাসে ${records.length} দিন HW জমা দিয়েছো।</p>
+    </div>
+    ${calHtml}
+    <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+window.viewHwDay = function(dateStr){
+  const rec = (window.__hwRecordsCache||[]).find(r=> r.date === dateStr);
+  if(!rec) return;
+  go('dailyHwDayDetail', { rec });
+};
+function renderDailyHwDayDetail(rec){
+  if(!rec){ go('dailyHwCalendar'); return; }
+  app.innerHTML = `
+    ${header('Daily HW')}
+    <div class="card">
+      <h2>${escapeHtml(fmtBnDate(new Date(rec.date).getTime()))}</h2>
+      ${rec.questionImageUrl ? `<label class="field-label">প্রশ্ন</label><img src="${escapeHtml(rec.questionImageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:12px;" alt="প্রশ্নের ছবি">` : ''}
+      ${rec.answerImageUrl ? `<label class="field-label">তোমার সমাধান</label><img src="${escapeHtml(rec.answerImageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:12px;" alt="সমাধানের ছবি">` : ''}
+      <div class="say">🤖 <b>AI ফিডব্যাক:</b> ${escapeHtml(rec.aiFeedback||'')}</div>
+    </div>
+    <div class="center"><a class="link-back" onclick="go('dailyHwCalendar')">← ইতিহাসে ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+
+// ---- Teacher: review every student's daily HW ----
+async function renderDailyHwManage(){
+  app.innerHTML = `${header('Daily HW জমা')}<div class="card center">লোড হচ্ছে...</div>`;
+  const subs = await listAllDailyHomeworkRemote();
+  let rows = subs.map(s=> `
+    <div class="exam-item">
+      <h3 style="margin-bottom:4px;">${escapeHtml(s.slug)} — ${escapeHtml(fmtBnDate(new Date(s.date).getTime()))}</h3>
+      <div class="row">
+        <a href="${escapeHtml(s.questionImageUrl)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="text-decoration:none;">📄 প্রশ্ন দেখো</a>
+        <a href="${escapeHtml(s.answerImageUrl)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="text-decoration:none;">📄 সমাধান দেখো</a>
+      </div>
+      <div class="say" style="margin-top:8px;">🤖 ${escapeHtml(s.aiFeedback||'')}</div>
+    </div>`).join('');
+  if(subs.length===0) rows = `<div class="empty-state">এখনো কেউ জমা দেয়নি।</div>`;
+  app.innerHTML = `
+    ${header('Daily HW জমা')}
+    <div class="card">${rows}</div>
+    <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+
 // so fetch the logged-in student's balance first (otherwise they showed "৳undefined").
 window.openMyCoupons = async function(target){
   const stud = getLoggedStudent();
@@ -5482,9 +5734,8 @@ async function renderPastExams(){
   });
   wr.forEach(w=>{
     const answered = w.answeredCount || 0;
-    const marks = percentToMarks(w.avgPercent) * answered;
     items.push({ kind:'written', code:w.examCode, title:w.title, subject:w.subject, isTreat:true,
-                 attempts:1, score:marks, total:answered*5, pct:w.avgPercent, when:w.lastSubmittedAt,
+                 attempts:1, score:w.earnedMarks, total:w.answeredMaxMarks, pct:w.avgPercent, when:w.lastSubmittedAt,
                  answered, totalQ:w.totalQ });
   });
   items.sort((a,b)=> (b.when||0) - (a.when||0));
@@ -5567,16 +5818,22 @@ window.openPastWritten = async function(idx){
   const stud = getLoggedStudent();
   if(!it || !stud) return;
   toast('লোড হচ্ছে...');
-  const subs = (await getWrittenSubmissionsRemote(it.code)).filter(s=> s.slug === stud.slug).sort((a,b)=> a.questionIndex - b.questionIndex);
-  go('pastWrittenDetail', { title: it.title, subs });
+  const [subsAll, examData] = await Promise.all([getWrittenSubmissionsRemote(it.code), getWrittenQuestionByCode(it.code)]);
+  const subs = subsAll.filter(s=> s.slug === stud.slug).sort((a,b)=> a.questionIndex - b.questionIndex);
+  go('pastWrittenDetail', { title: it.title, subs, examQuestions: (examData && examData.questions) || [] });
 };
-function renderPastWrittenDetail(title, subs){
-  const rows = (subs||[]).map(s=> `
+function renderPastWrittenDetail(title, subs, examQuestions){
+  examQuestions = examQuestions || [];
+  const rows = (subs||[]).map(s=> {
+    const maxMarks = Number((examQuestions[s.questionIndex]||{}).marks) || 5;
+    const marks = percentToMarks(s.percent, maxMarks);
+    return `
     <div class="review-block">
-      <div class="q-text" style="font-size:14px;">প্রশ্ন ${s.questionIndex+1} · ${percentToMarks(s.percent)}/৫ নম্বর <span class="meta">(AI ${s.percent}%)</span>
+      <div class="q-text" style="font-size:14px;">প্রশ্ন ${s.questionIndex+1} · ${marks}/${maxMarks} নম্বর <span class="meta">(AI ${s.percent}%)</span>
         ${s.driveUrl ? ` · <a href="${escapeHtml(s.driveUrl)}" target="_blank" rel="noopener">তোমার খাতার ছবি</a>` : ''}</div>
       <div class="review-ans ${s.percent>=50?'right':'wrong'}">${escapeHtml(s.aiFeedback||'')}</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   app.innerHTML = `
     ${header('Past Exams')}
     <div class="card">
@@ -5603,18 +5860,17 @@ function classSummaryHtml(cs){
     return `<div style="margin-top:12px; background:#F5F9FE; border:1px solid var(--paper-edge); border-radius:10px; padding:10px 12px; font-size:13.5px;">
       📚 ${monthName} মাসে মোট ক্লাস হয়েছে: <b>${cs.held}</b> দিন</div>`;
   }
-  const done = cs.held;
+  const done = cs.held + cs.extraApplied;
   const pct = cs.planned > 0 ? Math.min(100, Math.round((done / cs.planned) * 100)) : 100;
   let third;
   if(cs.remaining > 0)          third = `<div class="cls-chip" style="background:#FEF6E8; color:#9B6A15;"><b>${cs.remaining}</b><span>⏳ বাকি (দিন)</span></div>`;
   else if(cs.extraThisMonth > 0) third = `<div class="cls-chip" style="background:#E8F6EF; color:var(--green);"><b>+${cs.extraThisMonth}</b><span>➕ Extra (দিন)</span></div>`;
   else                           third = `<div class="cls-chip" style="background:#E8F6EF; color:var(--green);"><b>✓</b><span>🎉 সম্পূর্ণ</span></div>`;
   const notes = [];
-  if(cs.carriedIn > 0) notes.push(`আগের মাসের ঘাটতি থেকে <b>${cs.carriedIn} দিন</b> এই মাসের লক্ষ্যে যোগ করা হয়েছে`);
-  if(cs.carriedIn < 0) notes.push(`আগের মাসের extra থেকে <b>${-cs.carriedIn} দিন</b> এই মাসের লক্ষ্য থেকে কমানো হয়েছে`);
-  if(cs.extraThisMonth > 0) notes.push(`এই মাসে <b>${cs.extraThisMonth} দিন</b> বাড়তি ক্লাস হয়েছে`);
-  if(cs.carried > 0) notes.push(`এই মাসের ঘাটতি <b>${cs.carried} দিন</b> পরের মাসের লক্ষ্যে যোগ করা হয়েছে`);
-  if(cs.carried < 0) notes.push(`এই মাসের extra <b>${-cs.carried} দিন</b> পরের মাসের লক্ষ্য থেকে কমানো হয়েছে`);
+  if(cs.extraCarriedIn > 0) notes.push(`আগের মাস(গুলো) থেকে extra জমা আছে: <b>${cs.extraCarriedIn} দিন</b>`);
+  if(cs.extraApplied > 0)   notes.push(`extra থেকে <b>${cs.extraApplied} দিন</b> যোগ করে এই মাসের হিসাব মেলানো হয়েছে`);
+  if(cs.extraThisMonth > 0) notes.push(`এই মাসের বাড়তি <b>${cs.extraThisMonth} দিন</b> পরের মাসে extra হিসেবে যাবে`);
+  if(cs.deficitCarriedOut > 0) notes.push(`এই মাসের ঘাটতি <b>${cs.deficitCarriedOut} দিন</b> পরের মাসের লক্ষ্যের সাথে যোগ করে দেওয়া হয়েছে`);
   return `
     <div style="margin-top:12px; border:1px solid var(--paper-edge); border-radius:12px; padding:12px; background:#FCFDFE;">
       <div style="font-weight:700; font-size:14px; margin-bottom:8px;">📘 ${monthName} মাসের ক্লাস হিসাব</div>
@@ -5669,23 +5925,16 @@ async function buildClassPlanCard(slug, monthKey, year, month){
     <h3>${title}</h3>
     ${classSummaryHtml(cs)}
 
-    ${cs.carried !== 0 ? `
+    ${cs.remaining > 0 ? `
     <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--rule);">
-      <p class="hint" style="margin:0 0 8px 0;">${cs.carried > 0
-        ? `✅ এই মাসের <b>${cs.carried} দিন</b> ঘাটতি পরের মাসের লক্ষ্যে যোগ করা হয়েছে — পরের মাসে ${cs.carried} দিন বেশি ক্লাস নিলে হিসাব মিলবে।`
-        : `✅ এই মাসের <b>${-cs.carried} দিন</b> extra পরের মাসে যোগ করা হয়েছে — পরের মাসে ${-cs.carried} দিন কম ক্লাস নিলেই চলবে।`}</p>
-      <button class="btn btn-outline btn-block" onclick="undoCarryUI()">↩️ ভুল হলে বাতিল করো</button>
-    </div>` : (cs.extraThisMonth > 0 ? `
-    <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--rule);">
-      <label class="field-label">🎉 এই মাসে <b>${cs.extraThisMonth} দিন</b> extra ক্লাস হয়েছে</label>
-      <button class="btn btn-gold btn-block" onclick="carryToNextMonthUI()">➡️ এই ${cs.extraThisMonth} দিন পরের মাসের সাথে যোগ করো</button>
-      <p class="hint" style="margin-top:6px;">চাপলে পরের মাসের লক্ষ্য ${cs.extraThisMonth} দিন কমে যাবে। না চাইলে কিছু না করলেই হয় — কিছুই বদলাবে না।</p>
-    </div>` : (cs.remaining > 0 ? `
-    <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--rule);">
-      <label class="field-label">⚠️ এই মাসে <b>${cs.remaining} দিন</b> কম হয়েছে (ঘাটতি)</label>
-      <button class="btn btn-outline btn-block" onclick="carryToNextMonthUI()">➡️ এই ${cs.remaining} দিন পরের মাসের সাথে যোগ করো</button>
-      <p class="hint" style="margin-top:6px;">চাপলে পরের মাসের লক্ষ্য ${cs.remaining} দিন বেড়ে যাবে। না চাইলে কিছু না করলেই হয় — কিছুই বদলাবে না।</p>
-    </div>` : ''))}
+      ${cs.deficitCarriedOut > 0 ? `
+        <p class="hint" style="margin:0;">✅ এই মাসের <b>${cs.deficitCarriedOut} দিন</b> ঘাটতি পরের মাসের লক্ষ্যের সাথে যোগ করে দেওয়া হয়েছে — পরের মাসে সেই ${cs.deficitCarriedOut} দিন বাড়তি ক্লাস নিলে হিসাব মিলে যাবে।</p>
+      ` : `
+        <label class="field-label">⚠️ এই মাসে <b>${cs.remaining} দিন</b> কম হয়েছে (ঘাটতি)</label>
+        <button class="btn btn-outline btn-block" onclick="carryDeficitForwardUI()">➡️ এই ${cs.remaining} দিন পরের মাসের লক্ষ্যের সাথে যোগ করো</button>
+        <p class="hint" style="margin-top:6px;">চাপলে পরের মাসের পরিকল্পিত দিন-সংখ্যা ${cs.remaining} দিন বেড়ে যাবে, যাতে এই মাসের বাকি ক্লাসগুলো পরের মাসে পুষিয়ে নেওয়া যায়। ইচ্ছা না হলে কিছু না করলেই হয় — এই ঘাটতি এমনিতে পরের মাসে যোগ হয় না।</p>
+      `}
+    </div>` : ''}
 
     <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--rule);">
       <div class="row">
@@ -5727,28 +5976,16 @@ window.saveMonthPlanUI = async function(clear){
   const res = await postToScript('saveMonthPlan', { slug, month: monthKeyFromCal(), planned });
   if(res){ toast(clear ? 'আলাদা দিন মুছে ফেলা হয়েছে' : 'এই মাসের দিন সেট হয়েছে ✅'); go('attendanceMark', { slug, studentName }); }
 };
-window.carryToNextMonthUI = async function(){
+window.carryDeficitForwardUI = async function(){
   const { slug, studentName } = state;
   toast('যোগ করা হচ্ছে...');
-  const res = await postToScriptRaw('carryToNextMonth', { slug, month: monthKeyFromCal() });
+  const res = await postToScriptRaw('carryDeficitForward', { slug, month: monthKeyFromCal() });
   if(res && res.status === 'success'){
-    toast(res.carried > 0 ? `✅ ${res.carried} দিন ঘাটতি পরের মাসের লক্ষ্যে যোগ হয়েছে` : `✅ ${-res.carried} দিন extra পরের মাসে যোগ হয়েছে`);
+    toast(`✅ ${res.deficitAmount} দিন পরের মাসের লক্ষ্যের সাথে যোগ হয়েছে`);
     go('attendanceMark', { slug, studentName });
   } else {
-    const msgs = { already_carried: 'এই মাসের জন্য আগেই যোগ করা হয়ে গেছে', nothing_to_carry: 'যোগ করার মতো কিছু নেই', no_plan: 'আগে মাসিক পরিকল্পনা সেট করো' };
+    const msgs = { no_deficit: 'এই মাসে কোনো ঘাটতি নেই', already_carried: 'এই মাসের ঘাটতি আগেই যোগ করা হয়ে গেছে', no_plan: 'আগে মাসিক পরিকল্পনা সেট করো' };
     toast(msgs[res && res.message] || 'যোগ করা যায়নি, আবার চেষ্টা করো');
-  }
-};
-window.undoCarryUI = async function(){
-  if(!confirm('পরের মাসে যোগ/বিয়োগ করা দিনগুলো আবার আগের অবস্থায় ফেরাতে চাও?')) return;
-  const { slug, studentName } = state;
-  toast('বাতিল করা হচ্ছে...');
-  const res = await postToScriptRaw('undoCarry', { slug, month: monthKeyFromCal() });
-  if(res && res.status === 'success'){
-    toast('বাতিল হয়েছে ✅');
-    go('attendanceMark', { slug, studentName });
-  } else {
-    toast('বাতিল করা যায়নি, আবার চেষ্টা করো');
   }
 };
 
@@ -6016,12 +6253,16 @@ function render(){
   else if(s==='writtenEdit') renderWrittenEdit(state.examId, state.existing);
   else if(s==='writtenSubmissions') renderWrittenSubmissions(state.code);
   else if(s==='writtenEntry') renderWrittenEntry();
+  else if(s==='dailyHwSubmit') renderDailyHwSubmit();
+  else if(s==='dailyHwCalendar') renderDailyHwCalendar();
+  else if(s==='dailyHwDayDetail') renderDailyHwDayDetail(state.rec);
+  else if(s==='dailyHwManage') renderDailyHwManage();
   else if(s==='writtenSolve') renderWrittenSolve(state.exam, state.slug, state.name);
   else if(s==='writtenResult') renderWrittenResult(state.earnedMarks, state.totalMarks, state.couponAmount, state.title);
   else if(s==='doubtEntry') renderDoubtEntry();
   else if(s==='pastExams') renderPastExams();
   else if(s==='pastExamDetail') renderPastExamDetail(state.exam, state.attempts);
-  else if(s==='pastWrittenDetail') renderPastWrittenDetail(state.title, state.subs);
+  else if(s==='pastWrittenDetail') renderPastWrittenDetail(state.title, state.subs, state.examQuestions);
   else if(s==='withdrawManage') renderWithdrawManage();
 
   if(deferredPwaPrompt){
