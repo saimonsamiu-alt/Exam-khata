@@ -665,6 +665,15 @@ function genCode(){ const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let c=''; f
 function genId(prefix){ return prefix + '_' + Date.now() + '_' + Math.floor(Math.random()*10000); }
 function slugify(name){ return name.trim().toLowerCase().replace(/[^a-z0-9\u0980-\u09FF]+/g,'_').slice(0,40) || 'student'; }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// Drive-এর "view" লিংক সরাসরি <img>-এ দেখায় না — তাই thumbnail লিংকে বদলে নেয় (Drive ছাড়া অন্য লিংক যেমন আছে তেমনই থাকে)
+function driveImg(url){
+  const s = String(url||'');
+  if(/drive\.google\.com/.test(s)){
+    const m = s.match(/\/d\/([-\w]+)/) || s.match(/[?&]id=([-\w]+)/);
+    if(m) return 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w1200';
+  }
+  return escapeHtml(s);
+}
 function linkifyText(s){
   const escaped = escapeHtml(s);
   return escaped.replace(/(https?:\/\/[^\s<]+)/g, url => `<a href="${url}" target="_blank" rel="noopener" style="color:var(--margin-red); text-decoration:underline;">${url}</a>`);
@@ -2832,9 +2841,15 @@ async function uploadSubmissionRemote(slug, courseId, topicId, base64, mimeType,
   return res;
 }
 
-// ---- Daily Homework (student uploads today's question + their own answer) ----
-async function submitDailyHomeworkRemote(slug, date, qBase64, qMime, aBase64, aMime){
-  return await postToScript('submitDailyHomework', { slug, date, questionBase64:qBase64, questionMimeType:qMime, answerBase64:aBase64, answerMimeType:aMime });
+// ---- Daily Homework (টপিক অনুযায়ী: প্রশ্নের ছবি + ছাত্রের সমাধানের ছবি) ----
+async function submitDailyHomeworkRemote(slug, date, topic, qBase64, qMime, aBase64, aMime){
+  return await postToScriptRaw('submitDailyHomework', { slug, date, topic, questionBase64:qBase64, questionMimeType:qMime, answerBase64:aBase64, answerMimeType:aMime });
+}
+async function recheckDailyHomeworkRemote(id, slug){
+  return await postToScriptRaw('recheckDailyHomework', { id, slug });
+}
+async function deleteDailyHomeworkRemote(id, slug){
+  return await postToScriptRaw('deleteDailyHomework', { id, slug });
 }
 async function getMyDailyHomeworkRemote(slug, month){
   try{
@@ -3035,7 +3050,7 @@ async function renderMasteryCQManage(){
   let rows = prompts.map((p,idx)=> `
     <div class="exam-item">
       <h3 style="margin-bottom:6px;">${escapeHtml(p.title)}</h3>
-      ${p.imageUrl ? `<img src="${escapeHtml(p.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:8px;" alt="CQ ছবি">`:''}
+      ${p.imageUrl ? `<img src="${driveImg(p.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:8px;" alt="CQ ছবি">`:''}
       <p class="hint">${escapeHtml(p.instruction||'')}</p>
       <button class="btn btn-danger btn-block" style="margin-top:8px;" onclick="deleteCQPromptItem('${p.id}')">🗑️ মুছো</button>
     </div>`).join('');
@@ -3183,7 +3198,7 @@ async function renderMasteryTopicList(){
   const cqHtml = cqPrompts.map(p=> `
     <div class="exam-item">
       <h3 style="margin-bottom:6px;">${escapeHtml(p.title)}</h3>
-      ${p.imageUrl ? `<img src="${escapeHtml(p.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:8px;" alt="CQ ছবি">`:''}
+      ${p.imageUrl ? `<img src="${driveImg(p.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:8px;" alt="CQ ছবি">`:''}
       <p class="hint">${escapeHtml(p.instruction||'')}</p>
     </div>`).join('');
 
@@ -3224,7 +3239,7 @@ async function renderMasteryQuiz(topicId){
   const qHtml = topic.questions.map((q,i)=> `
     <div class="q-block">
       <div class="q-text">${i+1}. ${escapeHtml(q.text)}</div>
-      ${q.image ? `<img src="${escapeHtml(q.image)}" style="max-width:100%; border-radius:8px; margin-bottom:10px; display:block;" alt="প্রশ্নের ছবি">` : ''}
+      ${q.image ? `<img src="${driveImg(q.image)}" style="max-width:100%; border-radius:8px; margin-bottom:10px; display:block;" alt="প্রশ্নের ছবি">` : ''}
       ${q.options.map((opt,j)=> `
         <label class="bubble-opt">
           <input type="radio" name="mq${i}" onchange="setMasteryAnswer(${i},${j})">
@@ -3680,7 +3695,7 @@ async function renderShopManage(){
   window.__shopProductsCache = products;
   let rows = products.map((p,idx)=> `
     <div class="exam-item">
-      ${p.imageUrl ? `<img src="${escapeHtml(p.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:8px;" alt="${escapeHtml(p.title)}">`:''}
+      ${p.imageUrl ? `<img src="${driveImg(p.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:8px;" alt="${escapeHtml(p.title)}">`:''}
       <h3 style="margin-bottom:4px;">${escapeHtml(p.title)}</h3>
       <div class="meta">${escapeHtml(p.description||'')}</div>
       <div class="score-big score-pass" style="margin-top:6px;">৳${p.price}</div>
@@ -3784,7 +3799,7 @@ async function renderShopList(){
   let rows = products.map((p,idx)=> {
     const canAfford = balance >= p.price && !state.pendingWithdrawal; // [NEW]
     return `<div class="exam-item">
-      ${p.imageUrl ? `<img src="${escapeHtml(p.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:8px;" alt="${escapeHtml(p.title)}">`:''}
+      ${p.imageUrl ? `<img src="${driveImg(p.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:8px;" alt="${escapeHtml(p.title)}">`:''}
       <h3 style="margin-bottom:4px;">${escapeHtml(p.title)}</h3>
       <div class="meta">${escapeHtml(p.description||'')}</div>
       <div class="score-big ${canAfford?'score-pass':'score-fail'}" style="margin-top:6px;">৳${p.price}</div>
@@ -4006,14 +4021,14 @@ function renderWrittenQList(){
       <textarea oninput="writtenDraftQuestions[${i}].text=this.value" style="min-height:70px;" placeholder="প্রশ্নটা লেখো...">${escapeHtml(q.text)}</textarea>
       <label class="field-label">প্রশ্নের ছবি আপলোড করো (ঐচ্ছিক)</label>
       <input type="file" accept="image/*" onchange="handleWrittenQImageUpload(this, ${i})" style="margin-bottom:6px;">
-      <div id="wqImgPrev${i}">${q.imageUrl ? `<img src="${escapeHtml(q.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="প্রশ্নের ছবি">`:''}</div>
+      <div id="wqImgPrev${i}">${q.imageUrl ? `<img src="${driveImg(q.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="প্রশ্নের ছবি">`:''}</div>
       <label class="field-label">এই প্রশ্নের নম্বর</label>
       <input type="number" min="0.5" step="0.5" value="${q.marks!=null?q.marks:5}" oninput="writtenDraftQuestions[${i}].marks=parseFloat(this.value)||0" style="max-width:120px;">
       <label class="field-label">মডেল উত্তর (AI এটার সাথে তুলনা করবে)</label>
       <textarea oninput="writtenDraftQuestions[${i}].modelAnswerText=this.value" style="min-height:90px;" placeholder="ধাপে ধাপে সঠিক সমাধান লেখো...">${escapeHtml(q.modelAnswerText)}</textarea>
       <label class="field-label">মডেল উত্তরের ছবি আপলোড করো (ঐচ্ছিক)</label>
       <input type="file" accept="image/*" onchange="handleWrittenModelImageUpload(this, ${i})" style="margin-bottom:6px;">
-      <div id="wqModelImgPrev${i}">${q.modelAnswerImageUrl ? `<img src="${escapeHtml(q.modelAnswerImageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="মডেল উত্তরের ছবি">`:''}</div>
+      <div id="wqModelImgPrev${i}">${q.modelAnswerImageUrl ? `<img src="${driveImg(q.modelAnswerImageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="মডেল উত্তরের ছবি">`:''}</div>
       <label class="field-label">নম্বর বণ্টন (ঐচ্ছিক — যেমন: "[HNO₃] ও [H₂SO₄] বের করার জন্য ৪+৪=৮ নম্বর, ppm-এ প্রকাশের জন্য ২ নম্বর")</label>
       <textarea oninput="writtenDraftQuestions[${i}].markingScheme=this.value" style="min-height:70px;" placeholder="ধাপে ধাপে কোন অংশে কত নম্বর তা লেখো — AI ও তুমি দুজনেই এটা দেখে মূল্যায়ন করতে পারবে...">${escapeHtml(q.markingScheme||'')}</textarea>
     </div>
@@ -4027,7 +4042,7 @@ window.handleWrittenQImageUpload = async function(inputEl, idx){
   const res = await postToScript('uploadImage', { base64: compressed.base64, mimeType: compressed.mimeType, fileName: file.name });
   if(res && res.url){
     writtenDraftQuestions[idx].imageUrl = res.url;
-    document.getElementById('wqImgPrev'+idx).innerHTML = `<img src="${escapeHtml(res.url)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="প্রশ্নের ছবি">`;
+    document.getElementById('wqImgPrev'+idx).innerHTML = `<img src="${driveImg(res.url)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="প্রশ্নের ছবি">`;
   } else {
     document.getElementById('wqImgPrev'+idx).innerHTML = `<p class="hint">আপলোড ব্যর্থ হয়েছে</p>`;
   }
@@ -4040,7 +4055,7 @@ window.handleWrittenModelImageUpload = async function(inputEl, idx){
   const res = await postToScript('uploadImage', { base64: compressed.base64, mimeType: compressed.mimeType, fileName: file.name });
   if(res && res.url){
     writtenDraftQuestions[idx].modelAnswerImageUrl = res.url;
-    document.getElementById('wqModelImgPrev'+idx).innerHTML = `<img src="${escapeHtml(res.url)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="মডেল উত্তরের ছবি">`;
+    document.getElementById('wqModelImgPrev'+idx).innerHTML = `<img src="${driveImg(res.url)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="মডেল উত্তরের ছবি">`;
   } else {
     document.getElementById('wqModelImgPrev'+idx).innerHTML = `<p class="hint">আপলোড ব্যর্থ হয়েছে</p>`;
   }
@@ -4097,9 +4112,9 @@ async function renderWrittenSubmissions(code){
           <summary style="cursor:pointer; font-size:12.5px; color:var(--pencil);">📖 প্রশ্ন, মডেল উত্তর ও নম্বর বণ্টন দেখো</summary>
           <div style="margin-top:8px; padding:10px; background:#F5F9FE; border-radius:8px; font-size:13px;">
             ${q.text ? `<div><b>প্রশ্ন:</b> ${escapeHtml(q.text)}</div>` : ''}
-            ${q.imageUrl ? `<img src="${escapeHtml(q.imageUrl)}" style="max-width:100%; border-radius:6px; margin:6px 0;" alt="প্রশ্নের ছবি">` : ''}
+            ${q.imageUrl ? `<img src="${driveImg(q.imageUrl)}" style="max-width:100%; border-radius:6px; margin:6px 0;" alt="প্রশ্নের ছবি">` : ''}
             ${q.modelAnswerText ? `<div style="margin-top:6px;"><b>মডেল উত্তর:</b> ${escapeHtml(q.modelAnswerText)}</div>` : ''}
-            ${q.modelAnswerImageUrl ? `<img src="${escapeHtml(q.modelAnswerImageUrl)}" style="max-width:100%; border-radius:6px; margin:6px 0;" alt="মডেল উত্তরের ছবি">` : ''}
+            ${q.modelAnswerImageUrl ? `<img src="${driveImg(q.modelAnswerImageUrl)}" style="max-width:100%; border-radius:6px; margin:6px 0;" alt="মডেল উত্তরের ছবি">` : ''}
             ${q.markingScheme ? `<div style="margin-top:6px;"><b>নম্বর বণ্টন:</b> ${escapeHtml(q.markingScheme)}</div>` : ''}
           </div>
         </details>
@@ -4202,7 +4217,7 @@ function redrawWrittenSolve(){
     const marks = done ? percentToMarks(done.percent, maxMarks) : null;
     return `<div class="q-block">
       <div class="q-text">${idx+1}. ${escapeHtml(q.text||'')} <span class="q-tag">${maxMarks} নম্বর</span></div>
-      ${q.imageUrl ? `<img src="${escapeHtml(q.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="প্রশ্নের ছবি">`:''}
+      ${q.imageUrl ? `<img src="${driveImg(q.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="প্রশ্নের ছবি">`:''}
       ${done
         ? `<div class="say">✅ জমা হয়েছে — নম্বর: ${marks}/${maxMarks}<br>${escapeHtml(done.aiFeedback||'')}</div>
            ${!done.reviewRequested ? `<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="requestReviewForQuestion(${idx})">🚩 এই নম্বর নিয়ে রিভিউ চাও</button>` : `<p class="hint" style="margin-top:6px;">🚩 রিভিউ চাওয়া হয়েছে, শিক্ষক দেখবেন।</p>`}`
@@ -4649,7 +4664,7 @@ async function renderStudentDashboard(){
       <div class="widget">
         <div class="widget-header">
           <h3 class="widget-title">✍️ লিখিত সৃজনশীল পরীক্ষা</h3>
-          <span class="widget-tag tag-gold">Gemini AI Vision</span>
+          <span class="widget-tag tag-gold">AI চেক</span>
         </div>
         <p class="hint" style="margin-bottom:12px;">হাতে লেখা খাতার ছবি তুলে সরাসরি আপলোড করো — এআই তাৎক্ষণিক মূল্যায়ন ও নম্বর প্রদান করবে।</p>
         <button class="btn btn-outline btn-block" onclick="go('writtenEntry')">📝 লিখিত পরীক্ষায় অংশ নাও ও খাতা আপলোড করো</button>
@@ -4658,7 +4673,7 @@ async function renderStudentDashboard(){
       <!-- 4.5 Daily Homework Widget -->
       <div class="widget">
         <div class="widget-header">
-          <h3 class="widget-title">📅 আজকের Daily HW</h3>
+          <h3 class="widget-title">📚 Daily HW</h3>
           <span class="widget-tag tag-blue" id="dailyHwStatusTag">চেক হচ্ছে...</span>
         </div>
         <div id="dailyHwWidgetBody"><p class="hint">লোড হচ্ছে...</p></div>
@@ -4694,101 +4709,261 @@ async function renderStudentDashboard(){
   fillDailyHwWidget();
 }
 
-// ---- Daily Homework: dashboard widget + submit/history screens ----
+// ---- Daily Homework: টপিক অনুযায়ী জমা, দেখা, ক্যালেন্ডার, শিক্ষকের রিভিউ ----
+window.__hwAll = null;
+function hwFriendlyError(res){
+  const m = res && res.message;
+  if(m === 'network') return 'ইন্টারনেট সমস্যা — আবার চেষ্টা করো';
+  if(m && /[\u0980-\u09FF]/.test(m)) return m; // সার্ভারের বাংলা বার্তা
+  return 'জমা দেওয়া যায়নি, আবার চেষ্টা করো';
+}
+function findHwRec(id){
+  return ((window.__hwAll||[]).concat(window.__hwTeacherAll||[])).find(x=> x.id === id);
+}
+// এক টপিকের/এক দিনের একটা entry-র ভেতরের HTML: প্রশ্ন ও সমাধান দুটো ছবিই লেবেলসহ দেখায়
+function hwEntryInner(rec, opts){
+  opts = opts || {};
+  const imgBlock = (label, url)=> !url ? '' : `
+    <div style="margin-top:10px;">
+      <div class="field-label" style="margin-bottom:4px;">${label}</div>
+      <a href="${escapeHtml(url)}" target="_blank" rel="noopener">
+        <img src="${driveImg(url)}" alt="${label}" style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block;"
+             onerror="this.style.display='none'; this.parentNode.insertAdjacentHTML('beforeend','<span class=&quot;meta&quot;>🖼️ ছবিটা খুলতে চাপো</span>')">
+      </a>
+    </div>`;
+  const boxStyle = 'margin-top:12px; background:#F5F9FE; border-radius:8px; padding:10px 12px; font-size:13.5px; line-height:1.6;';
+  const fb = rec.aiFeedback
+    ? `<div style="${boxStyle}">🤖 <b>ফিডব্যাক:</b> ${escapeHtml(rec.aiFeedback)}</div>`
+    : `<div style="${boxStyle} background:#FEF8EC;">⏳ এই মুহূর্তে ফিডব্যাক দেখা যাচ্ছে না — শিক্ষক তোমার HW দেখবেন।
+         <div><button class="btn btn-outline" style="margin-top:8px; padding:7px 12px; font-size:12.5px;" onclick="recheckHw('${rec.id}')">🔁 আবার ফিডব্যাক চাও</button></div></div>`;
+  return `
+    <div class="row-top">
+      <div>
+        <span class="q-tag">📚 ${escapeHtml(rec.topic||'সাধারণ')}</span>
+        <div class="meta" style="margin-top:6px;">${escapeHtml(fmtBnDate(new Date(rec.date).getTime()))}${opts.teacher ? ' · স্টুডেন্ট: ' + escapeHtml(rec.slug) : ''}</div>
+      </div>
+      ${opts.student ? `<a class="link-back" onclick="deleteHw('${rec.id}')">🗑️ মুছো</a>` : ''}
+    </div>
+    ${imgBlock('📄 প্রশ্ন', rec.questionImageUrl)}
+    ${imgBlock('✍️ আমার খাতা (সমাধান)', rec.answerImageUrl)}
+    ${fb}`;
+}
+function hwEntryCard(rec, opts){
+  return `<div class="exam-item" id="hwEntry_${rec.id}">${hwEntryInner(rec, opts)}</div>`;
+}
+window.recheckHw = async function(id){
+  const rec = findHwRec(id); if(!rec) return;
+  const box = document.getElementById('hwEntry_'+id);
+  toast('আবার চেক করা হচ্ছে...');
+  const res = await recheckDailyHomeworkRemote(id, rec.slug || (getLoggedStudent()||{}).slug);
+  if(res && res.status === 'success'){
+    rec.aiFeedback = res.aiFeedback; rec.aiPending = false;
+    if(box) box.innerHTML = hwEntryInner(rec, { student: !!getLoggedStudent() && !window.__hwTeacherView, teacher: !!window.__hwTeacherView });
+    toast('✅ ফিডব্যাক এসেছে');
+  } else {
+    toast('এখনো ফিডব্যাক দেখা যাচ্ছে না, একটু পরে আবার চেষ্টা করো');
+  }
+};
+window.deleteHw = async function(id){
+  const stud = getLoggedStudent(); if(!stud) return;
+  if(!confirm('এই HW-টা মুছে ফেলতে চাও?')) return;
+  const res = await deleteDailyHomeworkRemote(id, stud.slug);
+  if(res && res.status === 'success'){
+    window.__hwAll = (window.__hwAll||[]).filter(x=> x.id !== id);
+    const box = document.getElementById('hwEntry_'+id); if(box) box.remove();
+    toast('মুছে ফেলা হয়েছে');
+  } else { toast('মুছতে পারলাম না, আবার চেষ্টা করো'); }
+};
+
+// ---------- ড্যাশবোর্ড widget ----------
 async function fillDailyHwWidget(){
   const stud = getLoggedStudent();
   if(!stud) return;
+  const list = await getMyDailyHomeworkRemote(stud.slug);
+  window.__hwAll = list;
   const today = todayStr();
-  const list = await getMyDailyHomeworkRemote(stud.slug, today.slice(0,7));
-  const todayEntry = list.find(x=> x.date === today);
+  const todayCount = list.filter(x=> x.date === today).length;
+  const topicCount = new Set(list.map(x=> x.topic)).size;
   const tag = document.getElementById('dailyHwStatusTag');
   const body = document.getElementById('dailyHwWidgetBody');
   if(!tag || !body) return; // user navigated away before this resolved
-  if(todayEntry){
-    tag.textContent = '✅ সম্পন্ন';
-    tag.className = 'widget-tag tag-green';
-    body.innerHTML = `
-      <div class="say">🤖 ${escapeHtml(todayEntry.aiFeedback||'')}</div>
-      <div class="row" style="margin-top:10px;">
-        <button class="btn btn-outline btn-block" onclick="go('dailyHwSubmit')">🔁 আবার জমা দাও</button>
-        <button class="btn btn-outline btn-block" onclick="go('dailyHwCalendar')">📅 HW ইতিহাস</button>
-      </div>
-    `;
-  } else {
-    tag.textContent = 'বাকি আছে';
-    tag.className = 'widget-tag tag-red';
-    body.innerHTML = `
-      <p class="hint" style="margin-bottom:10px;">আজকের হোমওয়ার্কের প্রশ্ন আর তোমার সমাধানের ছবি আপলোড করো — AI সাথে সাথে দেখে ফিডব্যাক দেবে।</p>
-      <button class="btn btn-gold btn-block" onclick="go('dailyHwSubmit')">📤 আজকের HW জমা দাও</button>
-      <div style="margin-top:8px; text-align:center;"><a class="link-back" onclick="go('dailyHwCalendar')">📅 আগের HW ইতিহাস দেখো</a></div>
-    `;
-  }
+  if(todayCount > 0){ tag.textContent = `✅ আজ ${todayCount}টা জমা`; tag.className = 'widget-tag tag-green'; }
+  else { tag.textContent = 'আজ এখনো জমা হয়নি'; tag.className = 'widget-tag tag-red'; }
+  body.innerHTML = `
+    <p class="hint" style="margin-bottom:10px;">প্রতিদিনের HW-র প্রশ্ন ও তোমার খাতার ছবি টপিকের নাম দিয়ে জমা দাও (যেমন "Kp Kc") — একই টপিকের সব HW এক জায়গায় জমা থাকবে।
+      ${list.length ? `<br>এ পর্যন্ত: <b>${list.length}টা</b> HW, <b>${topicCount}টা</b> টপিকে।` : ''}</p>
+    <button class="btn btn-gold btn-block" onclick="go('dailyHwSubmit')">➕ নতুন HW জমা দাও</button>
+    <div class="row" style="margin-top:8px;">
+      <button class="btn btn-outline btn-block" onclick="go('dailyHwTopics')">📚 টপিক অনুযায়ী দেখো</button>
+      <button class="btn btn-outline btn-block" onclick="go('dailyHwCalendar')">📅 ক্যালেন্ডার</button>
+    </div>`;
 }
 
-function renderDailyHwSubmit(){
+// ---------- নতুন HW জমা ----------
+async function renderDailyHwSubmit(prefillTopic){
   const stud = getLoggedStudent();
   if(!stud){ go('studentAuth'); return; }
+  app.innerHTML = `${header('HW জমা দাও')}<div class="card center">লোড হচ্ছে...</div>`;
+  if(!window.__hwAll) window.__hwAll = await getMyDailyHomeworkRemote(stud.slug);
+  const counts = {};
+  window.__hwAll.forEach(x=>{ counts[x.topic] = (counts[x.topic]||0) + 1; });
+  const topics = Object.keys(counts);
+  window.__hwTopicList = topics;
+  const chips = topics.map((t,i)=> `<button type="button" class="info-btn" style="margin:0 6px 6px 0;" onclick="hwPickTopic(${i})">📚 ${escapeHtml(t)} (${counts[t]})</button>`).join('');
   app.innerHTML = `
-    ${header('Daily HW জমা দাও')}
+    ${header('HW জমা দাও')}
     <div class="card">
-      <h2>আজকের হোমওয়ার্ক</h2>
-      <p class="hint">প্রশ্নের ছবি আর তোমার হাতে লেখা সমাধানের ছবি — দুটোই আপলোড করো। AI প্রশ্নটা নিজে সমাধান করে তোমার উত্তরের সাথে মিলিয়ে ফিডব্যাক দেবে।</p>
-      <label class="field-label">প্রশ্নের ছবি</label>
-      <input type="file" id="hwQFile" accept="image/*" style="margin-bottom:14px;">
-      <label class="field-label">তোমার সমাধানের ছবি</label>
-      <input type="file" id="hwAFile" accept="image/*" style="margin-bottom:14px;">
-      <button class="btn btn-primary btn-block" onclick="submitDailyHw()">📤 জমা দাও</button>
+      <h2>নতুন HW</h2>
+      <label class="field-label">টপিকের নাম (যেমন: Kp Kc, Qp Qc)</label>
+      <input type="text" id="hwTopic" value="${escapeHtml(prefillTopic||'')}" placeholder="কোন টপিকের HW?" maxlength="80">
+      ${chips ? `<div class="meta" style="margin:-6px 0 6px 0;">আগের টপিকে যোগ করতে চাপো:</div><div style="margin-bottom:12px;">${chips}</div>` : ''}
+      <label class="field-label">📄 প্রশ্নের ছবি</label>
+      <input type="file" id="hwQFile" accept="image/*" onchange="hwPreview(this,'hwQPrev')" style="margin-bottom:6px;">
+      <div id="hwQPrev"></div>
+      <label class="field-label">✍️ তোমার খাতার (সমাধানের) ছবি</label>
+      <input type="file" id="hwAFile" accept="image/*" onchange="hwPreview(this,'hwAPrev')" style="margin-bottom:6px;">
+      <div id="hwAPrev"></div>
+      <button class="btn btn-primary btn-block" id="hwSubmitBtn" onclick="submitDailyHw()">📤 জমা দাও</button>
       <div id="hwSubmitStatus" style="margin-top:12px;"></div>
     </div>
     <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>
     ${creditFooter()}
   `;
 }
+window.hwPickTopic = function(i){
+  const inp = document.getElementById('hwTopic');
+  if(inp && window.__hwTopicList) inp.value = window.__hwTopicList[i];
+};
+window.hwPreview = function(inputEl, targetId){
+  const el = document.getElementById(targetId); if(!el) return;
+  const f = inputEl.files && inputEl.files[0];
+  if(!f){ el.innerHTML = ''; return; }
+  el.innerHTML = `<img src="${URL.createObjectURL(f)}" alt="প্রিভিউ" style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); margin-bottom:10px; display:block;">`;
+};
 window.submitDailyHw = async function(){
   const stud = getLoggedStudent();
   if(!stud) return;
+  const topic = ((document.getElementById('hwTopic')||{}).value||'').trim();
   const qFile = (document.getElementById('hwQFile')||{}).files[0];
   const aFile = (document.getElementById('hwAFile')||{}).files[0];
-  if(!qFile || !aFile){ toast('প্রশ্ন ও উত্তর দুটো ছবিই দাও'); return; }
+  if(!topic){ toast('আগে টপিকের নাম লেখো (যেমন: Kp Kc)'); return; }
+  if(!qFile || !aFile){ toast('প্রশ্ন ও খাতা — দুটো ছবিই দাও'); return; }
   const statusEl = document.getElementById('hwSubmitStatus');
+  const btn = document.getElementById('hwSubmitBtn'); if(btn) btn.disabled = true;
   statusEl.innerHTML = `<p class="hint">ছবি প্রস্তুত করা হচ্ছে...</p>`;
-  const qC = await compressImageFile(qFile, 1200, 0.75);
-  const aC = await compressImageFile(aFile, 1200, 0.75);
-  statusEl.innerHTML = `<p class="hint">AI দিয়ে চেক করা হচ্ছে, একটু অপেক্ষা করো...</p>`;
-  const today = todayStr();
-  const res = await submitDailyHomeworkRemote(stud.slug, today, qC.base64, qC.mimeType, aC.base64, aC.mimeType);
+  let qC, aC;
+  try{ qC = await compressImageFile(qFile, 1200, 0.75); aC = await compressImageFile(aFile, 1200, 0.75); }
+  catch(e){ statusEl.innerHTML = `<p class="hint">ছবি পড়া যায়নি, অন্য ছবি দিয়ে চেষ্টা করো।</p>`; if(btn) btn.disabled = false; return; }
+  statusEl.innerHTML = `<p class="hint">জমা হচ্ছে ও চেক করা হচ্ছে, একটু অপেক্ষা করো...</p>`;
+  const res = await submitDailyHomeworkRemote(stud.slug, todayStr(), topic, qC.base64, qC.mimeType, aC.base64, aC.mimeType);
+  if(btn) btn.disabled = false;
   if(res && res.status === 'success'){
-    statusEl.innerHTML = `<div class="say">🤖 <b>AI ফিডব্যাক:</b> ${escapeHtml(res.aiFeedback||'')}</div><p class="hint" style="margin-top:10px;">✅ আজকের HW জমা হয়ে গেছে।</p>`;
-    window.__studentDashCache = null; // dashboard will refetch (and re-check today's HW) next visit
+    const rec = { id: res.id, slug: stud.slug, topic: res.topic, date: res.date, questionImageUrl: res.questionImageUrl,
+                  answerImageUrl: res.answerImageUrl, aiFeedback: res.aiFeedback || '', submittedAt: Date.now() };
+    window.__hwAll = [rec].concat(window.__hwAll || []);
+    window.__hwTeacherView = false;
+    window.__hwTopicList = null;
+    statusEl.innerHTML = `
+      <div style="color:var(--green); font-weight:700; margin-bottom:8px;">✅ "${escapeHtml(rec.topic)}" টপিকে HW জমা হয়েছে</div>
+      ${hwEntryCard(rec, { student:true })}
+      <div class="row" style="margin-top:8px;">
+        <button class="btn btn-gold btn-block" onclick="go('dailyHwSubmit')">➕ আরেকটা যোগ করো</button>
+        <button class="btn btn-outline btn-block" onclick="go('dailyHwTopics')">📚 আমার সব HW</button>
+      </div>`;
   } else {
-    statusEl.innerHTML = `<p class="hint">জমা দিতে সমস্যা হয়েছে, আবার চেষ্টা করো।</p>`;
+    statusEl.innerHTML = `<p class="hint" style="color:var(--red);">❌ ${escapeHtml(hwFriendlyError(res))}</p>`;
   }
 };
 
+// ---------- টপিক অনুযায়ী তালিকা ----------
+async function renderDailyHwTopics(){
+  const stud = getLoggedStudent();
+  if(!stud){ go('studentAuth'); return; }
+  app.innerHTML = `${header('আমার HW')}<div class="card center">লোড হচ্ছে...</div>`;
+  window.__hwAll = await getMyDailyHomeworkRemote(stud.slug);
+  window.__hwTeacherView = false;
+  const groups = {};
+  window.__hwAll.forEach(x=>{
+    const g = groups[x.topic] = groups[x.topic] || { topic:x.topic, count:0, last:x.date, pending:0 };
+    g.count++; if(x.date > g.last) g.last = x.date; if(x.aiPending) g.pending++;
+  });
+  const list = Object.values(groups).sort((a,b)=> a.last < b.last ? 1 : -1);
+  window.__hwTopicList = list.map(g=> g.topic);
+  const rows = list.map((g,i)=> `
+    <div class="exam-item">
+      <div class="row-top">
+        <div>
+          <h3 style="margin-bottom:4px;">📚 ${escapeHtml(g.topic)}</h3>
+          <div class="meta">${g.count}টা HW · সর্বশেষ: ${escapeHtml(fmtBnDate(new Date(g.last).getTime()))}</div>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="hwOpenTopic(${i})">দেখো (প্রশ্ন + আমার খাতা)</button>
+    </div>`).join('');
+  app.innerHTML = `
+    ${header('আমার HW')}
+    <div class="card">
+      <h2>📚 টপিক অনুযায়ী আমার HW</h2>
+      <p class="hint">একই টপিকের সব দিনের HW (প্রশ্ন ও তোমার খাতার ছবি) এক জায়গায় দেখতে পাবে।</p>
+      <button class="btn btn-gold btn-block" onclick="go('dailyHwSubmit')">➕ নতুন HW জমা দাও</button>
+      <div style="margin-top:14px;">${rows || `<div class="empty-state">এখনো কোনো HW জমা দাওনি।</div>`}</div>
+    </div>
+    <div class="center"><a class="link-back" onclick="go('dailyHwCalendar')">📅 তারিখ অনুযায়ী দেখো</a></div>
+    <div class="center" style="margin-top:8px;"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+window.hwOpenTopic = function(i){
+  const t = (window.__hwTopicList||[])[i]; if(t === undefined) return;
+  go('dailyHwTopicDetail', { topic: t });
+};
+async function renderDailyHwTopicDetail(topic){
+  const stud = getLoggedStudent();
+  if(!stud){ go('studentAuth'); return; }
+  if(!window.__hwAll){
+    app.innerHTML = `${header('আমার HW')}<div class="card center">লোড হচ্ছে...</div>`;
+    window.__hwAll = await getMyDailyHomeworkRemote(stud.slug);
+  }
+  window.__hwTeacherView = false;
+  const items = window.__hwAll.filter(x=> x.topic === topic);
+  window.__hwTopicList = [topic];
+  app.innerHTML = `
+    ${header('আমার HW')}
+    <div class="card">
+      <h2>📚 ${escapeHtml(topic)}</h2>
+      <p class="hint">${items.length}টা HW জমা আছে (নতুন আগে)।</p>
+      <button class="btn btn-gold btn-block" onclick="hwAddToTopic()">➕ এই টপিকে আরেকটা HW যোগ করো</button>
+    </div>
+    ${items.map(x=> hwEntryCard(x, { student:true })).join('') || `<div class="card"><div class="empty-state">এই টপিকে কোনো HW নেই।</div></div>`}
+    <div class="center"><a class="link-back" onclick="go('dailyHwTopics')">← সব টপিকে ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+window.hwAddToTopic = function(){
+  go('dailyHwSubmit', { topic: (window.__hwTopicList||[])[0] || '' });
+};
+
+// ---------- ক্যালেন্ডার (তারিখ অনুযায়ী) ----------
 function buildHwCalendar(year, month, records){
-  const recByDate = {};
-  records.forEach(r=> recByDate[r.date] = r);
+  const countByDate = {};
+  records.forEach(r=>{ countByDate[r.date] = (countByDate[r.date]||0) + 1; });
   const first = new Date(year, month, 1);
   const startWeekday = first.getDay();
   const daysInMonth = new Date(year, month+1, 0).getDate();
   const todayS = todayStr();
-
   let cells = '';
   for(let i=0;i<startWeekday;i++){ cells += `<div></div>`; }
   for(let d=1; d<=daysInMonth; d++){
     const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const rec = recByDate[dateStr];
-    const bg = rec ? 'var(--green)' : '#F5F9FE';
-    const color = rec ? '#fff' : 'var(--ink)';
-    const border = rec ? 'none' : '1px solid var(--rule)';
+    const n = countByDate[dateStr] || 0;
+    const bg = n ? 'var(--green)' : '#F5F9FE';
+    const color = n ? '#fff' : 'var(--ink)';
+    const border = n ? 'none' : '1px solid var(--rule)';
     const isToday = dateStr === todayS;
-    const clickAttr = rec ? `onclick="viewHwDay('${dateStr}')" style="cursor:pointer;` : `style="cursor:default;`;
-    cells += `<div ${clickAttr} background:${bg}; color:${color}; border:${border}; ${isToday?'outline:2px solid var(--margin-red);':''} border-radius:7px; display:flex; align-items:center; justify-content:center; height:34px; font-size:13px; font-family:var(--font-mono);">${d}</div>`;
+    const clickAttr = n ? `onclick="viewHwDay('${dateStr}')" style="cursor:pointer;` : `style="cursor:default;`;
+    cells += `<div ${clickAttr} background:${bg}; color:${color}; border:${border}; ${isToday?'outline:2px solid var(--margin-red);':''} border-radius:7px; display:flex; align-items:center; justify-content:center; height:34px; font-size:13px; font-family:var(--font-mono);">${d}${n>1?`<sup style="font-size:9px;">${n}</sup>`:''}</div>`;
   }
-
   const prevM = month===0 ? 11 : month-1, prevY = month===0 ? year-1 : year;
   const nextM = month===11 ? 0 : month+1, nextY = month===11 ? year+1 : year;
-
   return `
     <div class="card" style="padding:16px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -4800,7 +4975,7 @@ function buildHwCalendar(year, month, records){
         ${BN_WEEKDAYS.map(w=>`<div style="text-align:center; font-size:11px; color:var(--pencil); font-weight:600;">${w}</div>`).join('')}
       </div>
       <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:4px;">${cells}</div>
-      <div style="margin-top:12px; font-size:12px; color:var(--pencil);">🟩 এই দিনে HW জমা দেওয়া হয়েছে — চাপলে দেখা যাবে</div>
+      <div style="margin-top:12px; font-size:12px; color:var(--pencil);">🟩 এই দিনে HW জমা দেওয়া হয়েছে (ছোট সংখ্যা = ওই দিনে কতটা) — চাপলে দেখা যাবে</div>
     </div>
   `;
 }
@@ -4812,68 +4987,73 @@ window.goHwCalNav = function(y, m){
 async function renderDailyHwCalendar(){
   const stud = getLoggedStudent();
   if(!stud){ go('studentAuth'); return; }
-  app.innerHTML = `${header('Daily HW ইতিহাস')}<div class="card center">লোড হচ্ছে...</div>`;
+  app.innerHTML = `${header('HW ক্যালেন্ডার')}<div class="card center">লোড হচ্ছে...</div>`;
   const now = new Date();
   const year = window.__hwCalYear !== null ? window.__hwCalYear : now.getFullYear();
   const month = window.__hwCalMonth !== null ? window.__hwCalMonth : now.getMonth();
   window.__hwCalYear = year; window.__hwCalMonth = month;
+  window.__hwAll = await getMyDailyHomeworkRemote(stud.slug);
   const monthKey = `${year}-${String(month+1).padStart(2,'0')}`;
-  const records = await getMyDailyHomeworkRemote(stud.slug, monthKey);
-  window.__hwRecordsCache = records;
-  const calHtml = buildHwCalendar(year, month, records);
+  const inMonth = window.__hwAll.filter(r=> r.date.indexOf(monthKey) === 0);
   app.innerHTML = `
-    ${header('Daily HW ইতিহাস')}
+    ${header('HW ক্যালেন্ডার')}
     <div class="card center">
       <h2>${escapeHtml(stud.name)}</h2>
-      <p class="hint">এই মাসে ${records.length} দিন HW জমা দিয়েছো।</p>
+      <p class="hint">এই মাসে মোট ${inMonth.length}টা HW জমা দিয়েছো।</p>
     </div>
-    ${calHtml}
-    <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>
+    ${buildHwCalendar(year, month, window.__hwAll)}
+    <div class="center"><a class="link-back" onclick="go('dailyHwTopics')">📚 টপিক অনুযায়ী দেখো</a></div>
+    <div class="center" style="margin-top:8px;"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>
     ${creditFooter()}
   `;
 }
-window.viewHwDay = function(dateStr){
-  const rec = (window.__hwRecordsCache||[]).find(r=> r.date === dateStr);
-  if(!rec) return;
-  go('dailyHwDayDetail', { rec });
-};
-function renderDailyHwDayDetail(rec){
-  if(!rec){ go('dailyHwCalendar'); return; }
+window.viewHwDay = function(dateStr){ go('dailyHwDayDetail', { date: dateStr }); };
+function renderDailyHwDayDetail(dateStr){
+  window.__hwTeacherView = false;
+  const items = (window.__hwAll||[]).filter(x=> x.date === dateStr);
   app.innerHTML = `
-    ${header('Daily HW')}
+    ${header('আমার HW')}
     <div class="card">
-      <h2>${escapeHtml(fmtBnDate(new Date(rec.date).getTime()))}</h2>
-      ${rec.questionImageUrl ? `<label class="field-label">প্রশ্ন</label><img src="${escapeHtml(rec.questionImageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:12px;" alt="প্রশ্নের ছবি">` : ''}
-      ${rec.answerImageUrl ? `<label class="field-label">তোমার সমাধান</label><img src="${escapeHtml(rec.answerImageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:12px;" alt="সমাধানের ছবি">` : ''}
-      <div class="say">🤖 <b>AI ফিডব্যাক:</b> ${escapeHtml(rec.aiFeedback||'')}</div>
+      <h2>${escapeHtml(fmtBnDate(new Date(dateStr).getTime()))}</h2>
+      <p class="hint">এই দিনে ${items.length}টা HW জমা দিয়েছিলে।</p>
     </div>
-    <div class="center"><a class="link-back" onclick="go('dailyHwCalendar')">← ইতিহাসে ফিরে যাও</a></div>
+    ${items.map(x=> hwEntryCard(x, { student:true })).join('') || `<div class="card"><div class="empty-state">এই দিনে কোনো HW নেই।</div></div>`}
+    <div class="center"><a class="link-back" onclick="go('dailyHwCalendar')">← ক্যালেন্ডারে ফিরে যাও</a></div>
     ${creditFooter()}
   `;
 }
 
-// ---- Teacher: review every student's daily HW ----
+// ---------- শিক্ষক: সবার HW ----------
+window.__hwTeacherAll = null;
 async function renderDailyHwManage(){
   app.innerHTML = `${header('Daily HW জমা')}<div class="card center">লোড হচ্ছে...</div>`;
-  const subs = await listAllDailyHomeworkRemote();
-  let rows = subs.map(s=> `
-    <div class="exam-item">
-      <h3 style="margin-bottom:4px;">${escapeHtml(s.slug)} — ${escapeHtml(fmtBnDate(new Date(s.date).getTime()))}</h3>
-      <div class="row">
-        <a href="${escapeHtml(s.questionImageUrl)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="text-decoration:none;">📄 প্রশ্ন দেখো</a>
-        <a href="${escapeHtml(s.answerImageUrl)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="text-decoration:none;">📄 সমাধান দেখো</a>
-      </div>
-      <div class="say" style="margin-top:8px;">🤖 ${escapeHtml(s.aiFeedback||'')}</div>
-    </div>`).join('');
-  if(subs.length===0) rows = `<div class="empty-state">এখনো কেউ জমা দেয়নি।</div>`;
+  window.__hwTeacherAll = await listAllDailyHomeworkRemote();
+  window.__hwTeacherView = true;
+  const topics = [...new Set(window.__hwTeacherAll.map(x=> x.topic))];
   app.innerHTML = `
     ${header('Daily HW জমা')}
-    <div class="card">${rows}</div>
+    <div class="card">
+      <h2>📅 স্টুডেন্টদের HW</h2>
+      <label class="field-label">টপিক ফিল্টার</label>
+      <select id="hwTopicFilter" onchange="drawHwTeacherList()">
+        <option value="">— সব টপিক —</option>
+        ${topics.map(t=> `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('')}
+      </select>
+      <div id="hwTeacherList"></div>
+    </div>
     <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>
     ${creditFooter()}
   `;
+  drawHwTeacherList();
 }
+window.drawHwTeacherList = function(){
+  const f = (document.getElementById('hwTopicFilter')||{}).value || '';
+  const items = (window.__hwTeacherAll||[]).filter(x=> !f || x.topic === f);
+  const el = document.getElementById('hwTeacherList'); if(!el) return;
+  el.innerHTML = items.map(x=> hwEntryCard(x, { teacher:true })).join('') || `<div class="empty-state">এখনো কেউ জমা দেয়নি।</div>`;
+};
 
+// Dashboard -> coupon wallet / shop. Those screens need name/slug/balance/history in `state`,
 // so fetch the logged-in student's balance first (otherwise they showed "৳undefined").
 window.openMyCoupons = async function(target){
   const stud = getLoggedStudent();
@@ -5446,7 +5626,7 @@ function renderBattleQuestionStage(question, isReview){
       </div>
 
       <div class="q-text" style="font-size:16.5px; line-height:1.5;">${escapeHtml(question.text || '')}</div>
-      ${question.image ? `<img src="${escapeHtml(question.image)}" style="max-width:100%; border-radius:8px; margin-bottom:12px;" alt="প্রশ্নের ছবি">` : ''}
+      ${question.image ? `<img src="${driveImg(question.image)}" style="max-width:100%; border-radius:8px; margin-bottom:12px;" alt="প্রশ্নের ছবি">` : ''}
 
       <div style="margin-top:14px;" id="optionsGroup">
         ${optionsHtml}
@@ -6253,9 +6433,11 @@ function render(){
   else if(s==='writtenEdit') renderWrittenEdit(state.examId, state.existing);
   else if(s==='writtenSubmissions') renderWrittenSubmissions(state.code);
   else if(s==='writtenEntry') renderWrittenEntry();
-  else if(s==='dailyHwSubmit') renderDailyHwSubmit();
+  else if(s==='dailyHwSubmit') renderDailyHwSubmit(state.topic);
+  else if(s==='dailyHwTopics') renderDailyHwTopics();
+  else if(s==='dailyHwTopicDetail') renderDailyHwTopicDetail(state.topic);
   else if(s==='dailyHwCalendar') renderDailyHwCalendar();
-  else if(s==='dailyHwDayDetail') renderDailyHwDayDetail(state.rec);
+  else if(s==='dailyHwDayDetail') renderDailyHwDayDetail(state.date);
   else if(s==='dailyHwManage') renderDailyHwManage();
   else if(s==='writtenSolve') renderWrittenSolve(state.exam, state.slug, state.name);
   else if(s==='writtenResult') renderWrittenResult(state.earnedMarks, state.totalMarks, state.couponAmount, state.title);
