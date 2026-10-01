@@ -6459,6 +6459,318 @@ function render(){
 
 render();
 
+/* ===================== WRITTEN CQ UX PATCH (start) ===================== */
+// ---------- ১) ছবি বড় করে দেখার overlay ----------
+(function(){
+  const st = document.createElement('style');
+  st.textContent = `
+    #app img:not(.brand-logo):not(.about-logo){ cursor:zoom-in; }
+    #imgZoomOverlay{ position:fixed; inset:0; z-index:200; background:rgba(10,14,24,0.93); display:flex; flex-direction:column; }
+    #imgZoomBar{ display:flex; align-items:center; gap:8px; padding:10px 12px; flex-wrap:wrap; }
+    #imgZoomBar button, #imgZoomBar a{ background:rgba(255,255,255,0.15); color:#fff; border:1px solid rgba(255,255,255,0.28);
+      border-radius:18px; padding:6px 14px; font-size:14px; font-weight:600; cursor:pointer; text-decoration:none; font-family:inherit; }
+    #imgZoomBox{ flex:1; overflow:auto; touch-action:pan-x pan-y; text-align:center; padding:8px; }
+    #imgZoomBox img{ width:100%; max-width:none; height:auto; background:#fff; border-radius:6px; cursor:default; }
+  `;
+  document.head.appendChild(st);
+
+  window.__zoomState = { z: 1, pinchDist: 0, pinchStartZ: 1 };
+
+  window.imgZoomSet = function(z){
+    z = Math.max(1, Math.min(6, z));
+    window.__zoomState.z = z;
+    const img = document.getElementById('imgZoomImg');
+    if(img) img.style.width = (z * 100) + '%';
+  };
+  window.imgZoomBy = function(f){ imgZoomSet(window.__zoomState.z * f); };
+  window.closeImgZoom = function(){
+    const ov = document.getElementById('imgZoomOverlay');
+    if(ov) ov.remove();
+  };
+  window.openImgZoom = function(url, openUrl){
+    closeImgZoom();
+    const ov = document.createElement('div');
+    ov.id = 'imgZoomOverlay';
+    ov.innerHTML = `
+      <div id="imgZoomBar">
+        <button onclick="imgZoomBy(0.8)">➖</button>
+        <button onclick="imgZoomBy(1.25)">➕</button>
+        <button onclick="imgZoomSet(1)">↺</button>
+        <span style="flex:1;"></span>
+        ${openUrl ? `<a href="${escapeHtml(openUrl)}" target="_blank" rel="noopener">↗ নতুন ট্যাবে</a>` : ''}
+        <button onclick="closeImgZoom()">✕ বন্ধ</button>
+      </div>
+      <div id="imgZoomBox"><img id="imgZoomImg" alt="ছবি"></div>`;
+    document.body.appendChild(ov);
+
+    const box = document.getElementById('imgZoomBox');
+    const img = document.getElementById('imgZoomImg');
+    img.onerror = function(){
+      box.innerHTML = '<p style="color:#fff; padding:30px;">ছবিটা এখানে লোড হয়নি।' + (openUrl ? ' উপরের "নতুন ট্যাবে" চাপো।' : '') + '</p>';
+    };
+    img.src = url;
+    imgZoomSet(1);
+
+    ov.addEventListener('click', function(e){ if(e.target === ov || e.target === box) closeImgZoom(); });
+    img.addEventListener('dblclick', function(){ imgZoomSet(window.__zoomState.z > 1 ? 1 : 2.5); });
+
+    const dist = (t)=> Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    box.addEventListener('touchstart', function(e){
+      if(e.touches.length === 2){ window.__zoomState.pinchDist = dist(e.touches); window.__zoomState.pinchStartZ = window.__zoomState.z; }
+    }, { passive: true });
+    box.addEventListener('touchmove', function(e){
+      if(e.touches.length === 2 && window.__zoomState.pinchDist){
+        e.preventDefault();
+        imgZoomSet(window.__zoomState.pinchStartZ * (dist(e.touches) / window.__zoomState.pinchDist));
+      }
+    }, { passive: false });
+    box.addEventListener('touchend', function(e){ if(e.touches.length < 2) window.__zoomState.pinchDist = 0; }, { passive: true });
+  };
+
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeImgZoom(); });
+
+  document.addEventListener('click', function(e){
+    const t = e.target;
+    if(!t || !t.closest || t.closest('#imgZoomOverlay')) return;
+    const appEl = document.getElementById('app');
+    if(!appEl || !appEl.contains(t)) return;
+
+    const a = t.closest('a[href*="drive.google.com/file/d/"]');
+    if(a && (a.querySelector('img') || /ছবি/.test(a.textContent))){
+      e.preventDefault(); e.stopPropagation();
+      openImgZoom(driveImg(a.getAttribute('href')), a.href);
+      return;
+    }
+    const im = t.closest('img');
+    if(im && im.src && !im.classList.contains('brand-logo') && !im.classList.contains('about-logo')){
+      e.preventDefault(); e.stopPropagation();
+      openImgZoom(im.currentSrc || im.src, /^https?:/.test(im.src) ? im.src : '');
+    }
+  }, true);
+})();
+
+// ---------- ২) Past Exams > Written: পাতার ভেতরেই ছবি + রিভিউ বাটন ----------
+function renderPastWrittenDetail(title, subs, examQuestions){
+  examQuestions = examQuestions || [];
+  const rows = (subs || []).map(s=>{
+    const q = examQuestions[s.questionIndex] || {};
+    const maxMarks = Number(q.marks) || 5;
+    const marks = percentToMarks(s.percent, maxMarks);
+    return `
+    <div class="exam-item">
+      <div class="row-top">
+        <div class="q-text" style="font-size:14.5px;">প্রশ্ন ${s.questionIndex + 1}</div>
+        <div style="text-align:end;">
+          <div class="score-big ${s.percent >= 50 ? 'score-pass' : 'score-fail'}" style="font-size:17px;">${marks}/${maxMarks}</div>
+          <div class="meta" style="margin-top:0;">AI ${s.percent}%</div>
+        </div>
+      </div>
+      ${q.text ? `<div style="margin-top:8px; font-size:14px;">${escapeHtml(q.text)}</div>` : ''}
+      ${q.imageUrl ? `<img src="${driveImg(q.imageUrl)}" alt="প্রশ্নের ছবি" style="max-width:100%; border-radius:8px; margin-top:8px; display:block;">` : ''}
+      ${s.driveUrl ? `
+        <div class="field-label" style="margin-top:12px;">✍️ তোমার খাতা <span class="meta">(ছবিতে চাপলে বড় হবে)</span></div>
+        <img src="${driveImg(s.driveUrl)}" alt="তোমার খাতার ছবি" loading="lazy"
+             style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block;">` : ''}
+      <div class="review-ans ${s.percent >= 50 ? 'right' : 'wrong'}" style="margin-top:10px;">🤖 ${escapeHtml(s.aiFeedback || '')}</div>
+      <div id="pastRev_${s.id}" style="margin-top:8px;">
+        ${s.reviewRequested
+          ? `<p class="hint" style="margin:0;">🚩 রিভিউ চাওয়া হয়েছে, শিক্ষক দেখবেন।</p>`
+          : `<button class="btn btn-outline btn-block" onclick="requestPastReview('${s.id}')">🚩 এই নম্বর নিয়ে রিভিউ চাও</button>`}
+      </div>
+    </div>`;
+  }).join('');
+  app.innerHTML = `
+    ${header('Past Exams')}
+    <div class="card">
+      <h2>${escapeHtml(title)}</h2>
+      <p class="hint">প্রতিটা প্রশ্নের নম্বর, তোমার খাতা আর AI-র মন্তব্য নিচে দেখো। নম্বর নিয়ে দ্বিমত থাকলে রিভিউ চাও — শিক্ষক নিজে দেখে ঠিক করে দেবেন।</p>
+    </div>
+    ${rows || `<div class="card"><div class="empty-state">কোনো উত্তর পাওয়া যায়নি।</div></div>`}
+    <div class="center"><a class="link-back" onclick="go('pastExams')">← Past Exams-এ ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+window.requestPastReview = async function(subId){
+  const box = document.getElementById('pastRev_' + subId);
+  toast('রিভিউ চাওয়া হচ্ছে...');
+  const res = await postToScript('requestWrittenReview', { submissionId: subId });
+  if(res && box){
+    box.innerHTML = `<p class="hint" style="margin:0;">🚩 রিভিউ চাওয়া হয়েছে, শিক্ষক দেখবেন।</p>`;
+    toast('রিভিউর অনুরোধ পাঠানো হয়েছে ✅');
+  }
+};
+
+// ---------- ৩) Written পরীক্ষা: আগে সব ছবি বাছাই -> একসাথে জমা -> AI এক এক করে চেক ----------
+function redrawWrittenSolve(){
+  const ctx = window.__writtenSolveCtx;
+  ctx.pending = ctx.pending || {};
+  const { exam, answered, pending } = ctx;
+  const total = exam.questions.length;
+  const totalMarksAll = exam.questions.reduce((a, qq)=> a + (Number(qq.marks) || 5), 0);
+
+  const qHtml = exam.questions.map((q, idx)=>{
+    const maxMarks = Number(q.marks) || 5;
+    const head = `
+      <div class="q-text">${idx + 1}. ${escapeHtml(q.text || '')} <span class="q-tag">${maxMarks} নম্বর</span></div>
+      ${q.imageUrl ? `<img src="${driveImg(q.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:6px; display:block;" alt="প্রশ্নের ছবি">
+        <div class="meta" style="margin:0 0 10px 0;">🔍 ছবিতে চাপলে বড় করে দেখা যাবে</div>` : ''}`;
+    if(answered[idx]){
+      return `<div class="q-block">${head}<div style="background:#E8F6EF; border-radius:8px; padding:8px 12px; font-size:13.5px;">✅ এই প্রশ্নের উত্তর আগেই জমা হয়েছে</div></div>`;
+    }
+    return `<div class="q-block">${head}
+      <input type="file" id="wFile${idx}" accept="image/*" onchange="pickWrittenImage(${idx})" style="margin-bottom:6px;">
+      <div id="wPrev${idx}">${pending[idx] ? `<img src="${pending[idx].preview}" alt="তোমার খাতার প্রিভিউ" style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block;">` : ''}</div>
+    </div>`;
+  }).join('');
+
+  app.innerHTML = `
+    ${header('Written CQ পরীক্ষা')}
+    <div class="card">
+      <h2>${escapeHtml(exam.title)}</h2>
+      <p class="hint">মোট ${total}টা প্রশ্ন (${totalMarksAll} নম্বর)। প্রতিটা প্রশ্নের জন্য তোমার খাতার ছবি বাছো — সবগুলো বাছা হলে নিচে একটাই "জমা দাও" বাটন চাপবে, তখন AI এক এক করে চেক করবে। জমা দেওয়ার আগে ছবি বদলানো যাবে।</p>
+    </div>
+    <div class="card">${qHtml}</div>
+    <div id="wFinalArea"></div>
+    <div class="center"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+  updateWrittenFinalBar();
+}
+
+function updateWrittenFinalBar(){
+  const ctx = window.__writtenSolveCtx;
+  const el = document.getElementById('wFinalArea');
+  if(!ctx || !el) return;
+  const { exam, answered, pending } = ctx;
+  const todo = exam.questions.map((q, i)=> i).filter(i=> !answered[i]);
+  const ready = todo.filter(i=> pending[i]).length;
+  const ok = todo.length > 0 && ready === todo.length;
+  el.innerHTML = `
+    <div class="card center">
+      <p class="hint">${ready} / ${todo.length}টা প্রশ্নের ছবি বাছা হয়েছে${ok ? '' : ' — সবগুলোর ছবি বাছলে জমা দেওয়া যাবে'}</p>
+      <button class="btn btn-primary btn-block" ${ok ? '' : 'disabled'} onclick="submitAllWritten()">📤 সব উত্তর জমা দাও (AI চেক শুরু হবে)</button>
+      ${ctx.lastError ? `<p class="hint" style="color:var(--red); margin-top:10px;">${ctx.lastError}</p>` : ''}
+    </div>`;
+}
+
+window.pickWrittenImage = async function(idx){
+  const ctx = window.__writtenSolveCtx;
+  const input = document.getElementById('wFile' + idx);
+  const file = input && input.files && input.files[0];
+  if(!ctx || !file) return;
+  ctx.pending = ctx.pending || {};
+  const prev = document.getElementById('wPrev' + idx);
+  if(prev) prev.innerHTML = `<p class="hint">ছবি প্রস্তুত করা হচ্ছে...</p>`;
+  try{
+    const c = await compressImageFile(file, 1200, 0.75);
+    ctx.pending[idx] = { base64: c.base64, mimeType: c.mimeType, fileName: file.name, preview: 'data:' + c.mimeType + ';base64,' + c.base64 };
+    if(prev) prev.innerHTML = `<img src="${ctx.pending[idx].preview}" alt="তোমার খাতার প্রিভিউ" style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block;">`;
+  }catch(e){
+    delete ctx.pending[idx];
+    if(prev) prev.innerHTML = `<p class="hint" style="color:var(--red);">ছবি পড়া যায়নি, অন্য ছবি দিয়ে চেষ্টা করো।</p>`;
+  }
+  updateWrittenFinalBar();
+};
+
+function paintWrittenGrading(exam, order, status){
+  const done = order.filter(i=> status[i] === 'done').length;
+  const pct = order.length ? Math.round((done / order.length) * 100) : 0;
+  const icon = { wait: '⏳', run: '🔍', done: '✅', fail: '❌' };
+  const label = { wait: 'অপেক্ষায়', run: 'AI চেক করছে...', done: 'চেক হয়েছে', fail: 'চেক করা যায়নি' };
+  app.innerHTML = `
+    ${header('Written CQ পরীক্ষা')}
+    <div class="card center">
+      <h2>${escapeHtml(exam.title)}</h2>
+      <p class="hint">AI এক এক করে তোমার খাতা চেক করছে — পেজ বন্ধ কোরো না, একটু অপেক্ষা করো।</p>
+      <div class="hp-bar-wrap" style="max-width:100%; height:10px; background:#E3E8F1; border-color:#E3E8F1;">
+        <div class="hp-bar-fill" style="width:${pct}%;"></div>
+      </div>
+      <div class="meta" style="margin-top:6px;">${done} / ${order.length} চেক হয়েছে</div>
+    </div>
+    <div class="card">
+      ${order.map(i=> `<div class="review-block" style="display:flex; justify-content:space-between; gap:10px;">
+        <span>প্রশ্ন ${i + 1}</span><span>${icon[status[i]]} ${label[status[i]]}</span></div>`).join('')}
+    </div>`;
+}
+
+window.submitAllWritten = async function(){
+  const ctx = window.__writtenSolveCtx;
+  if(!ctx || ctx.grading) return;
+  const { exam, slug, name } = ctx;
+  ctx.pending = ctx.pending || {};
+  const order = exam.questions.map((q, i)=> i).filter(i=> !ctx.answered[i]);
+  if(!order.length) return;
+  if(order.some(i=> !ctx.pending[i])){ toast('আগে সব প্রশ্নের ছবি বাছো'); return; }
+  if(!confirm(`${order.length}টা উত্তর জমা দেবে? জমা দেওয়ার পর আর বদলানো যাবে না।`)) return;
+
+  ctx.grading = true;
+  ctx.lastError = '';
+  window.onbeforeunload = function(){ return 'AI চেক চলছে, এখন বের হলে মাঝপথে থেমে যাবে।'; };
+
+  const status = {};
+  order.forEach(i=> status[i] = 'wait');
+  let last = null;
+  const failed = [];
+
+  for(const i of order){
+    status[i] = 'run';
+    paintWrittenGrading(exam, order, status);
+    const p = ctx.pending[i];
+    let res = await submitWrittenAnswerRemote(exam.code, slug, name, i, p.base64, p.mimeType, p.fileName);
+    if(!res || res.status !== 'success'){
+      await new Promise(r=> setTimeout(r, 1500));
+      res = await submitWrittenAnswerRemote(exam.code, slug, name, i, p.base64, p.mimeType, p.fileName);
+    }
+    if(res && res.status === 'success'){
+      ctx.answered[i] = { percent: res.percent, aiFeedback: res.aiFeedback, subId: res.subId };
+      delete ctx.pending[i];
+      status[i] = 'done';
+      if(res.allDone) last = res;
+    } else {
+      status[i] = 'fail';
+      failed.push(i);
+    }
+    paintWrittenGrading(exam, order, status);
+  }
+
+  ctx.grading = false;
+  window.onbeforeunload = null;
+
+  if(failed.length === 0){
+    let totalMarks = 0, earnedMarks = 0;
+    exam.questions.forEach((qq, i)=>{
+      const m = Number(qq.marks) || 5;
+      totalMarks += m;
+      if(ctx.answered[i]) earnedMarks += percentToMarks(ctx.answered[i].percent, m);
+    });
+    go('writtenResult', { earnedMarks, totalMarks, couponAmount: last ? (last.couponAmount || 0) : 0, title: exam.title });
+    return;
+  }
+  ctx.lastError = `${failed.length}টা প্রশ্ন চেক করা যায়নি (ইন্টারনেট বা AI সমস্যা)। ছবিগুলো এখনো আছে — নিচের বাটন চেপে আবার চেষ্টা করো।`;
+  redrawWrittenSolve();
+};
+
+function renderWrittenResult(earnedMarks, totalMarks, couponAmount, title){
+  const pct = totalMarks ? Math.round((earnedMarks / totalMarks) * 100) : 0;
+  const passed = pct >= 50;
+  app.innerHTML = `
+    ${header('ফলাফল')}
+    <div class="card center">
+      <h2>${escapeHtml(title)}</h2>
+      <p class="hint">সব প্রশ্ন জমা হয়ে AI চেক শেষ ✅</p>
+      <div class="stamp ${passed ? '' : 'fail'}">${earnedMarks}/${totalMarks}</div>
+      <p class="hint" style="margin-top:10px;">এটা তোমার সব প্রশ্নের মোট AI-মূল্যায়িত নম্বর।</p>
+      ${couponAmount > 0 ? `<div style="margin-top:10px;">🎁 <b>অভিনন্দন!</b> তুমি ৳${couponAmount} Treat Coupon পেয়েছো!</div>` : ''}
+      <p class="hint" style="margin-top:10px;">কোন প্রশ্নে কত নম্বর পেয়েছো আর AI-র মন্তব্য কী — "Past Exams"-এ গিয়ে দেখো। নম্বর নিয়ে দ্বিমত থাকলে সেখান থেকেই "🚩 রিভিউ চাও" চাপতে পারবে।</p>
+      ${getLoggedStudent() ? `<button class="btn btn-gold btn-block" style="margin-top:6px;" onclick="go('pastExams')">📜 Past Exams-এ বিস্তারিত দেখো</button>` : ''}
+    </div>
+    <div class="center"><button class="btn btn-primary" onclick="go('landing')">মূল পাতায় যাও</button></div>
+    ${creditFooter()}
+  `;
+}
+/* ===================== WRITTEN CQ UX PATCH (end) ===================== */
+
+
 // =====================================================================================
 // SMART SEARCH — index.html এর একদম শেষে, `render();` লাইনের পরে, </script> এর ঠিক আগে পুরোটা paste করো
 // =====================================================================================
