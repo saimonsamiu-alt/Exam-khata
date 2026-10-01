@@ -1004,7 +1004,8 @@ async function renderTeacherDashboard(){
   app.innerHTML = ` ${header('শিক্ষক প্যানেল')} <div class="card center">পরীক্ষার তালিকা লোড হচ্ছে...</div>`;
   const teacherId = currentTeacher ? currentTeacher.id : 'admin';
   const teacherName = currentTeacher ? currentTeacher.name : CREATOR_NAME;
-  const [exams, wdAll] = await Promise.all([getExamsByTeacher(teacherId), getWithdrawRequestsRemote()]); // [NEW] also load withdraw requests
+  const [exams, wdAll, rvRes] = await Promise.all([getExamsByTeacher(teacherId), getWithdrawRequestsRemote(), getJson('listPendingReviews', {})]);
+  const rvPending = (rvRes && rvRes.status === 'success') ? rvRes.data : []; // [NEW] also load withdraw requests
   const wdPending = wdAll.filter(w=> w.status === 'pending');
   const wdLate = wdPending.filter(w=> w.dueAt < Date.now()).length;
   exams.sort((a,b)=> (b.createdAt||0) - (a.createdAt||0));
@@ -1037,6 +1038,14 @@ async function renderTeacherDashboard(){
 
   app.innerHTML = `
     ${header('শিক্ষক প্যানেল · ' + escapeHtml(teacherName))}
+    ${rvPending.length ? `
+    <div onclick="go('reviewInbox')" style="cursor:pointer; background:linear-gradient(135deg,#FDEEEE,#FAD4D0); border:1.5px solid #E58B82; border-radius:12px; padding:14px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px;">
+      <div style="font-size:28px;">🚩</div>
+      <div style="flex:1;">
+        <div style="font-weight:700; color:#8E2A20;">${rvPending.length}টা Written খাতা তোমার চেকের অপেক্ষায়</div>
+        <div style="font-size:12.5px; color:#8E2A20;">রিভিউ চাওয়া / AI চেক করতে পারেনি — চাপ দিয়ে দেখো ও মার্ক করো →</div>
+      </div>
+    </div>` : ''}
     ${wdPending.length ? `
     <div onclick="go('withdrawManage')" style="cursor:pointer; background:linear-gradient(135deg,#FFF3D6,#FFE4A8); border:1.5px solid #E9B949; border-radius:12px; padding:14px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px;">
       <div style="font-size:28px;">🔔</div>
@@ -1062,6 +1071,7 @@ async function renderTeacherDashboard(){
       </div>
       <div class="row" style="margin-top:10px;">
         <button class="btn btn-gold btn-block" onclick="go('withdrawManage')">💸 Withdraw অনুরোধ${wdPending.length ? ` (${wdPending.length})` : ''}</button>
+        <button class="btn btn-outline btn-block" onclick="go('reviewInbox')">🚩 রিভিউ ইনবক্স${rvPending.length ? ` (${rvPending.length})` : ''}</button>
       </div>
       <div class="row" style="margin-top:10px;">
         <button class="btn btn-outline btn-block" onclick="go('teacherRegCodes')">🔑 রেজিস্ট্রেশন কোড জেনারেটর</button>
@@ -6440,11 +6450,12 @@ function render(){
   else if(s==='dailyHwDayDetail') renderDailyHwDayDetail(state.date);
   else if(s==='dailyHwManage') renderDailyHwManage();
   else if(s==='writtenSolve') renderWrittenSolve(state.exam, state.slug, state.name);
-  else if(s==='writtenResult') renderWrittenResult(state.earnedMarks, state.totalMarks, state.couponAmount, state.title);
+  else if(s==='writtenResult') renderWrittenResult(state.earnedMarks, state.totalMarks, state.couponAmount, state.title, state.pendingCount);
   else if(s==='doubtEntry') renderDoubtEntry();
   else if(s==='pastExams') renderPastExams();
   else if(s==='pastExamDetail') renderPastExamDetail(state.exam, state.attempts);
   else if(s==='pastWrittenDetail') renderPastWrittenDetail(state.title, state.subs, state.examQuestions);
+  else if(s==='reviewInbox') renderReviewInbox();
   else if(s==='withdrawManage') renderWithdrawManage();
 
   if(deferredPwaPrompt){
@@ -6769,6 +6780,583 @@ function renderWrittenResult(earnedMarks, totalMarks, couponAmount, title){
   `;
 }
 /* ===================== WRITTEN CQ UX PATCH (end) ===================== */
+
+/* ============ REVIEW INBOX + TEACHER ANNOTATOR (start) ============ */
+(function(){
+  const st = document.createElement('style');
+  st.textContent = `
+    #annOverlay{ position:fixed; inset:0; z-index:210; background:#DED5DD; display:flex; flex-direction:column; }
+    #annBar{ display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:4px; padding:6px 8px; background:#E5E1E7; border-bottom:1px solid #cfc8d1; }
+    .ann-btn{ border:none; background:transparent; font-size:22px; line-height:1; padding:8px 11px; border-radius:8px; cursor:pointer; color:#4a4660; font-family:inherit; }
+    .ann-btn.on{ background:#c9c4cd; }
+    .ann-btn[disabled]{ opacity:.3; cursor:default; }
+    .ann-sw{ width:22px; height:22px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 0 1px #999; cursor:pointer; display:inline-block; margin:0 3px; }
+    .ann-sw.on{ box-shadow:0 0 0 3px #1F2A44; }
+    #annScroll{ flex:1; overflow:auto; padding:10px; -webkit-overflow-scrolling:touch; }
+    #annCanvas{ display:block; margin:0 auto; background:#fff; box-shadow:0 2px 12px rgba(0,0,0,.25); }
+    #annFoot{ background:#fff; padding:10px 12px; border-top:1px solid #ccc; display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; }
+  `;
+  document.head.appendChild(st);
+})();
+
+window.__ann = null;
+window.closeAnnotator = function(){
+  const o = document.getElementById('annOverlay');
+  if(o) o.remove();
+  window.__ann = null;
+};
+
+window.openAnnotator = async function(opts){
+  closeAnnotator();
+  const ov = document.createElement('div');
+  ov.id = 'annOverlay';
+  const swatches = ['#e11d1d','#1d4ed8','#15803d','#111111'].map(c =>
+    `<span class="ann-sw ${c==='#e11d1d'?'on':''}" data-c="${c}" style="background:${c};" onclick="annColor('${c}')"></span>`).join('');
+  ov.innerHTML = `
+    <div id="annBar">
+      <button class="ann-btn on" id="annT_pen" onclick="annTool('pen')" title="লাল কলম">✏️</button>
+      <button class="ann-btn" id="annT_text" onclick="annTool('text')" title="লেখা" style="font-family:serif; font-weight:700; color:#d11;">T</button>
+      <button class="ann-btn" id="annT_tick" onclick="annTool('tick')" title="ঠিক চিহ্ন" style="color:#15803d;">✔</button>
+      <button class="ann-btn" id="annT_cross" onclick="annTool('cross')" title="ভুল চিহ্ন" style="color:#d11;">✘</button>
+      <button class="ann-btn" id="annT_eraser" onclick="annTool('eraser')" title="ইরেজার">🧽</button>
+      <button class="ann-btn" id="annT_pan" onclick="annTool('pan')" title="ছবি সরাও / স্ক্রল">✋</button>
+      <span style="width:6px;"></span>
+      <button class="ann-btn" id="annUndo" onclick="annUndo()" disabled title="আগের অবস্থা">↶</button>
+      <button class="ann-btn" id="annRedo" onclick="annRedo()" disabled title="আবার">↷</button>
+      <button class="ann-btn" onclick="annRotate()" title="ঘোরাও">⟳</button>
+      <button class="ann-btn" onclick="annZoom(0.8)" title="ছোট">−</button>
+      <button class="ann-btn" onclick="annZoom(1.25)" title="বড়">＋</button>
+      <span style="width:6px;"></span>
+      ${swatches}
+      <select id="annWidth" onchange="annSetWidth()" style="width:auto; margin:0 0 0 6px; padding:4px 6px; font-size:13px;">
+        <option value="0.8">সরু</option><option value="1.4" selected>মাঝারি</option><option value="2.4">মোটা</option>
+      </select>
+    </div>
+    <div id="annScroll"><div style="padding:40px; color:#555; text-align:center;">ছবি লোড হচ্ছে...</div></div>
+    <div id="annFoot">
+      <div style="flex:1; min-width:170px;">
+        <div class="meta" style="margin:0;">${escapeHtml(opts.title || '')}</div>
+        <textarea id="annNote" style="min-height:48px; margin:4px 0 0 0; font-family:var(--font-body); font-size:14px;" placeholder="ছাত্রের জন্য মন্তব্য (ঐচ্ছিক)">${escapeHtml(opts.note || '')}</textarea>
+      </div>
+      <div style="width:110px;">
+        <div class="meta" style="margin:0;">নম্বর (০–${opts.maxMarks})</div>
+        <input type="number" id="annMarks" min="0" max="${opts.maxMarks}" step="0.5" value="${opts.curMarks}" style="margin:4px 0 0 0;">
+      </div>
+      <button class="btn btn-outline" onclick="closeAnnotator()">বাতিল</button>
+      <button class="btn btn-primary" id="annSaveBtn" onclick="annSave()">💾 সেভ করো</button>
+    </div>`;
+  document.body.appendChild(ov);
+
+  const A = { opts, items:[], undo:[], redo:[], tool:'pen', color:'#e11d1d', wMul:1.4, zoom:1,
+              W:0, H:0, base:null, cv:null, ctx:null, cur:null, ptr:false, erased:false, fitW:600 };
+  window.__ann = A;
+
+  const box = document.getElementById('annScroll');
+  const res = await postToScriptRaw('getSubmissionImage', { url: opts.imageUrl });
+  if(window.__ann !== A) return;
+  if(!res || res.status !== 'success'){
+    box.innerHTML = `<p style="padding:30px; text-align:center;">ছবিটা লোড হয়নি, তবে চাইলে নম্বর ও মন্তব্য লিখে নিচে সেভ করতে পারো।</p>`;
+    return;
+  }
+  const img = new Image();
+  img.onload = function(){
+    if(window.__ann !== A) return;
+    const sc = Math.min(1, 1800 / Math.max(img.width, img.height));
+    A.W = Math.round(img.width * sc); A.H = Math.round(img.height * sc);
+    const b = document.createElement('canvas');
+    b.width = A.W; b.height = A.H;
+    b.getContext('2d').drawImage(img, 0, 0, A.W, A.H);
+    A.base = b;
+    box.innerHTML = '<canvas id="annCanvas"></canvas>';
+    A.cv = document.getElementById('annCanvas');
+    A.cv.width = A.W; A.cv.height = A.H;
+    A.ctx = A.cv.getContext('2d');
+    annFit(); annBind(); annDraw(); annTool('pen');
+  };
+  img.onerror = function(){ box.innerHTML = `<p style="padding:30px; text-align:center;">ছবি পড়া যায়নি।</p>`; };
+  img.src = 'data:' + res.mimeType + ';base64,' + res.base64;
+};
+
+function annFit(){
+  const A = window.__ann; if(!A || !A.cv) return;
+  const box = document.getElementById('annScroll');
+  A.fitW = Math.max(200, Math.min(box.clientWidth - 20, 1100));
+  annApplyZoom();
+}
+function annApplyZoom(){
+  const A = window.__ann; if(!A || !A.cv) return;
+  const w = A.fitW * A.zoom;
+  A.cv.style.width = w + 'px';
+  A.cv.style.height = (w * A.H / A.W) + 'px';
+}
+window.annZoom = function(f){
+  const A = window.__ann; if(!A) return;
+  A.zoom = Math.max(0.5, Math.min(5, A.zoom * f));
+  annApplyZoom();
+};
+function annLineW(){ const A = window.__ann; return Math.max(2, A.W / 300) * A.wMul; }
+function annFontSize(){ const A = window.__ann; return Math.round(Math.max(24, A.W / 32)); }
+
+function annDrawItem(c, it){
+  if(it.t === 'p'){
+    c.strokeStyle = it.c; c.lineWidth = it.w; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath();
+    it.pts.forEach(function(p, i){ if(i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]); });
+    if(it.pts.length === 1) c.lineTo(it.pts[0][0] + 0.01, it.pts[0][1]);
+    c.stroke();
+  } else {
+    c.fillStyle = it.c;
+    c.font = 'bold ' + it.s + 'px "Noto Sans Bengali", sans-serif';
+    c.textBaseline = 'alphabetic';
+    String(it.text).split('\n').forEach(function(ln, i){ c.fillText(ln, it.x, it.y + i * it.s * 1.2); });
+  }
+}
+function annDraw(){
+  const A = window.__ann; if(!A || !A.ctx) return;
+  const c = A.ctx;
+  c.clearRect(0, 0, A.W, A.H);
+  c.drawImage(A.base, 0, 0);
+  A.items.forEach(function(it){ annDrawItem(c, it); });
+  if(A.cur) annDrawItem(c, A.cur);
+}
+function annBtns(){
+  const A = window.__ann; if(!A) return;
+  const u = document.getElementById('annUndo'), r = document.getElementById('annRedo');
+  if(u) u.disabled = A.undo.length === 0;
+  if(r) r.disabled = A.redo.length === 0;
+}
+function annSnap(){
+  const A = window.__ann;
+  A.undo.push(JSON.stringify(A.items));
+  if(A.undo.length > 60) A.undo.shift();
+  A.redo = [];
+  annBtns();
+}
+window.annUndo = function(){
+  const A = window.__ann; if(!A || !A.undo.length) return;
+  A.redo.push(JSON.stringify(A.items));
+  A.items = JSON.parse(A.undo.pop());
+  annDraw(); annBtns();
+};
+window.annRedo = function(){
+  const A = window.__ann; if(!A || !A.redo.length) return;
+  A.undo.push(JSON.stringify(A.items));
+  A.items = JSON.parse(A.redo.pop());
+  annDraw(); annBtns();
+};
+window.annTool = function(t){
+  const A = window.__ann; if(!A) return;
+  A.tool = t;
+  ['pen','text','tick','cross','eraser','pan'].forEach(function(n){
+    const b = document.getElementById('annT_' + n);
+    if(b) b.classList.toggle('on', n === t);
+  });
+  if(A.cv){
+    A.cv.style.touchAction = (t === 'pan') ? 'auto' : 'none';
+    A.cv.style.cursor = (t === 'pan') ? 'grab' : (t === 'text' ? 'text' : 'crosshair');
+  }
+};
+window.annColor = function(c){
+  const A = window.__ann; if(!A) return;
+  A.color = c;
+  document.querySelectorAll('#annBar .ann-sw').forEach(function(s){ s.classList.toggle('on', s.getAttribute('data-c') === c); });
+  if(A.tool === 'eraser' || A.tool === 'pan') annTool('pen');
+};
+window.annSetWidth = function(){
+  const A = window.__ann; if(!A) return;
+  A.wMul = parseFloat(document.getElementById('annWidth').value) || 1.4;
+};
+window.annRotate = function(){
+  const A = window.__ann; if(!A || !A.base) return;
+  const oW = A.W, oH = A.H;
+  const b = document.createElement('canvas');
+  b.width = oH; b.height = oW;
+  const c = b.getContext('2d');
+  c.translate(oH, 0); c.rotate(Math.PI / 2);
+  c.drawImage(A.base, 0, 0);
+  A.items.forEach(function(it){
+    if(it.t === 'p') it.pts = it.pts.map(function(p){ return [oH - p[1], p[0]]; });
+    else { const nx = oH - it.y, ny = it.x; it.x = nx; it.y = ny; }
+  });
+  A.W = oH; A.H = oW; A.base = b;
+  A.cv.width = A.W; A.cv.height = A.H;
+  A.undo = []; A.redo = [];
+  annFit(); annDraw(); annBtns();
+};
+
+function annDistSeg(px, py, a, b){
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const l2 = dx*dx + dy*dy;
+  let t = l2 ? ((px - a[0]) * dx + (py - a[1]) * dy) / l2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy));
+}
+function annHit(it, p, R){
+  if(it.t === 'p'){
+    const r = R + it.w / 2;
+    if(it.pts.length === 1) return Math.hypot(p[0] - it.pts[0][0], p[1] - it.pts[0][1]) <= r;
+    for(let i = 1; i < it.pts.length; i++){ if(annDistSeg(p[0], p[1], it.pts[i-1], it.pts[i]) <= r) return true; }
+    return false;
+  }
+  const lines = String(it.text).split('\n');
+  const w = Math.max.apply(null, lines.map(function(l){ return l.length; })) * it.s * 0.65;
+  const top = it.y - it.s, bottom = it.y + (lines.length - 1) * it.s * 1.2 + it.s * 0.3;
+  return p[0] >= it.x - R && p[0] <= it.x + w + R && p[1] >= top - R && p[1] <= bottom + R;
+}
+function annEraseAt(p){
+  const A = window.__ann;
+  const R = Math.max(14, A.W / 60);
+  const keep = A.items.filter(function(it){ return !annHit(it, p, R); });
+  if(keep.length !== A.items.length){ A.items = keep; A.erased = true; annDraw(); }
+}
+function annPos(e){
+  const A = window.__ann;
+  const r = A.cv.getBoundingClientRect();
+  return [(e.clientX - r.left) * A.W / r.width, (e.clientY - r.top) * A.H / r.height];
+}
+function annBind(){
+  const A = window.__ann, cv = A.cv;
+  cv.addEventListener('pointerdown', function(e){
+    if(A.tool === 'pan') return;
+    e.preventDefault();
+    const p = annPos(e);
+    if(A.tool === 'pen'){
+      annSnap();
+      A.cur = { t:'p', c:A.color, w:annLineW(), pts:[p] };
+      A.ptr = true; cv.setPointerCapture(e.pointerId); annDraw();
+    } else if(A.tool === 'eraser'){
+      annSnap();
+      A.ptr = true; A.erased = false; cv.setPointerCapture(e.pointerId); annEraseAt(p);
+    } else if(A.tool === 'text'){
+      const t = prompt('কী লিখবে?');
+      if(t && t.trim()){ annSnap(); A.items.push({ t:'t', c:A.color, s:annFontSize(), x:p[0], y:p[1], text:t.trim() }); annDraw(); annBtns(); }
+    } else if(A.tool === 'tick' || A.tool === 'cross'){
+      const s = Math.round(annFontSize() * 1.6);
+      annSnap();
+      A.items.push({ t:'t', c:(A.tool === 'tick' ? '#15803d' : '#d11'), s:s, x:p[0] - s * 0.4, y:p[1] + s * 0.35, text:(A.tool === 'tick' ? '✔' : '✘') });
+      annDraw(); annBtns();
+    }
+  });
+  cv.addEventListener('pointermove', function(e){
+    if(!A.ptr) return;
+    e.preventDefault();
+    const p = annPos(e);
+    if(A.tool === 'pen' && A.cur){ A.cur.pts.push(p); annDraw(); }
+    else if(A.tool === 'eraser'){ annEraseAt(p); }
+  });
+  const end = function(){
+    if(!A.ptr) return;
+    A.ptr = false;
+    if(A.tool === 'pen' && A.cur){ A.items.push(A.cur); A.cur = null; annDraw(); }
+    else if(A.tool === 'eraser' && !A.erased){ A.undo.pop(); }
+    annBtns();
+  };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+}
+
+window.annSave = async function(){
+  const A = window.__ann; if(!A) return;
+  const max = Number(A.opts.maxMarks) || 5;
+  const marks = parseFloat((document.getElementById('annMarks') || {}).value);
+  if(isNaN(marks) || marks < 0 || marks > max){ toast('০ থেকে ' + max + ' এর মধ্যে নম্বর দাও'); return; }
+  const note = ((document.getElementById('annNote') || {}).value || '').trim();
+  let b64 = '';
+  if(A.items.length && A.base && A.cv){
+    A.cur = null; annDraw();
+    b64 = A.cv.toDataURL('image/jpeg', 0.85).split(',')[1];
+  }
+  const btn = document.getElementById('annSaveBtn'); if(btn) btn.disabled = true;
+  toast('সেভ হচ্ছে...');
+  const keepOnlyPending = !!(state && state.onlyPending);
+  const res = await postToScriptRaw('saveWrittenAnnotation', {
+    submissionId: A.opts.submissionId, base64: b64, mimeType: 'image/jpeg', note: note,
+    newPercent: Math.round(marks / max * 100)
+  });
+  if(res && res.status === 'success'){
+    closeAnnotator();
+    toast('সেভ হয়েছে ✅ (কুপনও পুনঃগণনা হয়েছে)');
+    go('writtenSubmissions', { code: A.opts.code, onlyPending: keepOnlyPending });
+  } else {
+    if(btn) btn.disabled = false;
+    toast('সেভ করা যায়নি, আবার চেষ্টা করো');
+  }
+};
+
+// ---------- শিক্ষক: জমা দেওয়া খাতা (রিভিউ/AI-ব্যর্থ চিহ্নসহ, মার্ক করার বাটনসহ) ----------
+async function renderWrittenSubmissions(code){
+  app.innerHTML = `${header('জমা দেওয়া খাতা')}<div class="card center">লোড হচ্ছে...</div>`;
+  const only = !!state.onlyPending;
+  const [subs, examData] = await Promise.all([getWrittenSubmissionsRemote(code), getWrittenQuestionByCode(code)]);
+  subs.sort((a,b)=> new Date(b.submittedAt) - new Date(a.submittedAt));
+  window.__writtenSubsCache = subs;
+  const examQuestions = (examData && examData.questions) || [];
+  window.__writtenExamQuestionsCache = examQuestions;
+  window.__writtenExamCode = code;
+  const isPend = s => (s.reviewRequested || s.aiFailed) && !s.reviewResolved;
+
+  const bySlug = {};
+  subs.forEach(s=>{ (bySlug[s.slug] = bySlug[s.slug] || []).push(s); });
+  const pendTotal = subs.filter(isPend).length;
+  const slugs = Object.keys(bySlug).filter(sl => !only || bySlug[sl].some(isPend));
+
+  let rows = slugs.map(slug=>{
+    const list = bySlug[slug].sort((a,b)=> a.questionIndex - b.questionIndex);
+    let totalMarks = 0, earnedMarks = 0;
+    list.forEach(s=>{
+      const mm = Number((examQuestions[s.questionIndex]||{}).marks) || 5;
+      totalMarks += mm; earnedMarks += percentToMarks(s.percent, mm);
+    });
+    const shown = only ? list.filter(isPend) : list;
+    const qRows = shown.map(s=>{
+      const idx = window.__writtenSubsCache.indexOf(s);
+      const q = examQuestions[s.questionIndex] || {};
+      const maxMarks = Number(q.marks) || 5;
+      const marks = percentToMarks(s.percent, maxMarks);
+      const pend = isPend(s);
+      const badge = pend
+        ? (s.aiFailed ? '<span class="q-tag" style="background:#FFF1D6; color:#9B6A15;">⚠️ AI চেক করতে পারেনি</span>' : '<span class="q-tag" style="background:#FDEEEE; color:var(--red);">🚩 রিভিউ চাওয়া হয়েছে</span>')
+        : ((s.reviewRequested || s.aiFailed) ? '<span class="q-tag" style="background:#E8F6EF; color:var(--green);">✅ রিভিউ সম্পন্ন</span>' : '');
+      return `<div class="review-block" style="${pend ? 'background:#FFFBF3; border-radius:8px; padding:10px;' : ''}">
+        <div class="q-text" style="font-size:13.5px;">প্রশ্ন ${s.questionIndex+1} (${maxMarks} নম্বর) ${badge}</div>
+        ${s.reviewReason ? `<div class="meta" style="margin:2px 0 6px 0;">ছাত্রের কারণ: ${escapeHtml(s.reviewReason)}</div>` : ''}
+        <details style="margin:6px 0;">
+          <summary style="cursor:pointer; font-size:12.5px; color:var(--pencil);">📖 প্রশ্ন, মডেল উত্তর ও নম্বর বণ্টন দেখো</summary>
+          <div style="margin-top:8px; padding:10px; background:#F5F9FE; border-radius:8px; font-size:13px;">
+            ${q.text ? `<div><b>প্রশ্ন:</b> ${escapeHtml(q.text)}</div>` : ''}
+            ${q.imageUrl ? `<img src="${driveImg(q.imageUrl)}" style="max-width:100%; border-radius:6px; margin:6px 0;" alt="প্রশ্নের ছবি">` : ''}
+            ${q.modelAnswerText ? `<div style="margin-top:6px;"><b>মডেল উত্তর:</b> ${escapeHtml(q.modelAnswerText)}</div>` : ''}
+            ${q.modelAnswerImageUrl ? `<img src="${driveImg(q.modelAnswerImageUrl)}" style="max-width:100%; border-radius:6px; margin:6px 0;" alt="মডেল উত্তরের ছবি">` : ''}
+            ${q.markingScheme ? `<div style="margin-top:6px;"><b>নম্বর বণ্টন:</b> ${escapeHtml(q.markingScheme)}</div>` : ''}
+          </div>
+        </details>
+        <div class="row" style="margin-bottom:8px;">
+          <button class="btn btn-outline" onclick="viewWrittenImage(${idx})">🖼️ খাতা দেখো</button>
+          <button class="btn btn-gold" onclick="openWrittenAnnotator(${idx})">✏️ চেক / মার্ক করো</button>
+        </div>
+        ${s.annotatedUrl ? `<div class="meta" style="margin:0 0 4px 0;">আপনার মার্ক করা ছবি (চাপলে বড় হবে):</div>
+          <img src="${driveImg(s.annotatedUrl)}" alt="মার্ক করা ছবি" style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block; margin-bottom:8px;">` : ''}
+        ${s.teacherNote ? `<div class="meta" style="margin:0 0 6px 0; white-space:pre-wrap;">📝 আপনার মন্তব্য: ${escapeHtml(s.teacherNote)}</div>` : ''}
+        <div class="review-ans ${s.aiFailed && !s.reviewResolved ? 'wrong' : 'wrong'}">${s.aiFailed && !s.reviewResolved
+          ? '⚠️ AI চেক করতে পারেনি — আপনি নম্বর দিন'
+          : `🤖 ${marks}/${maxMarks} নম্বর (AI ${s.percent}%) — ${escapeHtml(s.aiFeedback||'')}`}</div>
+        <div class="row" style="margin-top:6px;">
+          <input type="number" id="wmarks${idx}" value="${marks}" min="0" max="${maxMarks}" step="0.5" style="margin-bottom:0;">
+          <button class="btn btn-outline" onclick="saveWrittenManualScore('${s.id}',${idx},'${code}',${maxMarks})">✅ শুধু নম্বর ঠিক করো</button>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="exam-item">
+      <h3 style="margin-bottom:4px;">${escapeHtml(list[0].studentName)}</h3>
+      <div class="meta">মোট: <b>${earnedMarks} / ${totalMarks}</b> নম্বর (${list.length}টা প্রশ্নের ভিত্তিতে)</div>
+      <div style="margin-top:8px;">${qRows}</div>
+    </div>`;
+  }).join('');
+  if(!slugs.length) rows = `<div class="empty-state">${only ? 'কোনো Pending রিভিউ নেই ✅' : 'এখনো কেউ জমা দেয়নি।'}</div>`;
+
+  app.innerHTML = `
+    ${header('জমা দেওয়া খাতা')}
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+        <div class="meta" style="margin:0;">Pending (রিভিউ / AI-ব্যর্থ): <b>${pendTotal}</b>টা</div>
+        <button class="info-btn" onclick="go('writtenSubmissions',{code:'${code}', onlyPending:${!only}})">${only ? '📋 সব দেখাও' : '🚩 শুধু Pending দেখাও'}</button>
+      </div>
+      ${rows}
+    </div>
+    <div class="center"><a class="link-back" onclick="go('writtenManage')">← ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+window.viewWrittenImage = function(idx){
+  const s = (window.__writtenSubsCache || [])[idx]; if(!s) return;
+  openImgZoom(driveImg(s.driveUrl), s.driveUrl);
+};
+window.openWrittenAnnotator = function(idx){
+  const s = (window.__writtenSubsCache || [])[idx]; if(!s) return;
+  const q = (window.__writtenExamQuestionsCache || [])[s.questionIndex] || {};
+  const maxMarks = Number(q.marks) || 5;
+  const pendAi = s.aiFailed && !s.reviewResolved;
+  openAnnotator({
+    submissionId: s.id, imageUrl: s.driveUrl, maxMarks: maxMarks,
+    curMarks: pendAi ? 0 : percentToMarks(s.percent, maxMarks),
+    title: s.studentName + ' · প্রশ্ন ' + (s.questionIndex + 1), code: window.__writtenExamCode, note: s.teacherNote || ''
+  });
+};
+
+// ---------- শিক্ষক: রিভিউ ইনবক্স ----------
+async function renderReviewInbox(){
+  app.innerHTML = `${header('রিভিউ ইনবক্স')}<div class="card center">লোড হচ্ছে...</div>`;
+  const r = await getJson('listPendingReviews', {});
+  const list = (r && r.status === 'success') ? r.data : [];
+  const byCode = {};
+  list.forEach(x=>{ (byCode[x.code] = byCode[x.code] || { title:x.title, items:[] }).items.push(x); });
+  const cards = Object.keys(byCode).map(code=>{
+    const g = byCode[code];
+    const lines = g.items.map(x=> `<div class="meta">• ${escapeHtml(x.studentName)} — প্রশ্ন ${x.questionIndex+1} ${x.aiFailed ? '⚠️ AI চেক করতে পারেনি' : '🚩 রিভিউ'}${x.reason ? ' — "' + escapeHtml(x.reason) + '"' : ''}</div>`).join('');
+    return `<div class="exam-item">
+      <h3 style="margin-bottom:4px;">${escapeHtml(g.title || code)} <span class="q-tag">${g.items.length}টা</span></h3>
+      ${lines}
+      <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="go('writtenSubmissions',{code:'${code}', onlyPending:true})">✏️ চেক করতে যাও →</button>
+    </div>`;
+  }).join('');
+  app.innerHTML = `
+    ${header('রিভিউ ইনবক্স')}
+    <div class="card">
+      <h2>🚩 Pending রিভিউ ও AI-ব্যর্থ খাতা (${list.length}টা)</h2>
+      <p class="hint">ছাত্র "রিভিউ চাও" চাপলে, বা AI খাতা চেক করতে না পারলে এখানে আসে। "চেক করতে যাও" চেপে ছবি দেখো, লাল কলমে মার্ক করো, নম্বর বদলাও — সেভ করলেই এটা Pending থেকে সরে যাবে।</p>
+      ${cards || `<div class="empty-state">এখন কোনো Pending নেই ✅</div>`}
+    </div>
+    <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+
+// ---------- ছাত্র: রিভিউ চাওয়া (কারণসহ) ----------
+window.requestPastReview = async function(subId){
+  const reason = prompt('কেন রিভিউ চাও? (এক লাইনে লিখতে পারো, না লিখলেও চলবে)');
+  if(reason === null) return;
+  const box = document.getElementById('pastRev_' + subId);
+  toast('রিভিউ চাওয়া হচ্ছে...');
+  const res = await postToScript('requestWrittenReview', { submissionId: subId, reason: reason.trim() });
+  if(res && box){
+    box.innerHTML = `<p class="hint" style="margin:0;">🚩 রিভিউ চাওয়া হয়েছে, শিক্ষক দেখবেন।</p>`;
+    toast('রিভিউর অনুরোধ পাঠানো হয়েছে ✅');
+  }
+};
+
+// ---------- ছাত্র: Past Exams > Written ----------
+function renderPastWrittenDetail(title, subs, examQuestions){
+  examQuestions = examQuestions || [];
+  const rows = (subs || []).map(s=>{
+    const q = examQuestions[s.questionIndex] || {};
+    const maxMarks = Number(q.marks) || 5;
+    const marks = percentToMarks(s.percent, maxMarks);
+    const pendAi = s.aiFailed && !s.reviewResolved;
+    const pendRev = s.reviewRequested && !s.reviewResolved;
+    const scoreBox = pendAi
+      ? `<div class="meta" style="color:#9B6A15; font-weight:700;">⏳ শিক্ষক চেক করবেন</div>`
+      : `<div class="score-big ${s.percent >= 50 ? 'score-pass' : 'score-fail'}" style="font-size:17px;">${marks}/${maxMarks}</div>
+         <div class="meta" style="margin-top:0;">${s.aiFailed ? 'শিক্ষকের নম্বর' : 'AI ' + s.percent + '%'}</div>`;
+    const teacherHtml = (s.annotatedUrl || s.teacherNote || ((s.reviewRequested || s.aiFailed) && s.reviewResolved)) ? `
+      <div style="margin-top:10px; background:#EBF7EE; border:1px solid #A3E0B5; border-radius:8px; padding:10px 12px;">
+        <div style="font-weight:700; color:var(--green);">👨‍🏫 শিক্ষকের রিভিউ</div>
+        ${s.teacherNote ? `<div style="margin-top:4px; white-space:pre-wrap; font-size:14px;">${escapeHtml(s.teacherNote)}</div>` : ''}
+        ${s.annotatedUrl ? `<div class="meta" style="margin:8px 0 4px 0;">শিক্ষকের মার্ক করা খাতা (ছবিতে চাপলে বড় হবে):</div>
+          <img src="${driveImg(s.annotatedUrl)}" alt="শিক্ষকের মার্ক করা ছবি" style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block;">` : ''}
+      </div>` : '';
+    let reviewArea;
+    if(pendRev) reviewArea = `<p class="hint" style="margin:0;">🚩 রিভিউ চাওয়া হয়েছে, শিক্ষক দেখবেন।${s.reviewReason ? ' (কারণ: ' + escapeHtml(s.reviewReason) + ')' : ''}</p>`;
+    else if(pendAi) reviewArea = '';
+    else reviewArea = `<button class="btn btn-outline btn-block" onclick="requestPastReview('${s.id}')">🚩 ${s.reviewResolved ? 'আবার রিভিউ চাও' : 'এই নম্বর নিয়ে রিভিউ চাও'}</button>`;
+    return `
+    <div class="exam-item">
+      <div class="row-top">
+        <div class="q-text" style="font-size:14.5px;">প্রশ্ন ${s.questionIndex + 1}</div>
+        <div style="text-align:end;">${scoreBox}</div>
+      </div>
+      ${q.text ? `<div style="margin-top:8px; font-size:14px;">${escapeHtml(q.text)}</div>` : ''}
+      ${q.imageUrl ? `<img src="${driveImg(q.imageUrl)}" alt="প্রশ্নের ছবি" style="max-width:100%; border-radius:8px; margin-top:8px; display:block;">` : ''}
+      ${s.driveUrl ? `
+        <div class="field-label" style="margin-top:12px;">✍️ তোমার খাতা <span class="meta">(ছবিতে চাপলে বড় হবে)</span></div>
+        <img src="${driveImg(s.driveUrl)}" alt="তোমার খাতার ছবি" loading="lazy"
+             style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block;">` : ''}
+      <div class="review-ans ${s.aiFailed ? '' : (s.percent >= 50 ? 'right' : 'wrong')}" style="margin-top:10px;">🤖 ${escapeHtml(s.aiFeedback || '')}</div>
+      ${teacherHtml}
+      <div id="pastRev_${s.id}" style="margin-top:8px;">${reviewArea}</div>
+    </div>`;
+  }).join('');
+  app.innerHTML = `
+    ${header('Past Exams')}
+    <div class="card">
+      <h2>${escapeHtml(title)}</h2>
+      <p class="hint">প্রতিটা প্রশ্নের নম্বর, তোমার খাতা আর AI-র মন্তব্য নিচে দেখো। নম্বর নিয়ে দ্বিমত থাকলে রিভিউ চাও — শিক্ষক নিজে দেখে ঠিক করে দেবেন।</p>
+    </div>
+    ${rows || `<div class="card"><div class="empty-state">কোনো উত্তর পাওয়া যায়নি।</div></div>`}
+    <div class="center"><a class="link-back" onclick="go('pastExams')">← Past Exams-এ ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+
+// ---------- ছাত্র: সব জমা (AI ব্যর্থ হলেও খাতা সেভ থাকে, শিক্ষক দেখবেন) ----------
+window.submitAllWritten = async function(){
+  const ctx = window.__writtenSolveCtx;
+  if(!ctx || ctx.grading) return;
+  const { exam, slug, name } = ctx;
+  ctx.pending = ctx.pending || {};
+  const order = exam.questions.map((q, i)=> i).filter(i=> !ctx.answered[i]);
+  if(!order.length) return;
+  if(order.some(i=> !ctx.pending[i])){ toast('আগে সব প্রশ্নের ছবি বাছো'); return; }
+  if(!confirm(`${order.length}টা উত্তর জমা দেবে? জমা দেওয়ার পর আর বদলানো যাবে না।`)) return;
+
+  ctx.grading = true;
+  ctx.lastError = '';
+  window.onbeforeunload = function(){ return 'AI চেক চলছে, এখন বের হলে মাঝপথে থেমে যাবে।'; };
+
+  const status = {};
+  order.forEach(i=> status[i] = 'wait');
+  let last = null;
+  const failed = [];
+
+  for(const i of order){
+    status[i] = 'run';
+    paintWrittenGrading(exam, order, status);
+    const p = ctx.pending[i];
+    let res = await submitWrittenAnswerRemote(exam.code, slug, name, i, p.base64, p.mimeType, p.fileName);
+    if(!res || res.status !== 'success'){
+      await new Promise(r=> setTimeout(r, 1500));
+      res = await submitWrittenAnswerRemote(exam.code, slug, name, i, p.base64, p.mimeType, p.fileName);
+    }
+    if(res && res.status === 'success'){
+      ctx.answered[i] = { percent: res.percent, aiFeedback: res.aiFeedback, subId: res.subId, aiFailed: !!res.aiFailed };
+      delete ctx.pending[i];
+      status[i] = 'done';
+      if(res.allDone) last = res;
+    } else {
+      status[i] = 'fail';
+      failed.push(i);
+    }
+    paintWrittenGrading(exam, order, status);
+  }
+
+  ctx.grading = false;
+  window.onbeforeunload = null;
+
+  if(failed.length === 0){
+    let totalMarks = 0, earnedMarks = 0, pendingCount = 0;
+    exam.questions.forEach((qq, i)=>{
+      const m = Number(qq.marks) || 5;
+      totalMarks += m;
+      const a = ctx.answered[i];
+      if(a){ earnedMarks += percentToMarks(a.percent, m); if(a.aiFailed) pendingCount++; }
+    });
+    go('writtenResult', { earnedMarks, totalMarks, pendingCount, couponAmount: last ? (last.couponAmount || 0) : 0, title: exam.title });
+    return;
+  }
+  ctx.lastError = `${failed.length}টা প্রশ্ন জমা দেওয়া যায়নি (ইন্টারনেট সমস্যা)। ছবিগুলো এখনো আছে — নিচের বাটন চেপে আবার চেষ্টা করো।`;
+  redrawWrittenSolve();
+};
+
+function renderWrittenResult(earnedMarks, totalMarks, couponAmount, title, pendingCount){
+  const pct = totalMarks ? Math.round((earnedMarks / totalMarks) * 100) : 0;
+  const passed = pct >= 50;
+  app.innerHTML = `
+    ${header('ফলাফল')}
+    <div class="card center">
+      <h2>${escapeHtml(title)}</h2>
+      <p class="hint">সব প্রশ্ন জমা হয়েছে ✅</p>
+      <div class="stamp ${passed ? '' : 'fail'}">${earnedMarks}/${totalMarks}</div>
+      <p class="hint" style="margin-top:10px;">এটা তোমার সব প্রশ্নের মোট নম্বর।</p>
+      ${pendingCount > 0 ? `<div style="margin-top:10px; background:#FEF8EC; border:1.5px solid #F8DA9D; border-radius:10px; padding:10px 12px; font-size:13.5px; text-align:start;">⏳ <b>${pendingCount}টা প্রশ্ন</b> AI এই মুহূর্তে চেক করতে পারেনি — শিক্ষক নিজে দেখে নম্বর দেবেন। তাই মোট নম্বর ও কুপন পরে বদলাতে পারে। "Past Exams"-এ গিয়ে পরে দেখো।</div>` : ''}
+      ${couponAmount > 0 ? `<div style="margin-top:10px;">🎁 <b>অভিনন্দন!</b> তুমি ৳${couponAmount} Treat Coupon পেয়েছো!</div>` : ''}
+      <p class="hint" style="margin-top:10px;">কোন প্রশ্নে কত নম্বর পেয়েছো আর মন্তব্য কী — "Past Exams"-এ গিয়ে দেখো। নম্বর নিয়ে দ্বিমত থাকলে সেখান থেকেই "🚩 রিভিউ চাও" চাপতে পারবে।</p>
+      ${getLoggedStudent() ? `<button class="btn btn-gold btn-block" style="margin-top:6px;" onclick="go('pastExams')">📜 Past Exams-এ বিস্তারিত দেখো</button>` : ''}
+    </div>
+    <div class="center"><button class="btn btn-primary" onclick="go('landing')">মূল পাতায় যাও</button></div>
+    ${creditFooter()}
+  `;
+}
+/* ============ REVIEW INBOX + TEACHER ANNOTATOR (end) ============ */
+
 
 
 // =====================================================================================
