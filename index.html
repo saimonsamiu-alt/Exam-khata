@@ -3861,7 +3861,7 @@ async function getWrittenQuestionByCode(code){
   return null;
 }
 async function submitWrittenAnswerRemote(code, slug, studentName, questionIndex, base64, mimeType, fileName){
-  const res = await postToScript('submitWrittenAnswer', { code, slug, studentName, questionIndex, base64, mimeType, fileName });
+  const res = await postToScript('submitWrittenAnswer', { code, slug, studentName, questionIndex, base64, mimeType, fileName, today: todayStr() });
   return res;
 }
 async function getWrittenSubmissionsRemote(code){
@@ -4496,7 +4496,7 @@ async function renderStudentDashboard(){
       </div>
       ${creditFooter()}
     `;
-    const res = await postToScript('getStudentDashboard', { slug });
+    const res = await postToScript('getStudentDashboard', { slug, today: todayStr() });
     if(res && res.status === 'success'){
       if(res.couponBalance === null || res.couponBalance === undefined || !isFinite(Number(res.couponBalance))){
         const cb = await getCouponBalanceRemote(slug);
@@ -6071,7 +6071,7 @@ async function fillClassSummary(slug, monthKey, slotId){
   if(slot && res && res.status === 'success') slot.innerHTML = classSummaryHtml(res.summary);
 }
 async function refreshStudentDashboard(slug){
-  const fresh = await postToScript('getStudentDashboard', { slug });
+  const fresh = await postToScript('getStudentDashboard', { slug, today: todayStr() });
   if(fresh){
     if(fresh.couponBalance === null || fresh.couponBalance === undefined || !isFinite(Number(fresh.couponBalance))){
       const cb = await getCouponBalanceRemote(slug);
@@ -6458,6 +6458,140 @@ function render(){
 }
 
 render();
+
+// =====================================================================================
+// SMART SEARCH — index.html এর একদম শেষে, `render();` লাইনের পরে, </script> এর ঠিক আগে পুরোটা paste করো
+// =====================================================================================
+const SEARCH_SRC = {
+  note: { icon:'📑', label:'ক্লাস নোট / স্লাইড' },
+  mcq:  { icon:'🎯', label:'MCQ প্র্যাকটিস' },
+  exam: { icon:'📝', label:'পরীক্ষার প্রশ্ন' },
+  hw:   { icon:'📅', label:'Daily HW' }
+};
+window.__searchImg = null;
+
+function renderSmartSearch(){
+  const subjectOptions = Object.keys(NOTES_SUBJECTS).map(k=> `<option value="${k}">${NOTES_SUBJECTS[k].icon} ${NOTES_SUBJECTS[k].label}</option>`).join('');
+  window.__searchImg = null;
+  app.innerHTML = `
+    ${header('খুঁজে দেখো')}
+    <div class="card">
+      <h2>🔎 টপিক বা প্রশ্ন খোঁজো</h2>
+      <p class="hint">প্রশ্নের ছবি তুলে দাও, বা টপিকের নাম/প্রশ্ন লিখো — এই টপিকে নোট, MCQ, পরীক্ষার প্রশ্ন আর তোমার Daily HW কবে কী ছিল, তারিখসহ এক জায়গায় দেখাবে।</p>
+      <label class="field-label">বিষয় (ঐচ্ছিক)</label>
+      <select id="searchSubject"><option value="">— সব বিষয় —</option>${subjectOptions}</select>
+      <label class="field-label">লিখে খোঁজো</label>
+      <textarea id="searchQuery" style="min-height:90px;" placeholder="যেমন: Kp ও Kc এর সম্পর্ক, বিয়োজন মাত্রা দেওয়া আছে..."></textarea>
+      <label class="field-label">অথবা প্রশ্নের ছবি</label>
+      <input type="file" id="searchImgInput" accept="image/*" onchange="pickSearchImage(this)" style="margin-bottom:14px;">
+      <button class="btn btn-primary btn-block" onclick="doSmartSearch()">🔎 খোঁজো</button>
+      <div id="searchResults" style="margin-top:16px;"></div>
+    </div>
+    <div class="center"><a class="link-back" onclick="go(getLoggedStudent()?'studentDashboard':'landing')">← ফিরে যাও</a></div>
+    ${creditFooter()}
+  `;
+}
+window.pickSearchImage = async function(inp){
+  const f = inp.files[0];
+  if(!f){ window.__searchImg = null; return; }
+  window.__searchImg = await compressImageFile(f, 1200, 0.75);
+  toast('ছবি নেওয়া হয়েছে ✅');
+};
+window.doSmartSearch = async function(){
+  const query = document.getElementById('searchQuery').value.trim();
+  const subject = document.getElementById('searchSubject').value;
+  const img = window.__searchImg;
+  if(!query && !img){ toast('লিখো অথবা একটা ছবি দাও'); return; }
+  const stud = getLoggedStudent();
+  const box = document.getElementById('searchResults');
+  box.innerHTML = `<div class="card center" style="padding:20px;">খোঁজা হচ্ছে...</div>`;
+  const res = await postToScriptRaw('smartSearch', {
+    slug: stud ? stud.slug : '', subject, query,
+    imageBase64: img ? img.base64 : '', imageMimeType: img ? img.mimeType : ''
+  });
+  if(!res || res.status !== 'success'){
+    box.innerHTML = `<div class="empty-state">খোঁজা যায়নি, একটু পরে আবার চেষ্টা করো।</div>`;
+    return;
+  }
+  const u = res.understood || {};
+  const items = res.items || [];
+  const dateBn = d => d ? fmtBnDate(new Date(d).getTime()) : '';
+
+  const topicLine = u.topic
+    ? `<div style="font-weight:700;">${escapeHtml(u.chapter)} › ${escapeHtml(u.topic)}</div>` +
+      (u.subtopics && u.subtopics.length ? `<div class="meta">ধরন: ${u.subtopics.map(escapeHtml).join(' · ')}</div>` : '')
+    : `<div class="meta">নির্দিষ্ট টপিক ধরা যায়নি — লেখার সাথে মিল দেখে খোঁজা হয়েছে।</div>`;
+  const spanLine = res.first
+    ? `<div class="meta" style="margin-top:6px;">এই টপিকের উপকরণ: <b>${res.total}</b>টা · প্রথম ${dateBn(res.first)} থেকে সর্বশেষ ${dateBn(res.last)} পর্যন্ত</div>` : '';
+
+  const card = it => {
+    const s = SEARCH_SRC[it.source] || { icon:'📄', label:it.source };
+    let extra = '';
+    if(it.source === 'note' && it.ref && it.ref.url) extra = `<a href="${escapeHtml(it.ref.url)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="text-decoration:none; margin-top:8px;">📄 খোলো</a>`;
+    if(it.source === 'hw' && it.ref){
+      extra = `<div class="row" style="margin-top:8px;">
+          ${it.ref.qUrl ? `<a href="${escapeHtml(it.ref.qUrl)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="text-decoration:none;">প্রশ্নের ছবি</a>` : ''}
+          ${it.ref.aUrl ? `<a href="${escapeHtml(it.ref.aUrl)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="text-decoration:none;">তোমার সমাধান</a>` : ''}
+        </div>${it.ref.feedback ? `<div class="say" style="margin-top:8px;">🤖 ${escapeHtml(it.ref.feedback)}</div>` : ''}`;
+    }
+    return `<div class="exam-item">
+      <div class="row-top"><div>
+        <span class="q-tag">${s.icon} ${s.label}</span> <span class="meta">${dateBn(it.date)}</span>
+        <div style="font-weight:600; margin-top:4px;">${escapeHtml(it.title||'')}</div>
+      </div></div>
+      <div class="meta" style="margin-top:4px;">${escapeHtml(it.snippet||'')}</div>
+      ${it.subtopics && it.subtopics.length ? `<div class="meta">🏷️ ${it.subtopics.map(escapeHtml).join(' · ')}</div>` : ''}
+      ${extra}
+    </div>`;
+  };
+  const exact = items.filter(i=> i.level === 'exact');
+  const rest = items.filter(i=> i.level !== 'exact');
+
+  box.innerHTML = `
+    <div class="card" style="background:#F5F9FE;">${topicLine}${spanLine}</div>
+    ${exact.length ? `<h3>🎯 একদম কাছাকাছি ধরনের</h3>${exact.map(card).join('')}` : ''}
+    ${rest.length ? `<h3 style="margin-top:14px;">📂 ${u.topic ? 'একই টপিকের অন্যান্য' : 'মিলে যাওয়া'}</h3>${rest.map(card).join('')}` : ''}
+    ${!items.length ? `<div class="empty-state">এই টপিকে এখনো কিছু পাওয়া যায়নি।</div>` : ''}
+  `;
+  renderAllMath(box);
+};
+
+
+// ---- নিজে নিজে সংযোগ (render() ও কার্ড/বাটন বসানো) — আলাদা কিছু এডিট করতে হবে না ----
+(function(){
+  const __origRender = render;
+  render = function(){
+    if(state.screen === 'smartSearch'){ syncLogoutFab(); renderSmartSearch(); return; }
+    __origRender();
+  };
+
+  function injectSearchEntry(){
+    const appEl = document.getElementById('app');
+    if(!appEl) return;
+    // মূল পাতার feature-grid এ কার্ড
+    const grid = appEl.querySelector('.feature-grid');
+    if(grid && !grid.querySelector('[data-smart]')){
+      const d = document.createElement('div');
+      d.className = 'feature-card';
+      d.setAttribute('data-smart', '1');
+      d.onclick = function(){ go('smartSearch'); };
+      d.innerHTML = '<span class="ic">🔎</span><span class="lbl">খুঁজে দেখো</span>';
+      grid.appendChild(d);
+    }
+    // ড্যাশবোর্ডের "পড়াশোনার সহায়ক" widget এ বাটন
+    const docBtn = appEl.querySelector('button[onclick*="doubtEntry"]');
+    if(docBtn && docBtn.parentElement && !docBtn.parentElement.querySelector('[data-smart]')){
+      const b = document.createElement('button');
+      b.className = 'btn btn-outline btn-block';
+      b.setAttribute('data-smart', '1');
+      b.onclick = function(){ go('smartSearch'); };
+      b.textContent = '🔎 খুঁজে দেখো';
+      docBtn.parentElement.appendChild(b);
+    }
+  }
+  new MutationObserver(injectSearchEntry).observe(document.getElementById('app'), { childList:true, subtree:true });
+  injectSearchEntry();
+})();
 </script>
 </body>
 </html>
