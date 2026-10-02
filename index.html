@@ -2216,6 +2216,10 @@ function labelForCouponExamCode(examCode){
     const [y, m] = monthKey.split('-');
     return `${BN_MONTHS[Number(m)-1] || m} ${y} (মাসিক রিওয়ার্ড)`;
   }
+  if(String(examCode).indexOf('PERIOD:') === 0){
+    const p = String(examCode).slice(7).split('~'); // from~to~ts
+    return `কোড এক্সাম রিওয়ার্ড (${p[0]} থেকে ${p[1]})`;
+  }
   return examCode;
 }
 const BN_WEEKDAYS = ['রবি','সোম','মঙ্গল','বুধ','বৃহ','শুক্র','শনি'];
@@ -3509,18 +3513,18 @@ function renderCouponBalance(){
     ${creditFooter()}
   `;
   (async ()=>{
-    const preview = await previewMonthlyRewardRemote(slug, currentMonthKey());
+    const preview = await getJson('previewPeriodReward', { slug });
     const slot = document.getElementById('monthlyPreviewSlot');
     if(!slot) return;
-    if(!preview || preview.finalized || preview.maxAmount <= 0 || preview.examCount === 0){
+    if(!preview || preview.status !== 'success' || preview.examCount === 0){
       slot.remove();
       return;
     }
     slot.innerHTML = `
-      <h3>📅 এই মাসের চলতি হিসাব</h3>
-      <div class="meta">এই মাসে code দিয়ে ${preview.examCount}টা exam দিয়েছো, মোট ${preview.scored}/${preview.total} নম্বর (${preview.percent}%)।</div>
-      <div class="score-big score-pass" style="margin-top:6px;">এখন পর্যন্ত প্রজেক্টেড: ৳${preview.projectedAmount}</div>
-      <p class="hint" style="margin-top:8px;">মাস শেষে শিক্ষক ফাইনালাইজ করলে এই টাকা তোমার ব্যালেন্সে যোগ হবে। মাস চলাকালীন এই সংখ্যা বদলাতে পারে।</p>
+      <h3>📅 চলতি কোড-এক্সাম রিওয়ার্ড হিসাব</h3>
+      <div class="meta">${preview.lastFinalizedAt ? fmtBnDate(preview.lastFinalizedAt) + '-এর শেষ রিওয়ার্ডের পর থেকে' : 'এ পর্যন্ত'} code দিয়ে ${preview.examCount}টা exam দিয়েছো, মোট ${preview.scored}/${preview.total} নম্বর (${preview.percent}%)।</div>
+      ${preview.projectedAmount > 0 ? `<div class="score-big score-pass" style="margin-top:6px;">এখন পর্যন্ত প্রজেক্টেড: ৳${preview.projectedAmount}</div>` : ''}
+      <p class="hint" style="margin-top:8px;">শিক্ষক ফাইনালাইজ করলে এই টাকা তোমার ব্যালেন্সে যোগ হবে, তারপর নতুন exam থেকে আবার নতুন করে গোনা শুরু হবে। এর মাঝে আরও exam দিলে এই সংখ্যা বদলাতে পারে।</p>
     `;
   })();
 }
@@ -3561,7 +3565,7 @@ async function renderCouponManage(){
       <p class="hint">নিয়ম: শুধু "🎁 Treat" হিসেবে চিহ্নিত পরীক্ষায় প্রথমবার ১%+ পেলেই কিছু কুপন পাবে, ৮০%-এর পর থেকে বাড়ার হার আরও দ্রুত হয়। পরীক্ষা বানানোর সময় "১০০% পেলে সর্বোচ্চ কত টাকা" ঠিক করে দেওয়া যায় — ডিফল্ট ৳৩০০, বদলালে সব স্কোরের টাকার পরিমাণ একই অনুপাতে scale হয়। যখন কেউ "ব্যবহার করবো" চাপবে, একটা কোড দেখাবে — bKash Request Money-তে সেই কোড রেফারেন্সে থাকবে, মিলিয়ে দেখে তুমি পাঠিয়ে "পরিশোধ করা হলো" চাপবে।</p>
       ${rows}
       <button class="btn btn-gold btn-block" style="margin-top:14px;" onclick="go('withdrawManage')">💸 Withdraw অনুরোধ (bKash / Nagad)</button>
-      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('monthlyReward')">📅 মাসিক Code Exam রিওয়ার্ড</button>
+      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('monthlyReward')">📅 Code Exam রিওয়ার্ড</button>
       <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('shopManage')">🛍️ শপ প্রোডাক্ট ম্যানেজ করো</button>
       <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('writtenManage')">✍️ Written CQ ম্যানেজ করো (AI দিয়ে খাতা চেক)</button>
     </div>
@@ -3577,93 +3581,98 @@ window.settleCouponItem = async function(slug){
   go('couponManage');
 }
 
-// ---- Teacher: monthly code-exam aggregate reward ----
-// Percentage = (total marks scored this month across all code exams) / (total possible
-// marks this month), scaled through the same Treat curve using a teacher-set monthly max.
-// Nothing is credited to a student's balance until the teacher finalizes it (per-student
-// or for everyone at once) -- before that it's just a live, recalculated-every-time preview.
-window.__monthlyRewardMonth = null;
+// ---- Teacher: code-exam reward — শেষ রিওয়ার্ডের পর থেকে এখন পর্যন্ত সব exam, ছাত্রভেদে আলাদা সর্বোচ্চ টাকা ----
+function rewardBase(p){ p = Math.round(Number(p)); if(p <= 0) return 0; if(p < 80) return Math.round((p/79)*90); const n = p - 80; return 90 + Math.round(n*(n+1)/2); }
+function rewardAmount(p, max){ return Math.round(rewardBase(p) * ((Number(max) || 0) / 300)); }
 async function renderMonthlyReward(){
-  const monthKey = window.__monthlyRewardMonth || currentMonthKey();
-  window.__monthlyRewardMonth = monthKey;
-  app.innerHTML = `${header('মাসিক Code Exam রিওয়ার্ড')}<div class="card center">লোড হচ্ছে...</div>`;
-  const [maxAmount, previewRes] = await Promise.all([
-    getMonthlyRewardMaxRemote(monthKey),
-    listMonthlyRewardsPreviewRemote(monthKey)
-  ]);
-  const rows = previewRes.data || [];
-  window.__monthlyRewardCache = rows;
-
-  let tableRows = rows.map((r,idx)=> `
-    <div class="exam-item">
+  app.innerHTML = `${header('Code Exam রিওয়ার্ড')}<div class="card center">লোড হচ্ছে...</div>`;
+  const r = await getJson('listRewardPreview', {});
+  const rows = (r && r.status === 'success') ? r.data : [];
+  const defMax = (r && r.defaultMax) || 0;
+  window.__rewardRows = rows;
+  const cards = rows.map((s, i)=> {
+    const skipped = [];
+    if(s.skippedRetake) skipped.push(`${s.skippedRetake}টা আবার-দেওয়া (retake) বাদ`);
+    if(s.skippedPublic) skipped.push(`${s.skippedPublic}টা উন্মুক্ত practice বাদ`);
+    return `<div class="exam-item">
       <div class="row-top">
         <div>
-          <h3 style="margin-bottom:2px;">${escapeHtml(r.name)}</h3>
-          <div class="meta">মোট ${r.scored}/${r.total} নম্বর (${r.percent}%) · ${r.examCount}টা exam</div>
+          <h3 style="margin-bottom:2px;">${escapeHtml(s.name)}</h3>
+          <div class="meta">${s.lastFinalizedAt ? 'শেষ রিওয়ার্ড: ' + fmtBnDate(s.lastFinalizedAt) : 'এখনো কোনো রিওয়ার্ড পায়নি — সব exam গোনা হচ্ছে'}</div>
+          <div class="meta"><b>${s.examCount}টা</b> exam গোনা হয়েছে · মোট <b>${s.scored}/${s.total}</b> (${s.percent}%)</div>
+          ${skipped.length ? `<div class="meta" style="color:#9B6A15;">⚠️ ${skipped.join(' · ')}</div>` : ''}
         </div>
-        <div class="score-big ${r.finalized?'score-pass':''}" style="font-size:19px;">৳${r.projectedAmount}</div>
+        <div class="score-big score-pass" style="font-size:19px;" id="rwProj${i}">৳${rewardAmount(s.percent, s.studentMax)}</div>
       </div>
-      ${r.finalized
-        ? `<div class="meta" style="margin-top:8px; color:var(--green); font-weight:700;">✅ ফাইনালাইজ করা হয়ে গেছে — student dashboard-এ যোগ হয়েছে</div>`
-        : `<button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="finalizeOneMonthlyReward('${r.slug}')">✅ শুধু ${escapeHtml(r.name)}-কে ফাইনালাইজ করো</button>`}
-    </div>`).join('');
-  if(rows.length===0) tableRows = `<div class="empty-state">এই মাসে কোনো code exam-এ কেউ অংশ নেয়নি।</div>`;
-
-  const unfinalizedCount = rows.filter(r=>!r.finalized).length;
-
+      ${s.exams.length ? `<details style="margin:8px 0 0 0;"><summary style="cursor:pointer; font-size:12.5px; color:var(--pencil);">📋 কোন কোন exam গোনা হয়েছে</summary>
+        <div style="margin-top:6px;">${s.exams.map(x=> `<div class="meta">• ${escapeHtml(x.title)} — ${x.score}/${x.total} · ${fmtBnDate(x.ts)}</div>`).join('')}</div></details>` : ''}
+      <label class="field-label" style="margin-top:10px;">এই ছাত্রের জন্য ১০০% পেলে সর্বোচ্চ কত টাকা (৳)</label>
+      <input type="number" id="rwMax${i}" value="${s.studentMax || ''}" min="1" step="1" placeholder="যেমন: ১০০" oninput="rwRecalc(${i})" style="margin-bottom:8px;">
+      <button class="btn btn-primary btn-block" ${s.examCount === 0 ? 'disabled' : ''} onclick="finalizeOneReward(${i})">✅ শুধু ${escapeHtml(s.name)}-কে ফাইনালাইজ করো</button>
+    </div>`;
+  }).join('');
+  const readyCount = rows.filter(s=> s.examCount > 0).length;
   app.innerHTML = `
-    ${header('মাসিক Code Exam রিওয়ার্ড')}
+    ${header('Code Exam রিওয়ার্ড')}
     <div class="card">
-      <h2>মাস বাছো</h2>
-      <input type="month" id="monthRewardPicker" value="${monthKey}" onchange="changeMonthlyRewardMonth()">
+      <h2>📅 Code Exam রিওয়ার্ড</h2>
+      <p class="hint">কোনো ছাত্র যে তারিখে শেষ রিওয়ার্ড পেয়েছে, তারপর থেকে এখন পর্যন্ত সে code দিয়ে যত exam দিয়েছে (প্রথমবারের চেষ্টা; practice ও retake বাদ) — সব মিলিয়ে মোট নম্বরের শতাংশ ধরে টাকা হিসাব হয়। যেমন ২৪টা exam মিলিয়ে ৩০০-এর মধ্যে ২৯০ পেলে (৯৭%), তুমি যত সর্বোচ্চ টাকা বাছবে সেই অনুপাতে পাবে। ফাইনালাইজ করলে সেখান থেকেই পরের পিরিয়ড নতুন করে শুরু।</p>
+      <label class="field-label">ডিফল্ট সর্বোচ্চ টাকা (যাদের জন্য আলাদা করে বাছোনি)</label>
+      <div class="row">
+        <input type="number" id="rwDefault" value="${defMax || ''}" min="0" step="1" placeholder="যেমন: ১০০" style="margin-bottom:0;">
+        <button class="btn btn-outline" onclick="saveRewardDefault()">💾 সেভ করো</button>
+      </div>
     </div>
     <div class="card">
-      <h2>এই মাসে ১০০% পেলে সর্বোচ্চ কত টাকা (৳)</h2>
-      <p class="hint">সব ছাত্রছাত্রীর জন্য একই সর্বোচ্চ সীমা — যার যত % (মোট নম্বরের ভিত্তিতে), সে সেই অনুপাতে পাবে। খালি/০ রাখলে কোনো রিওয়ার্ড হিসাব হবে না।</p>
-      <input type="number" id="monthRewardMax" value="${maxAmount || ''}" min="0" step="1" placeholder="যেমন: ১০০">
-      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="saveMonthlyRewardMax()">💾 সেভ করো</button>
-    </div>
-    <div class="card">
-      <h2>প্রতিটা ছাত্রছাত্রীর হিসাব (লাইভ প্রিভিউ)</h2>
-      ${tableRows}
-      ${unfinalizedCount>0 ? `<button class="btn btn-gold btn-block" style="margin-top:14px;" onclick="finalizeAllMonthlyRewards()">✅ সবার জন্য একসাথে ফাইনালাইজ করো (${unfinalizedCount} জন বাকি)</button>` : ''}
-      <p class="hint" style="margin-top:10px;">⚠️ ফাইনালাইজ করার আগ পর্যন্ত এই টাকা student-এর ড্যাশবোর্ডে দেখাবে না — শুধু হিসাব। ফাইনালাইজ করলেই সেটা Treat Coupon ব্যালেন্সে যোগ হয়ে যাবে এবং সংখ্যাটা লক হয়ে যাবে (পরে exam যোগ হলেও আর বদলাবে না)।</p>
+      <h2>ছাত্রছাত্রীদের লাইভ হিসাব</h2>
+      ${cards || `<div class="empty-state">শেষ রিওয়ার্ডের পর থেকে কেউ কোনো code exam দেয়নি।</div>`}
+      ${readyCount > 0 ? `<button class="btn btn-gold btn-block" style="margin-top:14px;" onclick="finalizeAllRewards()">✅ সবাইকে একসাথে ফাইনালাইজ করো (${readyCount} জন)</button>` : ''}
+      <p class="hint" style="margin-top:10px;">⚠️ ফাইনালাইজ করার আগ পর্যন্ত এটা শুধু হিসাব, ছাত্রের ব্যালেন্সে যোগ হয় না। ফাইনালাইজ করলে টাকা Treat Coupon ব্যালেন্সে যোগ হয়ে যায় আর ওই পর্যন্ত exam আর গোনা হবে না।</p>
     </div>
     <div class="center"><a class="link-back" onclick="go('couponManage')">← ফিরে যাও</a></div>
     ${creditFooter()}
   `;
 }
-window.changeMonthlyRewardMonth = function(){
-  const val = document.getElementById('monthRewardPicker').value;
-  if(!val) return;
-  window.__monthlyRewardMonth = val;
-  renderMonthlyReward();
-}
-window.saveMonthlyRewardMax = async function(){
-  const monthKey = window.__monthlyRewardMonth || currentMonthKey();
-  const maxAmount = parseInt(document.getElementById('monthRewardMax').value, 10) || 0;
+window.rwRecalc = function(i){
+  const s = (window.__rewardRows || [])[i]; if(!s) return;
+  const el = document.getElementById('rwProj' + i);
+  const max = parseInt((document.getElementById('rwMax' + i) || {}).value, 10) || 0;
+  if(el) el.textContent = '৳' + rewardAmount(s.percent, max);
+};
+window.saveRewardDefault = async function(){
+  const maxAmount = parseInt(document.getElementById('rwDefault').value, 10) || 0;
   toast('সেভ হচ্ছে...');
-  const res = await setMonthlyRewardMaxRemote(monthKey, maxAmount);
+  const res = await postToScript('setRewardDefaultMax', { maxAmount });
   if(res){ toast('সেভ হয়েছে ✅'); renderMonthlyReward(); }
-}
-window.finalizeOneMonthlyReward = async function(slug){
-  const monthKey = window.__monthlyRewardMonth || currentMonthKey();
-  if(!confirm('এই ছাত্র/ছাত্রীর এই মাসের রিওয়ার্ড ফাইনালাইজ করলে সংখ্যাটা লক হয়ে যাবে এবং তার ব্যালেন্সে যোগ হবে। এগোবে?')) return;
+};
+window.finalizeOneReward = async function(i){
+  const s = (window.__rewardRows || [])[i]; if(!s) return;
+  const max = parseInt((document.getElementById('rwMax' + i) || {}).value, 10) || 0;
+  if(max <= 0){ toast('আগে এই ছাত্রের জন্য সর্বোচ্চ টাকা বাছো'); return; }
+  if(!confirm(`${s.name}: ${s.examCount}টা exam, মোট ${s.percent}% → ৳${rewardAmount(s.percent, max)} (১০০%-এ সর্বোচ্চ ৳${max})।\nফাইনালাইজ করলে এই পর্যন্ত exam গোনা শেষ হবে, পরের রিওয়ার্ড নতুন exam থেকে শুরু। এগোবে?`)) return;
   toast('ফাইনালাইজ হচ্ছে...');
-  await finalizeMonthlyRewardRemote(slug, monthKey);
-  toast('ফাইনালাইজ হয়েছে ✅');
-  renderMonthlyReward();
-}
-window.finalizeAllMonthlyRewards = async function(){
-  const monthKey = window.__monthlyRewardMonth || currentMonthKey();
-  if(!confirm('এই মাসের বাকি সবার রিওয়ার্ড একসাথে ফাইনালাইজ করবে — সংখ্যাগুলো লক হয়ে যাবে এবং সবার ব্যালেন্সে যোগ হবে। এগোবে?')) return;
-  toast('সবার জন্য ফাইনালাইজ হচ্ছে...');
-  const res = await finalizeMonthlyRewardsForAllRemote(monthKey);
-  if(res) toast(`${res.studentCount} জনকে মোট ৳${res.totalAwarded} দেওয়া হয়েছে ✅`);
-  renderMonthlyReward();
-}
-
-
+  const res = await postToScriptRaw('finalizePeriodReward', { slug: s.slug, maxAmount: max });
+  if(res && res.status === 'success'){ toast(`✅ ${s.name}-কে ৳${res.amount} দেওয়া হয়েছে`); renderMonthlyReward(); }
+  else toast(res && res.message === 'no_exams' ? 'গোনার মতো নতুন exam নেই' : 'ফাইনালাইজ করা যায়নি, আবার চেষ্টা করো');
+};
+window.finalizeAllRewards = async function(){
+  const rows = window.__rewardRows || [];
+  const amounts = {};
+  let missing = [];
+  rows.forEach((s, i)=>{
+    if(s.examCount === 0) return;
+    const max = parseInt((document.getElementById('rwMax' + i) || {}).value, 10) || 0;
+    if(max > 0) amounts[s.slug] = max; else missing.push(s.name);
+  });
+  if(missing.length){ toast('এদের টাকা বাছো: ' + missing.join(', ')); return; }
+  const n = Object.keys(amounts).length;
+  if(!n){ toast('কেউ নেই'); return; }
+  if(!confirm(`${n} জনের রিওয়ার্ড (প্রত্যেকের নিজের বাছা সর্বোচ্চ টাকা অনুযায়ী) একসাথে ফাইনালাইজ করবে। এগোবে?`)) return;
+  toast('ফাইনালাইজ হচ্ছে...');
+  const res = await postToScriptRaw('finalizePeriodRewardsForAll', { amounts: JSON.stringify(amounts) });
+  if(res && res.status === 'success'){ toast(`${res.studentCount} জনকে মোট ৳${res.totalAwarded} দেওয়া হয়েছে ✅`); renderMonthlyReward(); }
+  else toast('ফাইনালাইজ করা যায়নি, আবার চেষ্টা করো');
+};
 
 // ================= SHOP (spend Treat Coupon balance on products) =================
 async function getShopProducts(){
