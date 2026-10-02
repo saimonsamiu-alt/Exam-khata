@@ -8215,6 +8215,383 @@ window.doSmartSearch = async function(){
   injectRev();
 })();
 
+
+// =====================================================================================
+// REVISION EXTENSION (frontend) — বই TOC · HW অ্যাসাইন · টপিক override · ছাত্রের "আজকের HW"
+// =====================================================================================
+(function(){
+  const __rx = render;
+  render = function(){
+    const m = { revTaxonomy:revTaxRender, revAssign:revAsgRender, revOverride:revOvRender, revToday:revTodayRender }[state.screen];
+    if(m){ syncLogoutFab(); m(); return; }
+    __rx();
+  };
+  const val = id => (document.getElementById(id) || {}).value || '';
+  const SK = () => Object.keys(NOTES_SUBJECTS);
+  const subjOpts = (sel) => SK().map(k => `<option value="${k}" ${sel === k ? 'selected' : ''}>${NOTES_SUBJECTS[k].icon} ${NOTES_SUBJECTS[k].label}</option>`).join('');
+  const uniq = a => [...new Set(a)];
+  async function loadTax(force){
+    if(window.__revTax && !force) return window.__revTax;
+    const r = await getJson('revisionTaxonomy', {});
+    window.__revTax = (r && r.status === 'success') ? r.data : [];
+    return window.__revTax;
+  }
+
+  // ---------------- শিক্ষক ১: বইয়ের সূচিপত্র থেকে Taxonomy ----------------
+  window.revTaxOpen = function(){ go('revTaxonomy'); };
+  async function revTaxRender(){
+    app.innerHTML = header('বই TOC / Taxonomy') + `<div class="card center">লোড হচ্ছে...</div>`;
+    await loadTax(true);
+    app.innerHTML = `${header('বই TOC / Taxonomy')}
+      <div class="card"><h2>🌱 বইয়ের তালিকা এক ক্লিকে লোড করো</h2>
+        <p class="hint">পদার্থ, রসায়ন ও উচ্চতর গণিত (১ম-২য় পত্র) — অধ্যায় ও টপিকের তালিকা আগে থেকেই অ্যাপে আছে। চাপলে সব Taxonomy-তে বসে যাবে, AI লাগবে না। আবার চাপলে ডুপ্লিকেট হয় না। জীববিজ্ঞান ও ICT-র তালিকা পেলে যোগ হবে — ততদিন নিচের ছবি দিয়ে ইম্পোর্ট করতে পারো।</p>
+        <button class="btn btn-gold btn-block" id="seedBtn" onclick="revSeedTax()">🌱 তালিকা লোড করো</button><div id="seedStatus" style="margin-top:8px;"></div></div>
+      <div class="card"><h2>🏷️ MCQ exam-এর প্রশ্ন ট্যাগ করো</h2>
+        <p class="hint">মিশ্র exam-এ (পদার্থ + রসায়ন + গণিত একসাথে) প্রতিটা প্রশ্ন AI আলাদা করে বিষয়/অধ্যায়/টপিকে ট্যাগ করে — তাহলে ছাত্র শুধু পদার্থ বাছলে গণিতের প্রশ্ন আসে না, আর "খুঁজে দেখো"-ও ঠিক কাজ করে। নতুন exam সেভ করলে নিজেই ট্যাগ হয়; পুরনো exam-গুলোর জন্য একবার চাপো।</p>
+        <button class="btn btn-primary btn-block" id="tagExBtn" onclick="revTagExams()">🏷️ ট্যাগ-না-হওয়া প্রশ্ন ট্যাগ করো</button><div id="tagExStatus" style="margin-top:8px;"></div></div>
+      <div class="card"><h2>📖 বইয়ের সূচিপত্রের ছবি দাও</h2>
+        <p class="hint">বইয়ের "সূচিপত্র" পাতার ছবি তুললে AI অধ্যায় › টপিক › সাবটপিক আলাদা করে সাজাবে। একসাথে একাধিক ছবিও দিতে পারো (একই অধ্যায়ের পরের পাতা হলে নিচে অধ্যায়ের নাম লিখে দাও)। এরপর HW ট্যাগিং, অ্যাসাইন আর রিভিশন সব এই নামগুলোই ধরবে।</p>
+        <label class="field-label">বিষয়</label><select id="tcSubj">${subjOpts('chemistry')}</select>
+        <label class="field-label">অধ্যায়ের নাম (ঐচ্ছিক — ছবিতে শিরোনাম না থাকলে)</label>
+        <input type="text" id="tcHint" placeholder="যেমন: ১. পরিবেশ রসায়ন (Environmental Chemistry)">
+        <label class="field-label">সূচিপত্রের ছবি (একাধিক হলে একসাথে বাছো)</label>
+        <input type="file" id="tcFiles" accept="image/*" multiple style="margin-bottom:10px;">
+        <label class="field-label">অথবা লেখা পেস্ট করো (ছবি ছাড়া)</label>
+        <textarea id="tcText" style="min-height:90px;" placeholder="১.৩ গ্যাস সূত্রসমূহ&#10;১.৩.১ গ্যাসের আয়তন, চাপ ও তাপমাত্রার একক ..."></textarea>
+        <button class="btn btn-primary btn-block" id="tcBtn" onclick="revTaxImport()">🤖 AI দিয়ে ভাগ করো</button>
+        <div id="tcStatus" style="margin-top:10px;"></div></div>
+      <div class="card"><h2>🗂️ এখন যা আছে</h2>
+        <select id="tcView" onchange="revTaxDraw()"><option value="">— সব বিষয় —</option>${subjOpts('')}</select>
+        <div id="tcTree"></div></div>
+      <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+    revTaxDraw();
+  }
+  window.revTaxDraw = function(){
+    const f = val('tcView'), el = document.getElementById('tcTree'); if(!el) return;
+    const rows = (window.__revTax || []).filter(t => !f || t.subject === f);
+    if(!rows.length){ el.innerHTML = `<div class="empty-state">এখনো কিছু নেই।</div>`; return; }
+    el.innerHTML = uniq(rows.map(t => t.subject)).map(s => {
+      const rs = rows.filter(t => t.subject === s);
+      return `<h3 style="margin-top:12px;">${NOTES_SUBJECTS[s] ? NOTES_SUBJECTS[s].icon + ' ' + NOTES_SUBJECTS[s].label : escapeHtml(s)}</h3>` +
+        uniq(rs.map(t => t.chapter)).map(c => {
+          const cs = rs.filter(t => t.chapter === c);
+          return `<details style="margin:6px 0;"><summary style="cursor:pointer;font-weight:700;">${escapeHtml(c)} <span class="meta">(${uniq(cs.map(t => t.topic)).length}টা টপিক)</span></summary>` +
+            uniq(cs.map(t => t.topic)).map(tp => {
+              const subs = cs.filter(t => t.topic === tp && t.subtopic).map(t => t.subtopic);
+              return `<div style="margin:6px 0 6px 14px;"><div>${escapeHtml(tp)}</div>${subs.map(x => `<div class="meta" style="margin-left:14px;">• ${escapeHtml(x)}</div>`).join('')}</div>`;
+            }).join('') + `</details>`;
+        }).join('');
+    }).join('');
+  };
+  window.revSeedTax = async function(){
+    const b = document.getElementById('seedBtn'), s = document.getElementById('seedStatus'); b.disabled = true; s.innerHTML = `<span class="hint">লোড হচ্ছে...</span>`;
+    const res = await postToScriptRaw('revisionSeedTaxonomy', {});
+    b.disabled = false;
+    if(res && res.status === 'success'){ s.innerHTML = `<div style="color:var(--green);font-weight:700;">✅ ${res.added}টা নতুন এন্ট্রি যোগ হয়েছে (মোট ${res.total}টা)</div>`; await loadTax(true); revTaxDraw(); }
+    else s.innerHTML = `<div style="color:var(--red);">❌ লোড হয়নি, আবার চেষ্টা করো</div>`;
+  };
+  window.revTagExams = async function(){
+    const b = document.getElementById('tagExBtn'), s = document.getElementById('tagExStatus'); b.disabled = true;
+    let done = 0, rem = null, guard = 0, stuck = false, err = false;
+    while(guard++ < 30){
+      s.innerHTML = `<span class="hint">🤖 ট্যাগ হচ্ছে... ${done}টা হয়েছে${rem !== null ? ', বাকি ' + rem + 'টা' : ''} — পেজ বন্ধ কোরো না</span>`;
+      const r = await postToScriptRaw('revisionTagExams', {});
+      if(!r || r.status !== 'success'){ err = true; break; }
+      done += r.tagged; rem = r.remaining;
+      if(r.remaining <= 0) break;
+      if(r.tagged === 0){ stuck = true; break; }
+    }
+    s.innerHTML = err ? `<div style="color:var(--red);">❌ সংযোগ/সার্ভার সমস্যা, আবার চেষ্টা করো</div>`
+      : stuck ? `<div style="color:#9B6A15;">⚠️ ${done}টা হয়েছে, বাকি ${rem}টায় AI এখন ট্যাগ করতে পারছে না (কোটা শেষ?) — পরে আবার চাপো</div>`
+      : `<div style="color:var(--green);font-weight:700;">✅ ${done}টা প্রশ্ন ট্যাগ হয়েছে, বাকি নেই</div>`;
+    b.disabled = false;
+  };
+  window.revTaxImport = async function(){
+    const subject = val('tcSubj'), hint = val('tcHint').trim(), text = val('tcText').trim();
+    const files = Array.from((document.getElementById('tcFiles') || {}).files || []);
+    if(!files.length && !text){ toast('ছবি বাছো অথবা লেখা পেস্ট করো'); return; }
+    const st = document.getElementById('tcStatus'), btn = document.getElementById('tcBtn'); btn.disabled = true;
+    const msg = { ai_unavailable:'AI এখন পড়তে পারেনি, পরে চেষ্টা করো', parse_failed:'ছবি থেকে সূচিপত্র বোঝা যায়নি — আরও পরিষ্কার ছবি দাও', invalid_subject:'বিষয় ঠিক নেই' };
+    let total = 0, lines = [];
+    const jobs = files.map((f, i) => ({ label:'ছবি ' + (i + 1), file:f })).concat(text ? [{ label:'পেস্ট করা লেখা', text }] : []);
+    for(const j of jobs){
+      st.innerHTML = lines.join('') + `<div class="hint">⏳ ${j.label} পড়া হচ্ছে...</div>`;
+      let params = { subject, chapterHint:hint };
+      if(j.file){ try{ const c = await compressImageFile(j.file, 1600, 0.85); params.imageBase64 = c.base64; params.imageMimeType = c.mimeType; }catch(e){ lines.push(`<div style="color:var(--red)">❌ ${j.label}: ছবি পড়া যায়নি</div>`); continue; } }
+      else params.text = j.text;
+      const res = await postToScriptRaw('revisionTocImport', params);
+      if(res && res.status === 'success'){ total += res.count; lines.push(`<div style="color:var(--green)">✅ ${j.label}: ${res.count}টা লাইন যোগ হয়েছে</div>`); }
+      else lines.push(`<div style="color:var(--red)">❌ ${j.label}: ${msg[res && res.message] || 'ব্যর্থ হয়েছে'}</div>`);
+    }
+    st.innerHTML = lines.join('') + (total ? `<div class="meta">মোট ${total}টা এন্ট্রি (আগে থেকে থাকাগুলো আবার যোগ হয় না)</div>` : '');
+    btn.disabled = false;
+    await loadTax(true); revTaxDraw();
+  };
+
+  // ---------------- শিক্ষক ২: ছাত্রকে HW প্রশ্ন অ্যাসাইন ----------------
+  window.revAsgOpen = function(){ go('revAssign'); };
+  async function revAsgRender(){
+    app.innerHTML = header('HW অ্যাসাইন') + `<div class="card center">লোড হচ্ছে...</div>`;
+    const [tax, studs, lst] = await Promise.all([loadTax(true), listStudentsRemote(), getJson('revisionAssignList', {})]);
+    window.__revAsgStuds = studs; window.__revAsgList = (lst && lst.data) || [];
+    const nameOf = s => { const x = studs.find(y => y.slug === s); return x ? x.name : s; };
+    const rows = window.__revAsgList.map((a, i) => `<div class="exam-item">
+        <div class="meta"><span class="q-tag">${escapeHtml(a.date)}</span> ${escapeHtml(a.studentName)} · ${escapeHtml(a.chapter)} › ${escapeHtml(a.topic)}${a.subtopic ? ' › ' + escapeHtml(a.subtopic) : ''}</div>
+        <div style="font-size:13.5px;margin-top:4px;">${a.hasImage ? '🖼️ ' : ''}${escapeHtml(String(a.text).slice(0, 120))}</div>
+        <div class="meta">${a.answeredBy} জন উত্তর দিয়েছে · <a class="link-back" onclick="revAsgDel('${a.id}')">🗑️ মুছো</a></div></div>`).join('') || `<div class="empty-state">এখনো কিছু অ্যাসাইন করোনি।</div>`;
+    app.innerHTML = `${header('HW অ্যাসাইন')}
+      <div class="card"><h2>📌 নতুন প্রশ্ন অ্যাসাইন করো</h2>
+        ${tax.length ? '' : `<p class="hint" style="color:var(--red);">আগে "বই TOC" থেকে সূচিপত্র ইম্পোর্ট করো — তাহলে নিচে অধ্যায়/টপিক বাছতে পারবে।</p>`}
+        <label class="field-label">কার জন্য</label>
+        <select id="asStud"><option value="">সব ছাত্র</option>${studs.map(s => `<option value="${s.slug}">${escapeHtml(s.name)}</option>`).join('')}</select>
+        <label class="field-label">কবে থেকে দেখাবে</label><input type="date" id="asDate" value="${todayStr()}">
+        <label class="field-label">বিষয়</label><select id="asSubj" onchange="revAsgFill('subj')">${subjOpts('chemistry')}</select>
+        <label class="field-label">অধ্যায়</label><select id="asChap" onchange="revAsgFill('chap')"></select>
+        <label class="field-label">টপিক</label><select id="asTopic" onchange="revAsgFill('topic')"></select>
+        <label class="field-label">সাবটপিক (ঐচ্ছিক)</label><select id="asSub"></select>
+        <label class="field-label">প্রশ্ন (লেখা)</label><textarea id="asText" style="min-height:70px;"></textarea>
+        <label class="field-label">অথবা প্রশ্নের ছবি</label><input type="file" id="asImg" accept="image/*" style="margin-bottom:10px;">
+        <label class="field-label">মডেল উত্তর (ঐচ্ছিক — দিলে AI আরও নির্ভুল মেলাবে)</label><textarea id="asModel" style="min-height:60px;"></textarea>
+        <button class="btn btn-primary btn-block" id="asBtn" onclick="revAsgSave()">✅ অ্যাসাইন করো</button></div>
+      <div class="card"><h3>অ্যাসাইন করা প্রশ্ন (${window.__revAsgList.length})</h3>${rows}</div>
+      <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+    revAsgFill('subj');
+  }
+  window.revAsgFill = function(level){
+    const tax = window.__revTax || [], s = val('asSubj');
+    const opts = (arr, ph) => (ph ? `<option value="">${ph}</option>` : '') + arr.map(x => `<option>${escapeHtml(x)}</option>`).join('');
+    const set = (id, html) => { const e = document.getElementById(id); if(e) e.innerHTML = html; };
+    if(level === 'subj') set('asChap', opts(uniq(tax.filter(t => t.subject === s).map(t => t.chapter))));
+    if(level === 'subj' || level === 'chap'){
+      const c = val('asChap'); set('asTopic', opts(uniq(tax.filter(t => t.subject === s && t.chapter === c).map(t => t.topic))));
+    }
+    const c2 = val('asChap'), tp = val('asTopic');
+    set('asSub', opts(tax.filter(t => t.subject === s && t.chapter === c2 && t.topic === tp && t.subtopic).map(t => t.subtopic), '— সাবটপিক নির্দিষ্ট নয় —'));
+  };
+  window.revAsgSave = async function(){
+    const text = val('asText').trim(), f = (document.getElementById('asImg').files || [])[0];
+    if(!val('asTopic')){ toast('অধ্যায় ও টপিক বাছো (আগে TOC ইম্পোর্ট করতে হবে)'); return; }
+    if(!text && !f){ toast('প্রশ্ন লেখো অথবা ছবি দাও'); return; }
+    const b = document.getElementById('asBtn'); b.disabled = true;
+    const params = { slug:val('asStud'), date:val('asDate'), subject:val('asSubj'), chapter:val('asChap'), topic:val('asTopic'), subtopic:val('asSub'), text, modelAnswerText:val('asModel') };
+    if(f){ try{ const c = await compressImageFile(f, 1200, 0.78); params.imageBase64 = c.base64; params.imageMimeType = c.mimeType; }catch(e){ toast('ছবি পড়া যায়নি'); b.disabled = false; return; } }
+    const res = await postToScriptRaw('revisionAssignSave', params);
+    if(res && res.status === 'success'){ toast('অ্যাসাইন হয়েছে ✅'); revAsgRender(); } else { b.disabled = false; toast('সেভ হয়নি, আবার চেষ্টা করো'); }
+  };
+  window.revAsgDel = async function(id){
+    if(!confirm('এই প্রশ্নটা মুছে ফেলবে?')) return;
+    await postToScriptRaw('revisionAssignDelete', { id }); revAsgRender();
+  };
+
+  // ---------------- শিক্ষক ৩: টপিকের স্তর override ----------------
+  window.revOvOpen = function(){ go('revOverride'); };
+  async function revOvRender(){
+    app.innerHTML = header('রিভিশন কন্ট্রোল') + `<div class="card center">লোড হচ্ছে...</div>`;
+    const studs = await listStudentsRemote(); window.__revOvStuds = studs;
+    app.innerHTML = `${header('রিভিশন কন্ট্রোল')}
+      <div class="card"><h2>🎚️ কোন টপিক কতবার আসবে</h2>
+        <p class="hint">AI ছাত্রের ফল দেখে নিজে স্তর ঠিক করে (🔴দুর্বল ৩ দিনে ফেরে · 🟡মাঝারি ১০ · 🟢সহজ ৩০)। তুমি চাইলে যেকোনো টপিকের স্তর নিজে ঠিক করে দিতে পারো, বা "বাদ" দিলে সেটা আর আসবে না। কিছু না করলে AI-ই চালাবে।</p>
+        <label class="field-label">ছাত্র</label>
+        <select id="ovStud" onchange="revOvLoad()"><option value="">— বাছো —</option>${studs.map(s => `<option value="${s.slug}">${escapeHtml(s.name)}</option>`).join('')}</select>
+        <div id="ovList"></div></div>
+      <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+  }
+  window.revOvLoad = async function(){
+    const slug = val('ovStud'), el = document.getElementById('ovList'); if(!slug){ el.innerHTML = ''; return; }
+    el.innerHTML = `<div class="hint" style="margin-top:10px;">লোড হচ্ছে...</div>`;
+    const res = await postToScriptRaw('revisionOverrideList', { slug });
+    const order = { weak:0, medium:1, easy:2, 'new':3 };
+    const T = ((res && res.topics) || []).sort((a, b) => (order[a.level] - order[b.level]) || a.topic.localeCompare(b.topic));
+    window.__revOvT = T;
+    const ic = { weak:'🔴', medium:'🟡', easy:'🟢', 'new':'⚪' }, lb = { weak:'দুর্বল', medium:'মাঝারি', easy:'সহজ', 'new':'নতুন' };
+    el.innerHTML = T.length ? T.map((t, i) => `<div class="exam-item">
+        <div class="row-top"><div><b>${escapeHtml(t.topic)}</b><div class="meta">${NOTES_SUBJECTS[t.subject] ? NOTES_SUBJECTS[t.subject].label : escapeHtml(t.subject || 'অন্যান্য')} · AI: ${ic[t.autoLevel]} ${lb[t.autoLevel]} · ভুল ${t.bad} / আংশিক ${t.part} / ঠিক ${t.ok}${t.last ? '' : ' · এখনো revise হয়নি'}</div></div></div>
+        <select onchange="revOvSet(${i}, this.value)" style="margin:8px 0 0 0;">
+          <option value="" ${!t.ov ? 'selected' : ''}>🤖 AI অটো</option>
+          <option value="weak" ${t.ov === 'weak' ? 'selected' : ''}>🔴 দুর্বল (ঘন ঘন)</option>
+          <option value="medium" ${t.ov === 'medium' ? 'selected' : ''}>🟡 মাঝারি</option>
+          <option value="easy" ${t.ov === 'easy' ? 'selected' : ''}>🟢 সহজ (কম আসবে)</option>
+          <option value="skip" ${t.ov === 'skip' ? 'selected' : ''}>⛔ আর লাগবে না</option></select></div>`).join('')
+      : `<div class="empty-state">এই ছাত্রের এখনো কোনো টপিক নেই (HW/MCQ/অ্যাসাইন করা প্রশ্ন দিলে আসবে)।</div>`;
+  };
+  window.revOvSet = async function(i, level){
+    const t = (window.__revOvT || [])[i], slug = val('ovStud'); if(!t || !slug) return;
+    const res = await postToScriptRaw('revisionOverrideSet', { slug, tk:t.tk, level });
+    toast(res && res.status === 'success' ? (level ? 'সেভ হয়েছে ✅' : 'AI অটোতে ফেরানো হয়েছে') : 'সেভ হয়নি');
+    if(res && res.status === 'success') t.ov = level;
+  };
+
+  // ---------------- ছাত্র: শিক্ষকের দেওয়া আজকের HW ----------------
+  window.revTodayOpen = function(){ if(!getLoggedStudent()){ go('studentAuth'); return; } go('revToday'); };
+  async function revTodayRender(){
+    const stud = getLoggedStudent(); if(!stud){ go('studentAuth'); return; }
+    app.innerHTML = header('আজকের HW') + `<div class="card center">লোড হচ্ছে...</div>`;
+    const res = await postToScriptRaw('revisionAssignToday', { slug:stud.slug, today:todayStr() });
+    const all = (res && res.data) || [], pend = all.filter(x => !x.done), done = all.filter(x => x.done);
+    window.__revTodayItem = pend[0] || null;
+    const q = pend[0];
+    const doneHtml = done.slice(0, 8).map(x => `<div class="review-block"><div class="meta">${escapeHtml(x.topic)} · ${escapeHtml(x.date)}</div>
+        <div class="review-ans ${x.percent >= 50 ? 'right' : 'wrong'}">${x.percent}% — ${escapeHtml(x.feedback || '')}</div></div>`).join('');
+    app.innerHTML = `${header('আজকের HW')}
+      <div class="card"><h2>📌 শিক্ষকের দেওয়া HW</h2>
+        <p class="hint">বাকি আছে: <b>${pend.length}</b>টা · একবারে একটা প্রশ্ন দেখাবে। খাতায় সমাধান করে ছবি তুলে জমা দাও — AI কতটুকু পেরেছো দেখে তোমার রিভিশনের সময়সূচি ঠিক করবে (যেটা কম পারবে সেটা বেশি আসবে)।</p>
+        ${q ? `<div class="q-block"><div class="meta"><span class="q-tag">${escapeHtml(q.chapter)} › ${escapeHtml(q.topic)}${q.subtopic ? ' › ' + escapeHtml(q.subtopic) : ''}</span> ${escapeHtml(q.date)}</div>
+            <div class="q-text" style="margin-top:8px;">${escapeHtml(q.text || '')}</div>
+            ${q.imageUrl ? `<img src="${driveImg(q.imageUrl)}" style="max-width:100%;border-radius:8px;margin-bottom:10px;">` : ''}
+            <input type="file" id="tdFile" accept="image/*" style="margin-bottom:10px;">
+            <button class="btn btn-primary btn-block" id="tdBtn" onclick="revTodaySubmit()">📤 জমা দাও</button>
+            <div id="tdRes" style="margin-top:12px;"></div></div>`
+          : `<div class="empty-state">🎉 আজকের জন্য কোনো HW বাকি নেই।</div><button class="btn btn-gold btn-block" onclick="revOpen()">🔁 আজকের রিভিশনে যাও</button>`}</div>
+      ${doneHtml ? `<div class="card"><h3>আগে যা জমা দিয়েছো</h3>${doneHtml}</div>` : ''}
+      <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>${creditFooter()}`;
+    renderAllMath(app);
+  }
+  window.revTodaySubmit = async function(){
+    const stud = getLoggedStudent(), q = window.__revTodayItem, f = (document.getElementById('tdFile') || {}).files;
+    if(!stud || !q) return;
+    if(!f || !f[0]){ toast('আগে খাতার ছবি বাছো'); return; }
+    const btn = document.getElementById('tdBtn'), out = document.getElementById('tdRes'); btn.disabled = true;
+    out.innerHTML = `<p class="hint">AI চেক করছে, একটু অপেক্ষা করো...</p>`;
+    let c; try{ c = await compressImageFile(f[0], 1200, 0.75); }catch(e){ out.innerHTML = `<p class="hint">ছবি পড়া যায়নি।</p>`; btn.disabled = false; return; }
+    const res = await postToScriptRaw('revisionAssignAnswer', { slug:stud.slug, id:q.id, base64:c.base64, mimeType:c.mimeType, today:todayStr() });
+    if(res && res.status === 'success'){
+      out.innerHTML = `<div class="stamp ${res.percent >= 50 ? '' : 'fail'}">${res.percent}%</div>
+        <div class="review-ans ${res.percent >= 50 ? 'right' : 'wrong'}" style="margin-top:10px;">${escapeHtml(res.feedback || '')}</div>
+        ${res.modelAnswerText ? `<details style="margin-top:8px;"><summary>✅ মডেল উত্তর দেখো</summary><div style="white-space:pre-wrap;">${escapeHtml(res.modelAnswerText)}</div></details>` : ''}
+        <button class="btn btn-gold btn-block" style="margin-top:10px;" onclick="revTodayRender2()">পরের প্রশ্ন →</button>`;
+      renderAllMath(out);
+    } else {
+      btn.disabled = false;
+      out.innerHTML = `<p class="hint" style="color:var(--red);">❌ ${res && res.message === 'ai_unavailable' ? 'AI এখন চেক করতে পারেনি, একটু পরে আবার জমা দাও' : 'জমা হয়নি, আবার চেষ্টা করো'}</p>`;
+    }
+  };
+  window.revTodayRender2 = function(){ revTodayRender(); };
+
+  // ---------------- ড্যাশবোর্ডে বাটন ----------------
+  function injectRx(){
+    const t = document.querySelector('#app button[data-revt]');
+    if(t && t.parentElement && !t.parentElement.querySelector('[data-rx]')){
+      [['📖 বই TOC / Taxonomy', revTaxOpen], ['📌 HW অ্যাসাইন করো', revAsgOpen], ['🎚️ রিভিশন কন্ট্রোল', revOvOpen]].forEach(([label, fn]) => {
+        const b = document.createElement('button'); b.className = 'btn btn-outline btn-block'; b.setAttribute('data-rx', '1');
+        b.textContent = label; b.onclick = fn; t.parentElement.appendChild(b);
+      });
+    }
+    const s = document.querySelector('#app button[data-rev]');
+    if(s && s.parentElement && !s.parentElement.querySelector('[data-rxs]')){
+      const b = document.createElement('button'); b.className = 'btn btn-outline btn-block'; b.setAttribute('data-rxs', '1');
+      b.textContent = '📌 শিক্ষকের দেওয়া আজকের HW'; b.onclick = revTodayOpen; s.parentElement.appendChild(b);
+    }
+  }
+  new MutationObserver(injectRx).observe(document.getElementById('app'), { childList:true, subtree:true });
+  injectRx();
+})();
+
+
+// =====================================================================================
+// কতদূর পড়ানো হয়েছে (শিক্ষক) — ছাত্র x বিষয় x অধ্যায় x টপিক x সাবটপিক
+// =====================================================================================
+(function(){
+  const __rc = render;
+  render = function(){ if(state.screen === 'revCovered'){ syncLogoutFab(); revCovRender(); return; } __rc(); };
+  const val = id => (document.getElementById(id) || {}).value || '';
+  const uniq = a => [...new Set(a)];
+  const sOpts = sel => Object.keys(NOTES_SUBJECTS).map(k => `<option value="${k}" ${sel === k ? 'selected' : ''}>${NOTES_SUBJECTS[k].icon} ${NOTES_SUBJECTS[k].label}</option>`).join('');
+  const lk = l => l.join('|');
+  window.revCovOpen = function(){ go('revCovered'); };
+
+  async function revCovRender(){
+    app.innerHTML = header('কতদূর পড়ানো হয়েছে') + `<div class="card center">লোড হচ্ছে...</div>`;
+    const [studs, sum] = await Promise.all([listStudentsRemote(), postToScriptRaw('revisionCoveredSummary', {})]);
+    window.__cov = { studs, sum:(sum && sum.map) || {}, open:{}, set:new Set() };
+    app.innerHTML = `${header('কতদূর পড়ানো হয়েছে')}
+      <div class="card"><h2>✅ কার কোন অংশ শেষ হয়েছে</h2>
+        <p class="hint">ছাত্র আর বিষয় বাছো, তারপর যে অধ্যায়/টপিক/সাবটপিক ক্লাসে শেষ হয়েছে সেগুলোতে টিক দাও (অধ্যায়ে টিক দিলে ভেতরের সব টিক হয়ে যায়)। রিভিশন তখন শুধু টিক-দেওয়া অংশ থেকেই আসবে। কোনো বিষয়ে কিছুই টিক না দিলে ওই বিষয়ে আগের মতো সবকিছু আসবে। তোমার অ্যাসাইন করা HW প্রশ্ন সবসময় আসবে।</p>
+        <label class="field-label">ছাত্র</label>
+        <select id="cvStud" onchange="revCovLoad()"><option value="">— বাছো —</option>${studs.map(s => `<option value="${s.slug}">${escapeHtml(s.name)}</option>`).join('')}</select>
+        <label class="field-label">বিষয়</label>
+        <select id="cvSubj" onchange="revCovLoad()">${sOpts('chemistry')}</select>
+        <div id="cvBody"></div></div>
+      <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+  }
+
+  window.revCovLoad = async function(){
+    const C = window.__cov, slug = val('cvStud'), subj = val('cvSubj'), body = document.getElementById('cvBody');
+    if(!slug){ body.innerHTML = ''; return; }
+    body.innerHTML = `<div class="hint" style="margin-top:10px;">লোড হচ্ছে...</div>`;
+    const [tax, res] = await Promise.all([(async () => { const r = await getJson('revisionTaxonomy', {}); return (r && r.status === 'success') ? r.data : []; })(), postToScriptRaw('revisionCoveredGet', { slug })]);
+    C.slug = slug; C.subj = subj;
+    C.set = new Set(((res && res.leaves) || []).map(lk));
+    // taxonomy -> অধ্যায় > টপিক > leaf
+    const rows = tax.filter(t => t.subject === subj);
+    const chs = [], topics = [];
+    uniq(rows.map(t => t.chapter)).forEach(cn => {
+      const ch = { name:cn, leaves:[], topics:[] }; chs.push(ch);
+      uniq(rows.filter(t => t.chapter === cn).map(t => t.topic)).forEach(tn => {
+        const leaves = rows.filter(t => t.chapter === cn && t.topic === tn).map(t => [t.subject, t.chapter, t.topic, t.subtopic || '']);
+        const tp = { name:tn, leaves, subs:rows.filter(t => t.chapter === cn && t.topic === tn && t.subtopic).map(t => t.subtopic), ci:chs.length - 1 };
+        ch.topics.push(topics.length); topics.push(tp); ch.leaves.push(...leaves);
+      });
+    });
+    C.chs = chs; C.topics = topics;
+    revCovDraw();
+  };
+
+  const state3 = leaves => { const n = leaves.filter(l => window.__cov.set.has(lk(l))).length; return n === 0 ? 0 : (n === leaves.length ? 2 : 1); };
+  function revCovDraw(){
+    const C = window.__cov, body = document.getElementById('cvBody'); if(!body) return;
+    if(!C.chs.length){ body.innerHTML = `<div class="empty-state" style="margin-top:10px;">এই বিষয়ের কোনো অধ্যায় নেই — আগে "বই TOC / Taxonomy" থেকে তালিকা লোড করো।</div>`; return; }
+    const totalT = C.topics.length, doneT = C.topics.filter(t => state3(t.leaves) === 2).length;
+    body.innerHTML = `<div class="meta" style="margin:12px 0 8px 0;"><b>${doneT}/${totalT}</b>টা টপিক শেষ · <a class="link-back" onclick="revCovAll(true)">সব শেষ করো</a> · <a class="link-back" onclick="revCovAll(false)">সব খালি করো</a></div>` +
+      C.chs.map((ch, ci) => {
+        const s = state3(ch.leaves), d = ch.topics.filter(ti => state3(C.topics[ti].leaves) === 2).length;
+        return `<details ${C.open[ci] ? 'open' : ''} ontoggle="window.__cov.open[${ci}]=this.open" style="border:1px solid var(--paper-edge);border-radius:10px;padding:8px 12px;margin-bottom:8px;background:${s === 2 ? '#F1FAF4' : '#FCFDFE'};">
+          <summary style="cursor:pointer;font-weight:700;">
+            <input type="checkbox" ${s === 2 ? 'checked' : ''} data-ind="${s === 1 ? 1 : 0}" onclick="event.stopPropagation()" onchange="revCovToggle('c',${ci},this.checked)" style="display:inline-block;width:auto;margin:0 6px 0 0;">
+            ${escapeHtml(ch.name)} <span class="meta" style="font-weight:400;">(${d}/${ch.topics.length})</span></summary>
+          ${ch.topics.map(ti => { const t = C.topics[ti], ts = state3(t.leaves);
+            return `<div style="margin:6px 0 6px 6px;"><label style="display:flex;gap:6px;align-items:flex-start;cursor:pointer;">
+                <input type="checkbox" ${ts === 2 ? 'checked' : ''} onchange="revCovToggle('t',${ti},this.checked)" style="display:inline-block;width:auto;margin:3px 0 0 0;">
+                <span>${escapeHtml(t.name)}${ts === 1 ? ' <span class="meta">(আংশিক)</span>' : ''}</span></label>
+              ${t.subs.map((sn, si) => { const leaf = t.leaves.find(l => l[3] === sn);
+                return `<label style="display:flex;gap:6px;margin:3px 0 0 24px;font-size:13px;cursor:pointer;"><input type="checkbox" ${C.set.has(lk(leaf)) ? 'checked' : ''} onchange="revCovToggle('s',${ti}*1000+${si},this.checked)" style="display:inline-block;width:auto;margin:2px 0 0 0;"><span>${escapeHtml(sn)}</span></label>`; }).join('')}
+            </div>`; }).join('')}
+        </details>`; }).join('');
+    body.querySelectorAll('input[data-ind="1"]').forEach(i => { i.indeterminate = true; });
+  }
+
+  window.revCovToggle = async function(kind, idx, on){
+    const C = window.__cov; let leaves = [];
+    if(kind === 'c') leaves = C.chs[idx].leaves;
+    else if(kind === 't') leaves = C.topics[idx].leaves;
+    else { const t = C.topics[Math.floor(idx / 1000)], sn = t.subs[idx % 1000]; leaves = t.leaves.filter(l => l[3] === sn); }
+    leaves.forEach(l => on ? C.set.add(lk(l)) : C.set.delete(lk(l)));   // সাথে সাথে স্ক্রিনে দেখাও
+    revCovDraw();
+    const res = await postToScriptRaw('revisionCoveredSet', { slug:C.slug, on:String(on), leaves:JSON.stringify(leaves) });
+    if(!res || res.status !== 'success'){
+      toast('সেভ হয়নি, আবার চেষ্টা করো');
+      leaves.forEach(l => on ? C.set.delete(lk(l)) : C.set.add(lk(l))); revCovDraw();
+    }
+  };
+  window.revCovAll = async function(on){
+    const C = window.__cov; if(!C.chs.length) return;
+    if(!confirm(on ? 'এই বিষয়ের সব অধ্যায় "শেষ" হিসেবে চিহ্নিত করবে?' : 'এই বিষয়ের সব টিক তুলে নেবে?')) return;
+    const leaves = C.chs.flatMap(c => c.leaves);
+    leaves.forEach(l => on ? C.set.add(lk(l)) : C.set.delete(lk(l))); revCovDraw();
+    const res = await postToScriptRaw('revisionCoveredSet', { slug:C.slug, on:String(on), leaves:JSON.stringify(leaves) });
+    toast(res && res.status === 'success' ? 'সেভ হয়েছে ✅' : 'সেভ হয়নি');
+  };
+
+  function injectCov(){
+    const t = document.querySelector('#app button[data-rx]');
+    if(t && t.parentElement && !t.parentElement.querySelector('[data-rxc]')){
+      const b = document.createElement('button'); b.className = 'btn btn-outline btn-block'; b.setAttribute('data-rxc', '1');
+      b.textContent = '✅ কতদূর পড়ানো হয়েছে'; b.onclick = revCovOpen; t.parentElement.appendChild(b);
+    }
+  }
+  new MutationObserver(injectCov).observe(document.getElementById('app'), { childList:true, subtree:true });
+  injectCov();
+})();
+
 </script>
 </body>
 </html>
