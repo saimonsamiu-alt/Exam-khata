@@ -7098,6 +7098,7 @@ async function renderWrittenSubmissions(code){
   const bySlug = {};
   subs.forEach(s=>{ (bySlug[s.slug] = bySlug[s.slug] || []).push(s); });
   const pendTotal = subs.filter(isPend).length;
+  const aiPendCount = subs.filter(s => s.aiFailed && !s.reviewResolved).length;
   const slugs = Object.keys(bySlug).filter(sl => !only || bySlug[sl].some(isPend));
 
   let rows = slugs.map(slug=>{
@@ -7133,6 +7134,7 @@ async function renderWrittenSubmissions(code){
         <div class="row" style="margin-bottom:8px;">
           <button class="btn btn-outline" onclick="viewWrittenImage(${idx})">🖼️ খাতা দেখো</button>
           <button class="btn btn-gold" onclick="openWrittenAnnotator(${idx})">✏️ চেক / মার্ক করো</button>
+        ${(s.aiFailed && !s.reviewResolved) ? `<button class="btn btn-outline" onclick="aiRecheckOne(${idx})">🤖 AI দিয়ে আবার চেক</button>` : ''}
         </div>
         ${s.annotatedUrl ? `<div class="meta" style="margin:0 0 4px 0;">আপনার মার্ক করা ছবি (চাপলে বড় হবে):</div>
           <img src="${driveImg(s.annotatedUrl)}" alt="মার্ক করা ছবি" style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block; margin-bottom:8px;">` : ''}
@@ -7161,6 +7163,7 @@ async function renderWrittenSubmissions(code){
         <div class="meta" style="margin:0;">Pending (রিভিউ / AI-ব্যর্থ): <b>${pendTotal}</b>টা</div>
         <button class="info-btn" onclick="go('writtenSubmissions',{code:'${code}', onlyPending:${!only}})">${only ? '📋 সব দেখাও' : '🚩 শুধু Pending দেখাও'}</button>
       </div>
+      ${aiPendCount ? `<button id="aiRecheckBtn" class="btn btn-primary btn-block" style="margin-bottom:10px;" onclick="aiRecheckPending('${code}')">🤖 AI-ব্যর্থ ${aiPendCount}টা খাতা AI দিয়ে চেক করো</button><div id="aiRecheckStatus" style="margin-bottom:10px;"></div>` : ''}
       ${rows}
     </div>
     <div class="center"><a class="link-back" onclick="go('writtenManage')">← ফিরে যাও</a></div>
@@ -7188,6 +7191,7 @@ async function renderReviewInbox(){
   app.innerHTML = `${header('রিভিউ ইনবক্স')}<div class="card center">লোড হচ্ছে...</div>`;
   const r = await getJson('listPendingReviews', {});
   const list = (r && r.status === 'success') ? r.data : [];
+  const aiCnt = list.filter(x => x.aiFailed).length;
   const byCode = {};
   list.forEach(x=>{ (byCode[x.code] = byCode[x.code] || { title:x.title, items:[] }).items.push(x); });
   const cards = Object.keys(byCode).map(code=>{
@@ -7204,6 +7208,7 @@ async function renderReviewInbox(){
     <div class="card">
       <h2>🚩 Pending রিভিউ ও AI-ব্যর্থ খাতা (${list.length}টা)</h2>
       <p class="hint">ছাত্র "রিভিউ চাও" চাপলে, বা AI খাতা চেক করতে না পারলে এখানে আসে। "চেক করতে যাও" চেপে ছবি দেখো, লাল কলমে মার্ক করো, নম্বর বদলাও — সেভ করলেই এটা Pending থেকে সরে যাবে।</p>
+      ${aiCnt ? `<button id="aiRecheckBtn" class="btn btn-primary btn-block" style="margin-bottom:10px;" onclick="aiRecheckPending('')">🤖 AI-ব্যর্থ ${aiCnt}টা খাতা সব AI দিয়ে চেক করো</button><div id="aiRecheckStatus" style="margin-bottom:10px;"></div>` : ''}
       ${cards || `<div class="empty-state">এখন কোনো Pending নেই ✅</div>`}
     </div>
     <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>
@@ -7355,6 +7360,45 @@ function renderWrittenResult(earnedMarks, totalMarks, couponAmount, title, pendi
     ${creditFooter()}
   `;
 }
+
+// ---------- শিক্ষক: AI-ব্যর্থ খাতা AI দিয়ে আবার চেক ----------
+window.aiRecheckPending = async function(code){
+  const btn = document.getElementById('aiRecheckBtn');
+  const st = document.getElementById('aiRecheckStatus');
+  if(btn) btn.disabled = true;
+  let done = 0, remaining = null, guard = 0, quotaOut = false, err = false;
+  while(guard++ < 60){
+    if(st) st.innerHTML = `<p class="hint">🤖 AI চেক চলছে... ${done}টা হয়েছে${remaining !== null ? ', বাকি ' + remaining + 'টা' : ''} — পেজ বন্ধ কোরো না</p>`;
+    const res = await postToScriptRaw('aiRecheckWritten', { code: code || '', max: 4 });
+    if(!res || res.status !== 'success'){ err = true; break; }
+    done += res.success; remaining = res.remaining;
+    if(res.remaining <= 0) break;
+    if(res.success === 0){ quotaOut = true; break; }
+  }
+  if(st){
+    st.innerHTML = err ? `<p class="hint" style="color:var(--red);">❌ সংযোগ বা সার্ভার সমস্যা, আবার চেষ্টা করো।</p>`
+      : quotaOut ? `<p class="hint" style="color:#9B6A15;">⚠️ ${done}টা চেক হয়েছে। বাকি ${remaining}টায় AI-র কোটা এখনো শেষ — পরে আবার চাপো, অথবা নিজে "✏️ চেক / মার্ক করো" দিয়ে নম্বর দাও।</p>`
+      : `<p class="hint" style="color:var(--green);">✅ ${done}টা খাতা AI দিয়ে চেক হয়েছে।</p>`;
+  }
+  if(btn) btn.disabled = false;
+  if(done > 0){
+    setTimeout(function(){
+      if(code) go('writtenSubmissions', { code: code, onlyPending: !!(state && state.onlyPending) });
+      else go('reviewInbox');
+    }, 1800);
+  }
+};
+window.aiRecheckOne = async function(idx){
+  const s = (window.__writtenSubsCache || [])[idx]; if(!s) return;
+  toast('AI দিয়ে চেক হচ্ছে...');
+  const res = await postToScriptRaw('aiRecheckWritten', { code: window.__writtenExamCode, submissionId: s.id, max: 1 });
+  if(res && res.status === 'success' && res.success > 0){
+    toast('✅ AI চেক হয়েছে');
+    go('writtenSubmissions', { code: window.__writtenExamCode, onlyPending: !!(state && state.onlyPending) });
+  } else {
+    toast('AI এখনো চেক করতে পারছে না (কোটা শেষ?) — নিজে মার্ক করো বা পরে চেষ্টা করো');
+  }
+};
 /* ============ REVIEW INBOX + TEACHER ANNOTATOR (end) ============ */
 
 
