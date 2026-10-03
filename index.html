@@ -8895,7 +8895,7 @@ window.doSmartSearch = async function(){
 // index.html-এ একদম শেষে, `/* ============ NOTES v3 (end) ============ */`-এর ঠিক আগে paste করো
 // (অর্থাৎ শেষ script ট্যাগের ভেতরে)। আলাদা IIFE — আগের কোডে হাত দিতে হয় না।
 // শিক্ষকের ড্যাশবোর্ডে দুটো বাটন নিজে বসে যাবে: "📥 বাল্ক যোগ করুন" ও "🧹 মাস্টার তালিকা / চ্যাপ্টার মার্জ"।
-// ব্যাকএন্ড: Bulk.gs (actions: taxMaster, taxDupes, taxMerge, taxAdd, bulkExtract, bulkTag, bulkSave)
+// ব্যাকএন্ড: Bulk.gs (actions: taxMaster, taxDupes, taxMerge, taxAdd, bulkExtract, bulkExtractText, bulkTag, bulkSave)
 // =====================================================================================
 (function(){
   const __rb0 = render;
@@ -8913,8 +8913,24 @@ window.doSmartSearch = async function(){
   const CHUNK_TAG = 12, CHUNK_SAVE = 20, MAX_FILES = 80;
 
   // ---------------- অবস্থা ----------------
-  const W = { kind:'cq', subject:'', files:[], results:{}, items:[], master:{}, extra:{}, known:[], busy:false, batch:'' };
-  function resetRun(){ W.results = {}; W.items = []; W.known = []; W.extra = {}; }
+  const W = { kind:'cq', subject:'', files:[], results:{}, items:[], master:{}, extra:{}, known:[], busy:false, batch:'',
+    src:'img', text:'', textUsed:'', chunks:[], studs:null, sets:null, savedIds:[], setDone:{},
+    dest:{ type:'rev', slug:'', hwDate:'', hwDue:'', toSet:false, setMode:'new', setTitle:'', setDate:'', setDue:'', setId:'' } };
+  function resetRun(){ W.results = {}; W.items = []; W.known = []; W.extra = {}; W.savedIds = []; W.setDone = {}; }
+
+  // বড় পেস্ট করা লেখা → ছোট টুকরো (প্রশ্নের শুরুতে ভাঙার চেষ্টা করে, যাতে একটা প্রশ্ন দুই টুকরোয় না কাটে)
+  function textChunks(raw){
+    const lines = String(raw || '').replace(/\r/g, '').split('\n'), out = [];
+    const starts = /^\s*(প্রশ্ন|প্র\.|Q\.?\s*\d|Question|[০-৯0-9]{1,3}\s*[.)।:])/i;
+    let cur = '';
+    lines.forEach(l => {
+      if(cur.length > 3500 && (starts.test(l) || (!l.trim() && cur.length > 6500))){ out.push(cur.trim()); cur = ''; }
+      cur += l + '\n';
+      if(cur.length > 8500){ out.push(cur.trim()); cur = ''; }
+    });
+    if(cur.trim()) out.push(cur.trim());
+    return out.filter(x => x.length >= 5);
+  }
 
   // ---------------- ছবি: কম্প্রেস + পাতা জোড়া (একটা প্রশ্নের ২–৩ পাতা → একটা লম্বা ছবি) ----------------
   function loadImg(file){
@@ -8948,36 +8964,47 @@ window.doSmartSearch = async function(){
   }
 
   // ---------------- স্ক্রিন ১: বাল্ক আপলোড ----------------
-  window.bulkOpen = function(){ W.files.forEach(f => f.url && URL.revokeObjectURL(f.url)); W.files = []; resetRun(); W.busy = false; go('bulkUpload'); };
+  window.bulkOpen = function(){ W.files.forEach(f => f.url && URL.revokeObjectURL(f.url)); W.files = []; W.text = ''; W.textUsed = ''; W.chunks = []; resetRun(); W.busy = false; go('bulkUpload'); };
   async function bkRender(){
+    const isText = W.src === 'text';
     app.innerHTML = `${header('বাল্ক প্রশ্ন যোগ')}
       <div class="card"><h2>📥 একসাথে অনেক প্রশ্ন যোগ করো</h2>
-        <p class="hint">ছবি দাও → AI প্রশ্ন পড়ে বিষয় › অধ্যায় › টপিক বসাবে → তুমি প্রিভিউয়ে দেখে বদলাতে পারবে → "কনফার্ম" চাপলে তবেই সেভ হবে। অধ্যায়ের নাম সবসময় মাস্টার তালিকা থেকে নেওয়া হয়, নতুন তখনই হয় যখন মেলে না।</p>
+        <p class="hint">ছবি দাও বা লেখা পেস্ট করো → AI প্রশ্ন পড়ে বিষয় › অধ্যায় › টপিক বসাবে → তুমি প্রিভিউয়ে দেখে বদলাতে পারবে → গন্তব্য (রিভিশন ম্যাটেরিয়াল / HW / রিভিশন সেট) বেছে "কনফার্ম" চাপলে তবেই সেভ হবে। অধ্যায়ের নাম সবসময় মাস্টার তালিকা থেকে নেওয়া হয়, নতুন তখনই হয় যখন মেলে না।</p>
         <div style="display:flex;gap:8px;margin:10px 0;">
           <button class="btn ${W.kind === 'cq' ? 'btn-primary' : 'btn-outline'}" style="flex:1" onclick="bkKind('cq')">✍️ CQ (সৃজনশীল)</button>
           <button class="btn ${W.kind === 'mcq' ? 'btn-primary' : 'btn-outline'}" style="flex:1" onclick="bkKind('mcq')">🔘 MCQ</button>
         </div>
-        <p class="hint">${W.kind === 'cq' ? 'প্রতিটা প্রশ্নের জন্য এক বা একাধিক পাতা — একই প্রশ্নের পরের পাতায় "↳ আগের প্রশ্নের পরের পাতা" টিক দাও।' : 'একটা ছবিতে অনেকগুলো MCQ থাকলে AI আলাদা করে নেবে। সঠিক উত্তর ছবিতে না থাকলে প্রিভিউয়ে তুমি বেছে দেবে।'}</p>
+        <p class="hint">${W.kind === 'cq' ? (isText ? 'একাধিক সৃজনশীল প্রশ্ন একসাথে পেস্ট করতে পারো — প্রশ্নগুলোর মাঝে একটা ফাঁকা লাইন বা "প্রশ্ন ১", "১." দিলে AI ভালো আলাদা করে। মডেল উত্তর থাকলে সেটাও ধরবে।' : 'প্রতিটা প্রশ্নের জন্য এক বা একাধিক পাতা — একই প্রশ্নের পরের পাতায় "↳ আগের প্রশ্নের পরের পাতা" টিক দাও।') : (isText ? 'অনেকগুলো MCQ একসাথে পেস্ট করো (প্রতিটায় ৪টা অপশন)। সঠিক উত্তর লেখায় থাকলে AI ধরবে, না থাকলে প্রিভিউয়ে তুমি বেছে দেবে।' : 'একটা ছবিতে অনেকগুলো MCQ থাকলে AI আলাদা করে নেবে। সঠিক উত্তর ছবিতে না থাকলে প্রিভিউয়ে তুমি বেছে দেবে।')}</p>
         <label class="field-label">বিষয় (জানা থাকলে বাছো — ট্যাগ বেশি নির্ভুল হয়)</label>
         <select id="bkSubj" onchange="bkSetSubj(this.value)">${subjOpts(W.subject, '— AI ঠিক করুক (মিশ্র বিষয়) —')}</select>
-        <label class="field-label">ছবি (একসাথে অনেকগুলো বাছো, সর্বোচ্চ ${MAX_FILES}টা)</label>
+        <label class="field-label">প্রশ্ন কীভাবে দেবে</label>
+        <div style="display:flex;gap:8px;margin-bottom:10px;">
+          <button class="btn ${!isText ? 'btn-primary' : 'btn-outline'}" style="flex:1" onclick="bkSrc('img')">🖼️ ছবি আপলোড</button>
+          <button class="btn ${isText ? 'btn-primary' : 'btn-outline'}" style="flex:1" onclick="bkSrc('text')">📝 টেক্সট পেস্ট</button>
+        </div>
+        ${isText
+          ? `<textarea id="bkText" style="min-height:220px;font-size:14px;" placeholder="${W.kind === 'cq' ? 'এখানে এক বা একাধিক সৃজনশীল প্রশ্ন পেস্ট করো...' : 'এখানে MCQ গুলো পেস্ট করো...'}" oninput="bkText(this.value)">${esc(W.text)}</textarea><p class="hint" id="bkTextInfo"></p>`
+          : `<label class="field-label">ছবি (একসাথে অনেকগুলো বাছো, সর্বোচ্চ ${MAX_FILES}টা)</label>
         <input type="file" id="bkFiles" accept="image/*" multiple style="margin-bottom:10px;" onchange="bkPick(this)">
-        <div id="bkFileList"></div>
+        <div id="bkFileList"></div>`}
         <button class="btn btn-primary btn-block" id="bkGo" onclick="bkRun()" style="margin-top:10px;">🤖 AI দিয়ে পড়ো ও ট্যাগ করো</button>
         <div id="bkProg" style="margin-top:10px;"></div>
       </div>
       <div id="bkPreview"></div>
       <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
-    bkFilesDraw();
+    if(isText) bkTextInfo(); else bkFilesDraw();
     if(W.items.length) bkPreviewDraw();
     if(!Object.keys(W.master).length) await bkLoadMaster();
   }
+  window.bkSrc = function(s){ if(W.busy) return; W.src = s; bkRender(); };
+  window.bkText = function(v){ W.text = v; bkTextInfo(); };
+  function bkTextInfo(){ const el = document.getElementById('bkTextInfo'); if(!el) return; const n = textChunks(W.text).length; el.textContent = W.text.trim() ? `${W.text.length} অক্ষর → ${n}টা অংশে AI-কে পাঠানো হবে` : ''; }
   async function bkLoadMaster(){
     const r = await postToScriptRaw('taxMaster', {});
     if(r && r.status === 'success'){ W.master = r.tree || {}; }
     else toast('মাস্টার তালিকা আনা যায়নি (Apps Script নতুন version Deploy করা আছে তো?)');
   }
-  window.bkKind = function(k){ if(W.busy) return; W.kind = k; W.files.forEach(f => f.join = false); resetRun(); bkRender(); };
+  window.bkKind = function(k){ if(W.busy) return; W.kind = k; if(k === 'mcq' && W.dest.type === 'hw') W.dest.type = 'rev'; W.files.forEach(f => f.join = false); resetRun(); bkRender(); };
   window.bkSetSubj = function(v){ W.subject = v; if(W.items.length){ W.items.forEach(x => { x.tag = null; x.tagTried = false; }); W.known = []; bkPreviewDraw(); toast('বিষয় বদলেছে — "আবার চেষ্টা" চাপলে নতুন বিষয়ে ট্যাগ হবে'); } };
   window.bkPick = function(inp){
     const list = [...inp.files].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric:true }));
@@ -9012,9 +9039,13 @@ window.doSmartSearch = async function(){
   }
   window.bkRun = async function(){
     if(W.busy) return;
-    if(!W.files.length){ toast('আগে ছবি বাছো'); return; }
+    const isText = W.src === 'text';
+    if(isText){
+      if(W.text.trim().length < 5){ toast('আগে প্রশ্নের লেখা পেস্ট করো'); return; }
+      if(W.text !== W.textUsed){ resetRun(); W.textUsed = W.text; W.chunks = textChunks(W.text); }
+    } else if(!W.files.length){ toast('আগে ছবি বাছো'); return; }
     W.busy = true; const btn = document.getElementById('bkGo'); if(btn) btn.disabled = true;
-    const gs = groups(), failed = [];
+    const gs = isText ? W.chunks : groups(), failed = [];
     const needTag = () => W.items.filter(x => !x.tag && !x.tagTried);
     W.items.forEach(x => { if(!x.tag) x.tagTried = false; });   // আগের রানে যেগুলো ট্যাগ হয়নি সেগুলো আবার চেষ্টা
     if(!Object.keys(W.master).length) await bkLoadMaster();
@@ -9024,17 +9055,22 @@ window.doSmartSearch = async function(){
     for(let gi = 0; gi < gs.length; gi++){
       if(W.results[gi] && W.results[gi].ok){ done++; continue; }
       setProg(0.7 * done / gs.length, `প্রশ্ন পড়া হচ্ছে — ${gi + 1}/${gs.length}`);
-      let img; try{ img = await stitch(gs[gi].map(i => W.files[i].file), 1200, 0.72); }
-      catch(e){ W.results[gi] = { ok:false, msg:'ছবি পড়া যায়নি' }; failed.push(gi); continue; }
-      let r = await postToScriptRaw('bulkExtract', { kind:W.kind, base64:img.base64, mimeType:img.mimeType });
-      if(r && r.status === 'error' && (r.message === 'ai_unavailable' || r.message === 'network')){ await new Promise(s => setTimeout(s, 2500)); r = await postToScriptRaw('bulkExtract', { kind:W.kind, base64:img.base64, mimeType:img.mimeType }); }
+      let act, payload;
+      if(isText){ act = 'bulkExtractText'; payload = { kind:W.kind, text:gs[gi] }; }
+      else {
+        let img; try{ img = await stitch(gs[gi].map(i => W.files[i].file), 1200, 0.72); }
+        catch(e){ W.results[gi] = { ok:false, msg:'ছবি পড়া যায়নি' }; failed.push(gi); continue; }
+        act = 'bulkExtract'; payload = { kind:W.kind, base64:img.base64, mimeType:img.mimeType };
+      }
+      let r = await postToScriptRaw(act, payload);
+      if(r && r.status === 'error' && (r.message === 'ai_unavailable' || r.message === 'network')){ await new Promise(s => setTimeout(s, 2500)); r = await postToScriptRaw(act, payload); }
       if(r && r.status === 'success'){
         W.results[gi] = { ok:true };
         r.questions.forEach(q => W.items.push({ gi, kind:W.kind, text:q.text, options:q.options || null, correct:(q.correct === undefined ? null : q.correct),
           modelAnswerText:q.modelAnswerText || '', imageUrl:(W.kind === 'cq' || q.needsImage) ? (r.imageUrl || '') : '', tag:null, tagTried:false, removed:false }));
         done++;
       } else {
-        W.results[gi] = { ok:false, msg: r && r.message === 'ai_unavailable' ? 'AI এখন সাড়া দিচ্ছে না' : r && r.message === 'nothing_found' ? 'ছবিতে প্রশ্ন পাওয়া যায়নি' : 'পড়া যায়নি' };
+        W.results[gi] = { ok:false, msg: r && r.message === 'ai_unavailable' ? 'AI এখন সাড়া দিচ্ছে না' : r && r.message === 'nothing_found' ? (isText ? 'লেখায় প্রশ্ন পাওয়া যায়নি' : 'ছবিতে প্রশ্ন পাওয়া যায়নি') : 'পড়া যায়নি' };
         failed.push(gi);
       }
     }
@@ -9053,7 +9089,7 @@ window.doSmartSearch = async function(){
     W.busy = false;
     const prog = document.getElementById('bkProg');
     if(prog){
-      const bad = failed.length ? `<p class="hint" style="color:#9B6A15;">⚠️ ${failed.length}টা গ্রুপ পড়া যায়নি: ${failed.map(g => `#${g + 1} (${esc(W.results[g].msg)})`).join(', ')} — আবার চাপলে শুধু এগুলোই চেষ্টা হবে।</p>` : '';
+      const bad = failed.length ? `<p class="hint" style="color:#9B6A15;">⚠️ ${failed.length}টা ${isText ? 'অংশ' : 'গ্রুপ'} পড়া যায়নি: ${failed.map(g => `#${g + 1} (${esc(W.results[g].msg)})`).join(', ')} — আবার চাপলে শুধু এগুলোই চেষ্টা হবে।</p>` : '';
       const dn = aiDown ? `<p class="hint" style="color:#9B6A15;">⚠️ AI এখন ট্যাগ বসাতে পারেনি — প্রশ্নগুলো নিচে আছে, নিজে ট্যাগ বেছে নিতে পারো, বা পরে আবার চাপো।</p>` : '';
       prog.innerHTML = `<p class="hint" style="color:var(--green);">✅ ${W.items.length}টা প্রশ্ন পাওয়া গেছে।</p>${bad}${dn}`;
     }
@@ -9093,8 +9129,8 @@ window.doSmartSearch = async function(){
     const el = document.getElementById('bkPreview'); if(!el) return;
     if(!W.items.length){ el.innerHTML = ''; return; }
     el.innerHTML = `<div class="card" id="bkSummary"></div>${W.items.map(bkCard).join('')}
-      <div class="card"><button class="btn btn-primary btn-block" id="bkSave" onclick="bkConfirm()">✅ কনফার্ম ও সেভ করো</button><div id="bkSaveSt" style="margin-top:8px;"></div></div>`;
-    bkSummary();
+      <div class="card"><div id="bkDest"></div><button class="btn btn-primary btn-block" id="bkSave" onclick="bkConfirm()" style="margin-top:10px;">✅ কনফার্ম ও সেভ করো</button><div id="bkSaveSt" style="margin-top:8px;"></div></div>`;
+    bkSummary(); bkDestInit();
   }
   function bkSummary(){
     const el = document.getElementById('bkSummary'); if(!el) return;
@@ -9126,33 +9162,124 @@ window.doSmartSearch = async function(){
     bkRedraw(i);
   };
 
+  // ---------------- গন্তব্য: রিভিশন ম্যাটেরিয়াল / HW অ্যাসাইন / (+) রিভিশন সেট ----------------
+  async function bkDestInit(){
+    const D = W.dest; D.hwDate = D.hwDate || todayStr(); D.hwDue = D.hwDue || D.hwDate; D.setDate = D.setDate || todayStr(); D.setDue = D.setDue || D.setDate;
+    bkDestDraw();
+    if(!W.studs){ try{ W.studs = (await listStudentsRemote()) || []; }catch(e){ W.studs = []; } bkDestDraw(); }
+    if(D.toSet && D.setMode === 'existing') bkLoadSets();
+  }
+  async function bkLoadSets(){ if(W.sets) return; const r = await postToScriptRaw('planSetList', {}); W.sets = (r && r.data) || []; bkDestDraw(); }
+  function bkDestDraw(){
+    const el = document.getElementById('bkDest'); if(!el) return;
+    const D = W.dest, hwOk = W.kind === 'cq', isHw = D.type === 'hw';
+    const studSel = `<select onchange="bkDestSet('slug', this.value, true)"><option value="">সব ছাত্র</option>${(W.studs || []).map(s => `<option value="${esc(s.slug)}" ${D.slug === s.slug ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>`;
+    const hwBox = isHw ? `<div class="row" style="margin-top:6px;"><div style="flex:1"><label class="field-label">HW কবে থেকে</label><input type="date" value="${esc(D.hwDate)}" onchange="bkDestSet('hwDate', this.value, true)"></div>
+        <div style="flex:1"><label class="field-label">ডেডলাইন</label><input type="date" value="${esc(D.hwDue)}" onchange="bkDestSet('hwDue', this.value, true)"></div></div>
+        <p class="hint">HW ছাত্রের "HW" তালিকায় যাবে (ছাত্র ছবি দিয়ে উত্তর দেবে, AI চেক করবে)। এই প্রশ্নগুলো অটো রিভিশনেও আসবে। HW-এর প্রশ্ন রিভিশন সেটে যোগ করা যায় না।</p>` : '';
+    let setBox = '';
+    if(!isHw){
+      const sets = (W.sets || []).map(s => `<option value="${esc(s.id)}" ${D.setId === s.id ? 'selected' : ''}>${esc(s.title)} · ${esc(subjLabel(s.subject))} · ${s.count}টা</option>`).join('');
+      setBox = `<button class="btn ${D.toSet ? 'btn-gold' : 'btn-outline'} btn-block" style="margin-top:8px;" onclick="bkToggleSet()">🗂️ ${D.toSet ? '✅ রিভিশন সেটেও যোগ হবে (বন্ধ করতে চাপো)' : 'রিভিশন সেটেও যোগ করো'}</button>`;
+      if(D.toSet) setBox += `<div style="margin-top:8px;padding:8px;background:#F4F6FA;border-radius:8px;">
+        <div style="display:flex;gap:6px;margin-bottom:6px;"><button class="btn ${D.setMode === 'new' ? 'btn-primary' : 'btn-outline'}" style="flex:1;font-size:12.5px;padding:8px 4px;" onclick="bkDestSet('setMode','new')">➕ নতুন সেট</button><button class="btn ${D.setMode === 'existing' ? 'btn-primary' : 'btn-outline'}" style="flex:1;font-size:12.5px;padding:8px 4px;" onclick="bkDestSet('setMode','existing')">📂 আগের সেটে যোগ</button></div>
+        ${D.setMode === 'new' ? `<input type="text" value="${esc(D.setTitle)}" placeholder="সেটের নাম (যেমন: ভেক্টর — সাপ্তাহিক রিভিশন)" onchange="bkDestSet('setTitle', this.value, true)">
+          <div class="row"><div style="flex:1"><label class="field-label">তারিখ (কবে থেকে)</label><input type="date" value="${esc(D.setDate)}" onchange="bkDestSet('setDate', this.value, true)"></div>
+          <div style="flex:1"><label class="field-label">ডেডলাইন</label><input type="date" value="${esc(D.setDue)}" onchange="bkDestSet('setDue', this.value, true)"></div></div>`
+        : `<select onchange="bkDestSet('setId', this.value, true)"><option value="">— সেট বাছো —</option>${sets}</select>${W.sets ? '' : '<p class="hint">সেট আনা হচ্ছে...</p>'}`}
+        <p class="hint">সেটে যোগ করলে এই প্রশ্নগুলো ছাত্রের <b>অটো রিভিশনে অগ্রাধিকার</b> পাবে — অটো রিভিশন বন্ধ হবে না, ছাত্র সেটও আলাদা করে করতে পারবে। মিশ্র বিষয় হলে বিষয় অনুযায়ী আলাদা সেট হবে (একটা সেটে সর্বোচ্চ ৬০টা)।</p></div>`;
+    }
+    el.innerHTML = `<h3>📍 কোথায় যাবে?</h3>
+      <div style="display:flex;gap:8px;margin:6px 0;">
+        <button class="btn ${!isHw ? 'btn-primary' : 'btn-outline'}" style="flex:1" onclick="bkDestSet('type','rev')">📚 রিভিশন ম্যাটেরিয়াল</button>
+        <button class="btn ${isHw ? 'btn-primary' : 'btn-outline'}" style="flex:1;${hwOk ? '' : 'opacity:.45;'}" onclick="bkDestSet('type','hw')">📌 HW অ্যাসাইন</button></div>
+      ${hwOk ? '' : '<p class="hint">HW-তে শুধু CQ যায় (ছাত্র ছবি দিয়ে উত্তর দেয়)।</p>'}
+      <label class="field-label">কার জন্য</label>${studSel}${hwBox}${setBox}`;
+  }
+  window.bkDestSet = function(k, v, quiet){
+    const D = W.dest;
+    if(k === 'type' && v === 'hw'){ if(W.kind !== 'cq'){ toast('HW-তে শুধু CQ যায়'); return; } D.toSet = false; }
+    D[k] = v;
+    if(k === 'setMode' && v === 'existing') bkLoadSets();
+    if(!quiet) bkDestDraw();
+  };
+  window.bkToggleSet = function(){ if(W.dest.type === 'hw'){ toast('HW রিভিশন সেটে যোগ করা যায় না'); return; } W.dest.toSet = !W.dest.toSet; if(W.dest.toSet && W.dest.setMode === 'existing') bkLoadSets(); bkDestDraw(); };
+
+  // সেভ হওয়া প্রশ্নগুলো থেকে সেট বানানো/বাড়ানো। যেটা আগেই হয়ে গেছে (retry-তে) সেটা আবার হয় না।
+  async function bkMakeSet(){
+    const D = W.dest, ids = W.savedIds.slice(); if(!ids.length) return { ok:true, html:'' };
+    const lines = []; let ok = true;
+    if(D.setMode === 'existing'){
+      const r = await postToScriptRaw('planSetAppend', { id:D.setId, ids:JSON.stringify(ids.map(x => x.id)) });
+      const nm = ((W.sets || []).find(s => s.id === D.setId) || {}).title || 'সেট';
+      if(r && r.status === 'success'){
+        lines.push(`🗂️ "${esc(nm)}" সেটে ${r.added}টা যোগ হয়েছে (মোট ${r.total}টা)`);
+        if(r.wrongSubject) lines.push(`⚠️ ${r.wrongSubject}টা অন্য বিষয়ের, তাই এই সেটে যায়নি`);
+        if(r.full) lines.push('⚠️ সেট ৬০টায় পূর্ণ — বাকিগুলো যোগ হয়নি');
+      } else { ok = false; lines.push('❌ সেটে যোগ করা যায়নি'); }
+    } else {
+      const bySub = {}; ids.forEach(x => (bySub[x.subject] = bySub[x.subject] || []).push(x.id));
+      const subs = Object.keys(bySub), base = (D.setTitle || '').trim() || 'বাল্ক রিভিশন';
+      for(const sj of subs){
+        const parts = []; for(let i = 0; i < bySub[sj].length; i += 60) parts.push(bySub[sj].slice(i, i + 60));
+        for(let pi = 0; pi < parts.length; pi++){
+          const title = base + (subs.length > 1 ? ' — ' + subjLabel(sj) : '') + (parts.length > 1 ? ` (${pi + 1})` : '');
+          const key = sj + '|' + pi;
+          if(W.setDone[key]){ lines.push(`🗂️ সেট "${esc(title)}" — ${W.setDone[key]}টা প্রশ্ন`); continue; }
+          const r = await postToScriptRaw('planSetSave', { slug:D.slug, subject:sj, title, date:D.setDate, due:D.setDue, ids:JSON.stringify(parts[pi]) });
+          if(r && r.status === 'success'){ W.setDone[key] = r.count; lines.push(`🗂️ সেট "${esc(title)}" — ${r.count}টা প্রশ্ন`); }
+          else { ok = false; lines.push(`❌ "${esc(title)}" সেট বানানো যায়নি`); }
+        }
+      }
+    }
+    W.sets = null;
+    return { ok, html:lines.map(l => `<p class="hint">${l}</p>`).join('') };
+  }
+  window.bkRetrySet = async function(){
+    const el = document.getElementById('bkSetRes'); if(el) el.innerHTML = '<p class="hint">সেট বানানো হচ্ছে...</p>';
+    const m = await bkMakeSet();
+    if(el) el.innerHTML = m.html + (m.ok ? '' : '<button class="btn btn-outline btn-block" onclick="bkRetrySet()">🔄 সেট বানানো আবার চেষ্টা করো</button>');
+    if(m.ok){ W.savedIds = []; W.setDone = {}; }
+  };
+
   // ---------------- কনফার্ম → সেভ ----------------
   window.bkConfirm = async function(){
     if(W.busy) return;
+    const D = W.dest, isHw = D.type === 'hw';
     const live = W.items.filter(x => !x.removed);
     if(!live.length){ toast('সেভ করার মতো প্রশ্ন নেই'); return; }
     const badIdx = W.items.findIndex(x => !x.removed && bkInvalid(x));
     if(badIdx !== -1){ toast('লাল বর্ডারের প্রশ্নগুলোতে ট্যাগ/সঠিক উত্তর বাছো, নয়তো 🗑️ দিয়ে বাদ দাও'); const el = document.getElementById('bkC' + badIdx); if(el) el.scrollIntoView({ behavior:'smooth', block:'center' }); return; }
+    if(isHw && live.some(x => x.kind !== 'cq')){ toast('HW-তে শুধু CQ যায়'); return; }
+    if(!isHw && D.toSet && D.setMode === 'existing' && !D.setId){ toast('কোন সেটে যোগ হবে সেটা বাছো'); return; }
     const newCh = uniq(live.filter(x => bkIsNew(x.tag.subject, x.tag.chapter)).map(x => x.tag.chapter));
     if(newCh.length && !confirm(`${newCh.length}টা নতুন অধ্যায় মাস্টার তালিকায় যোগ হবে:\n\n${newCh.slice(0, 8).join('\n')}${newCh.length > 8 ? '\n...' : ''}\n\nনামগুলো ঠিক আছে তো? এগিয়ে যাবে?`)) return;
+    const who = D.slug ? (((W.studs || []).find(s => s.slug === D.slug) || {}).name || 'ছাত্র') : 'সব ছাত্র';
+    const hwDate = D.hwDate || todayStr(), hwDue = (D.hwDue && D.hwDue >= hwDate) ? D.hwDue : hwDate;
     W.busy = true; const btn = document.getElementById('bkSave'), st = document.getElementById('bkSaveSt'); if(btn) btn.disabled = true;
-    W.batch = 'b' + Date.now();
+    if(!W.savedIds.length || !W.batch) W.batch = 'b' + Date.now();
     let saved = 0, skipped = 0, err = false;
     for(let i = 0; i < live.length; i += CHUNK_SAVE){
       if(st) st.innerHTML = `<p class="hint">সেভ হচ্ছে... ${saved}/${live.length}</p>`;
       const chunk = live.slice(i, i + CHUNK_SAVE).map(x => ({ kind:x.kind, subject:x.tag.subject, chapter:x.tag.chapter, topic:x.tag.topic, subtopic:(x.tag.subs && x.tag.subs[0]) || '',
         text:x.text, options:x.options, correct:x.correct, modelAnswerText:x.modelAnswerText, imageUrl:x.imageUrl }));
-      const r = await postToScriptRaw('bulkSave', { batch:W.batch, items:JSON.stringify(chunk) });
+      const r = await postToScriptRaw('bulkSave', { batch:W.batch, items:JSON.stringify(chunk), dest:D.type, forSlug:D.slug, hwDate, hwDue });
       if(!r || r.status !== 'success'){ err = true; break; }
-      saved += r.saved; skipped += r.skipped;
+      saved += r.saved; skipped += r.skipped; (r.ids || []).forEach(x => W.savedIds.push(x));
       live.slice(i, i + CHUNK_SAVE).forEach(x => x.removed = true);   // সেভ হয়ে গেছে — আবার চাপলে ডাবল সেভ হবে না
     }
-    W.busy = false;
     window.__revTax = null;   // রিভিশন মডিউলের Taxonomy ক্যাশ নতুন করে আনাতে
-    if(err){ if(st) st.innerHTML = `<p class="hint" style="color:var(--red);">❌ ${saved}টা সেভ হয়েছে, তারপর সংযোগ/সার্ভার সমস্যা। আবার "কনফার্ম" চাপলে বাকিগুলো সেভ হবে (যেগুলো হয়ে গেছে সেগুলো আর যাবে না)।</p>`; if(btn) btn.disabled = false; bkPreviewDraw(); return; }
+    if(err){ W.busy = false; if(st) st.innerHTML = `<p class="hint" style="color:var(--red);">❌ ${saved}টা সেভ হয়েছে, তারপর সংযোগ/সার্ভার সমস্যা। আবার "কনফার্ম" চাপলে বাকিগুলো সেভ হবে (যেগুলো হয়ে গেছে সেগুলো আর যাবে না)।</p>`; if(btn) btn.disabled = false; bkPreviewDraw(); return; }
+    let setRes = { ok:true, html:'' };
+    if(!isHw && D.toSet){ if(st) st.innerHTML = '<p class="hint">রিভিশন সেট বানানো হচ্ছে...</p>'; setRes = await bkMakeSet(); }
+    W.busy = false;
     toast(saved + 'টা প্রশ্ন সেভ হয়েছে ✅');
+    const where = isHw ? `📌 HW হিসেবে — ${esc(who)} · ${esc(hwDate)} থেকে, ডেডলাইন ${esc(hwDue)}` : `📚 রিভিশন ম্যাটেরিয়ালে — ${esc(who)}`;
     const el = document.getElementById('bkPreview');
-    if(el) el.innerHTML = `<div class="card center"><h2>✅ ${saved}টা প্রশ্ন সেভ হয়েছে</h2>${skipped ? `<p class="hint" style="color:#9B6A15;">${skipped}টা বাদ গেছে (ট্যাগ বা উত্তর অসম্পূর্ণ ছিল)।</p>` : ''}<button class="btn btn-primary btn-block" onclick="bulkOpen()">➕ আরও যোগ করো</button><button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="tmOpen()">🧹 মাস্টার তালিকা দেখো</button></div>`;
+    if(el) el.innerHTML = `<div class="card center"><h2>✅ ${saved}টা প্রশ্ন সেভ হয়েছে</h2><p class="hint">${where}</p>
+      <div id="bkSetRes">${setRes.html}${setRes.ok ? '' : '<button class="btn btn-outline btn-block" onclick="bkRetrySet()">🔄 সেট বানানো আবার চেষ্টা করো</button>'}</div>
+      ${skipped ? `<p class="hint" style="color:#9B6A15;">${skipped}টা বাদ গেছে (ট্যাগ বা উত্তর অসম্পূর্ণ ছিল)।</p>` : ''}<button class="btn btn-primary btn-block" onclick="bulkOpen()">➕ আরও যোগ করো</button><button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="tmOpen()">🧹 মাস্টার তালিকা দেখো</button></div>`;
+    if(setRes.ok){ W.savedIds = []; W.setDone = {}; }
     W.master = {}; W.items = [];
   };
 
@@ -9618,7 +9745,7 @@ window.doSmartSearch = async function(){
         <div style="font-size:13.5px;margin-top:4px;"><b>${esc(s.title)}</b> — ${s.count}টা প্রশ্ন</div><div class="meta">${s.answeredBy} জন করেছে · <a class="link-back" onclick="sbDel('${s.id}')">🗑️ মুছো</a></div></div>`).join('') || `<div class="empty-state">এখনো কোনো সেট বানাওনি।</div>`;
     app.innerHTML = `${header('রিভিশন সেট বানাও')}
       <div class="card"><h2>🗂️ নতুন রিভিশন সেট</h2>
-        <p class="hint">সেট না দিলে ছাত্রের অটো রিভিশন আগের মতোই চলবে। সেট দিলে ছাত্র শুধু ক্লাসে পড়ানো-হওয়া চ্যাপ্টারের প্রশ্নগুলোই দেখবে।</p>
+        <p class="hint">সেট দিলেও অটো রিভিশন বন্ধ হয় না — সেটের প্রশ্নগুলো ছাত্রের অটো রিভিশনে অগ্রাধিকার পায়, আর ছাত্র সেটটা আলাদাভাবেও করতে পারে। ছাত্র শুধু ক্লাসে পড়ানো-হওয়া চ্যাপ্টারের প্রশ্নগুলোই দেখবে।</p>
         <label class="field-label">কার জন্য</label><select onchange="B_meta('slug', this.value)"><option value="">সব ছাত্র</option>${B.studs.map(s => `<option value="${s.slug}" ${B.meta.slug === s.slug ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
         <label class="field-label">বিষয়</label><select onchange="sbF('subject', this.value)">${subjOpts(B.f.subject, '— বিষয় বাছো —')}</select>
         <label class="field-label">সেটের নাম</label><input type="text" value="${esc(B.meta.title)}" placeholder="যেমন: ভেক্টর — সাপ্তাহিক রিভিশন" onchange="B_meta('title', this.value)">
@@ -9678,6 +9805,135 @@ window.doSmartSearch = async function(){
   }
   new MutationObserver(injectPlan).observe(document.getElementById('app'), { childList:true, subtree:true });
   injectPlan();
+})();
+
+// =====================================================================================
+// AUTH FRONTEND — "পাসওয়ার্ড ভুলে গেছি" (ছাত্র) + "পাসওয়ার্ড রিসেট কোড" (শিক্ষক)
+// plan_frontend.js-এর নিচে (NOTES v3 (end) মার্কারের আগে) বসে। ব্যাকএন্ড: Auth.gs
+// =====================================================================================
+(function(){
+  const esc = s => escapeHtml(String(s == null ? '' : s));
+  const val = id => (document.getElementById(id) || {}).value || '';
+  const tcall = (action, p) => postToScriptRaw(action, Object.assign({ tkey:TEACHER_PASSWORD }, p || {}));
+
+  // ---------------- ছাত্র: লগইন স্ক্রিনে লিংক + নতুন "forgot" ট্যাব ----------------
+  const __origAuth = renderStudentAuth;
+  renderStudentAuth = function(){
+    if(studentAuthTab === 'forgot'){ fgRender(); return; }
+    __origAuth();
+    if(studentAuthTab === 'login'){
+      const marker = '<p class="hint center" style="margin-top:16px;">প্রথমবার এসেছো?';
+      if(app.innerHTML.indexOf(marker) !== -1)
+        app.innerHTML = app.innerHTML.replace(marker, `<p class="hint center" style="margin-top:12px;"><a class="link-back" onclick="fgOpen()">🔓 পাসওয়ার্ড ভুলে গেছো?</a></p>` + marker);
+    }
+  };
+  window.fgOpen = function(){
+    const u = (document.getElementById('studLoginSlug') || {}).value || '';
+    window.__fgSlug = u.trim(); window.__fgRequested = false; studentAuthTab = 'forgot'; renderStudentAuth();
+  };
+  function fgRender(){
+    const slug = window.__fgSlug || '', asked = !!window.__fgRequested;
+    app.innerHTML = `${header('পাসওয়ার্ড রিসেট')}
+      <div class="card" style="padding:24px 20px;">
+        <h2>🔓 পাসওয়ার্ড ভুলে গেছো?</h2>
+        <p class="hint">চিন্তা নেই। ধাপগুলো খুব সহজ:</p>
+        <div style="background:#F4F6FA;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13.5px;line-height:1.7;">
+          <b>১.</b> তোমার ইউজারনেম দিয়ে রিসেট চাও<br><b>২.</b> শিক্ষক একটা ৬ সংখ্যার কোড পাবেন — উনি সেটা তোমাকে জানাবেন<br><b>৩.</b> সেই কোড ও নতুন পাসওয়ার্ড দাও</div>
+        <label class="field-label">১) ইউজারনেম</label>
+        <input type="text" id="fgSlug" value="${esc(slug)}" placeholder="যেমন: rahim25" onchange="window.__fgSlug=this.value.trim()">
+        <button class="btn btn-gold btn-block" id="fgAsk" onclick="fgAsk()">📨 শিক্ষকের কাছে রিসেট কোড চাও</button>
+        ${asked ? `<div style="background:#EBF7EE;border:1.5px solid #A3E0B5;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13.5px;">✅ রিকোয়েস্ট শিক্ষকের কাছে গেছে। উনি তোমাকে কোডটা জানালে নিচে বসাও (কোড ৩০ মিনিট চলবে)।</div>` : ''}
+        <hr style="border:none;border-top:1px solid var(--rule);margin:18px 0;">
+        <label class="field-label">২) শিক্ষকের দেওয়া ৬ সংখ্যার কোড</label>
+        <input type="text" id="fgCode" inputmode="numeric" maxlength="6" placeholder="••••••" style="font-family:var(--font-mono);font-size:20px;letter-spacing:6px;text-align:center;font-weight:700;">
+        <label class="field-label">৩) নতুন পাসওয়ার্ড</label>
+        <input type="password" id="fgPass" placeholder="কমপক্ষে ৪ অক্ষর">
+        <input type="password" id="fgPass2" placeholder="আবার লেখো" onkeydown="if(event.key==='Enter') fgDo()">
+        <button class="btn btn-primary btn-block" id="fgGo" onclick="fgDo()">✅ নতুন পাসওয়ার্ড সেট করো</button>
+        <div class="center" style="margin-top:16px;"><a class="link-back" onclick="studentAuthTab='login'; renderStudentAuth();">← লগইনে ফিরে যাও</a></div>
+      </div>${creditFooter()}`;
+  }
+  window.fgAsk = async function(){
+    const slug = slugify(val('fgSlug').trim()); window.__fgSlug = val('fgSlug').trim();
+    if(!slug){ toast('আগে ইউজারনেম লেখো'); return; }
+    const b = document.getElementById('fgAsk'); b.disabled = true;
+    const r = await postToScript('pwrForgot', { slug });
+    b.disabled = false;
+    if(r && r.status === 'success'){ window.__fgRequested = true; fgRender(); }
+    else if(r && r.message === 'not_registered') toast('❌ এই ইউজারনেমে কোনো অ্যাকাউন্ট নেই');
+    else if(r && r.message === 'wait_a_bit') toast('একটু আগেই রিকোয়েস্ট গেছে — শিক্ষকের কাছে কোডটা চাও, বা ১ মিনিট পর আবার চাপো');
+    else toast('রিকোয়েস্ট যায়নি, ইন্টারনেট চেক করে আবার চেষ্টা করো');
+  };
+  window.fgDo = async function(){
+    const slug = slugify(val('fgSlug').trim()), code = val('fgCode').replace(/\D/g, ''), p1 = val('fgPass').trim(), p2 = val('fgPass2').trim();
+    if(!slug){ toast('ইউজারনেম লেখো'); return; }
+    if(code.length !== 6){ toast('শিক্ষকের দেওয়া ৬ সংখ্যার কোড লেখো'); return; }
+    if(p1.length < 4){ toast('পাসওয়ার্ড কমপক্ষে ৪ অক্ষরের হতে হবে'); return; }
+    if(p1 !== p2){ toast('দুই জায়গায় পাসওয়ার্ড মেলেনি'); return; }
+    const b = document.getElementById('fgGo'); b.disabled = true;
+    const r = await postToScript('pwrReset', { slug, code, password:p1 });
+    b.disabled = false;
+    if(r && r.status === 'success'){
+      setLoggedStudent({ slug:r.slug || slug, name:r.name || slug, studentCode:r.studentCode || '' });
+      studentAuthTab = 'login'; window.__fgRequested = false; toast('✅ নতুন পাসওয়ার্ড সেট হয়েছে! স্বাগতম, ' + (r.name || slug)); go('studentDashboard');
+    } else if(r && r.message === 'wrong_code') toast(`❌ কোড ভুল — আর ${r.left}বার চেষ্টা করতে পারবে`);
+    else if(r && r.message === 'too_many') toast('❌ অনেকবার ভুল হয়েছে, কোডটা বাতিল। শিক্ষকের কাছে নতুন কোড চাও');
+    else if(r && r.message === 'no_active_code') toast('❌ কোডের মেয়াদ শেষ বা আগেই ব্যবহার হয়েছে — নতুন কোড চাও');
+    else if(r && r.message === 'weak_password') toast('পাসওয়ার্ড কমপক্ষে ৪ অক্ষরের হতে হবে');
+    else toast('হয়নি, ইন্টারনেট চেক করে আবার চেষ্টা করো');
+  };
+
+  // ---------------- শিক্ষক: রিসেট কোডের তালিকা ----------------
+  const __pr0 = render;
+  render = function(){ if(state.screen === 'pwReset'){ syncLogoutFab(); pwRender(); return; } __pr0(); };
+  window.pwOpen = function(){ go('pwReset'); };
+  async function pwRender(){
+    app.innerHTML = header('পাসওয়ার্ড রিসেট') + `<div class="card center">লোড হচ্ছে...</div>`;
+    const [l, studs] = await Promise.all([tcall('pwrList'), listStudentsRemote()]);
+    if(!l || l.status !== 'success'){ app.innerHTML = `${header('পাসওয়ার্ড রিসেট')}<div class="card"><p class="hint" style="color:var(--red);">❌ তালিকা আনা যায়নি — Apps Script নতুন version Deploy করা আছে তো? (TEACHER_KEY সেট করলে সেটা TEACHER_PASSWORD-এর সমান হতে হবে)</p><button class="btn btn-outline btn-block" onclick="pwRender()">🔄 আবার চেষ্টা</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>`; return; }
+    window.__pwStuds = studs || [];
+    const rows = l.data.map(x => `<div class="exam-item"><div class="row-top"><div>
+        <div style="font-weight:700;">${esc(x.name)} <span class="meta">(${esc(x.slug)})</span></div>
+        <div class="meta">${x.source === 'teacher' ? 'আপনি বানিয়েছেন' : '📨 ছাত্র চেয়েছে'} · আর ~${x.minLeft} মিনিট চলবে</div></div>
+        <div style="font-family:var(--font-mono);font-size:24px;font-weight:800;letter-spacing:4px;color:var(--ink);">${esc(x.code)}</div></div>
+        <div style="margin-top:6px;display:flex;gap:8px;"><button class="info-btn" onclick="pwCopy('${esc(x.code)}')">📋 কপি</button><button class="info-btn" style="color:var(--red)" onclick="pwCancel('${esc(x.slug)}')">✕ বাতিল</button></div></div>`).join('')
+      || `<div class="empty-state">এখন কোনো রিসেট রিকোয়েস্ট নেই।</div>`;
+    app.innerHTML = `${header('পাসওয়ার্ড রিসেট')}
+      <div class="card"><h2>🔓 পাসওয়ার্ড রিসেট কোড</h2>
+        <p class="hint">ছাত্র "পাসওয়ার্ড ভুলে গেছি" চাপলে কোড এখানে আসে। ছাত্রকে ফোনে/ক্লাসে কোডটা জানাও — ও সেটা দিয়ে নিজেই নতুন পাসওয়ার্ড বসাবে। কোড ৩০ মিনিট চলে, একবারই কাজ করে।</p>
+        ${rows}<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="pwRender()">🔄 তালিকা নতুন করো</button></div>
+      <div class="card"><h3>নিজে কোড বানাও</h3><p class="hint">ছাত্র রিকোয়েস্ট না করলেও এখান থেকে কোড বানাতে পারো।</p>
+        <select id="pwStud"><option value="">— ছাত্র বাছো —</option>${window.__pwStuds.map(s => `<option value="${esc(s.slug)}">${esc(s.name)} (${esc(s.slug)})</option>`).join('')}</select>
+        <button class="btn btn-gold btn-block" onclick="pwGen()">🔑 কোড বানাও</button><div id="pwGenOut" style="margin-top:10px;"></div></div>
+      <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+  }
+  window.pwRender = pwRender;
+  window.pwCopy = function(c){ try{ navigator.clipboard.writeText(c); toast('কোড কপি হয়েছে'); }catch(e){ toast('কোড: ' + c); } };
+  window.pwCancel = async function(slug){ if(!confirm('এই কোডটা বাতিল করবে?')) return; await tcall('pwrCancel', { slug }); pwRender(); };
+  window.pwGen = async function(){
+    const slug = val('pwStud'); if(!slug){ toast('আগে ছাত্র বাছো'); return; }
+    const r = await tcall('pwrGen', { slug });
+    if(r && r.status === 'success'){
+      await pwRender();   // তালিকা নতুন করে আঁকে, তারপর নতুন কোডটা ওপরে দেখায়
+      const o = document.getElementById('pwGenOut');
+      if(o) o.innerHTML = `<div style="background:#EBF7EE;border-radius:10px;padding:12px;text-align:center;"><div class="meta">${esc(r.name)}-এর কোড (${r.ttlMin} মিনিট চলবে)</div><div style="font-family:var(--font-mono);font-size:30px;font-weight:800;letter-spacing:6px;">${esc(r.code)}</div></div>`;
+    } else {
+      const o = document.getElementById('pwGenOut');
+      if(o) o.innerHTML = `<p class="hint" style="color:var(--red);">❌ ${r && r.message === 'not_registered' ? 'এই ছাত্রের লগইন অ্যাকাউন্ট নেই' : 'কোড বানানো যায়নি'}</p>`;
+    }
+  };
+
+  // ---------------- শিক্ষকের ড্যাশবোর্ডে বাটন (+ অপেক্ষমাণ সংখ্যা) ----------------
+  function injectPw(){
+    const t = document.querySelector('#app button[data-revt]');
+    if(t && t.parentElement && !t.parentElement.querySelector('[data-pw]')){
+      const b = document.createElement('button'); b.className = 'btn btn-outline btn-block'; b.setAttribute('data-pw', '1');
+      b.textContent = '🔓 পাসওয়ার্ড রিসেট'; b.onclick = pwOpen; t.parentElement.appendChild(b);
+      tcall('pwrList').then(r => { if(r && r.status === 'success' && r.data.length) b.textContent = `🔓 পাসওয়ার্ড রিসেট (${r.data.length}টা অপেক্ষায়)`; }).catch(() => {});
+    }
+  }
+  new MutationObserver(injectPw).observe(document.getElementById('app'), { childList:true, subtree:true });
+  injectPw();
 })();
 
 /* ============ NOTES v3 (end) ============ */
