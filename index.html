@@ -4692,7 +4692,7 @@ async function renderStudentDashboard(){
       <!-- 4.5 Daily Homework Widget -->
       <div class="widget">
         <div class="widget-header">
-          <h3 class="widget-title">📚 Daily HW</h3>
+          <h3 class="widget-title">📚 HW</h3>
           <span class="widget-tag tag-blue" id="dailyHwStatusTag">চেক হচ্ছে...</span>
         </div>
         <div id="dailyHwWidgetBody"><p class="hint">লোড হচ্ছে...</p></div>
@@ -4726,6 +4726,7 @@ async function renderStudentDashboard(){
     ${creditFooter()}
   `;
   fillDailyHwWidget();
+  planMissedPopup();   // মিস করা HW/রিভিশনের উৎসাহমূলক পপআপ (সেশনে একবার)
 }
 
 // ---- Daily Homework: টপিক অনুযায়ী জমা, দেখা, ক্যালেন্ডার, শিক্ষকের রিভিউ ----
@@ -7864,7 +7865,7 @@ window.doSmartSearch = async function(){
 // =====================================================================================
 (function(){
   const __rr = render;
-  render = function(){ if(state.screen === 'revisionTeacher'){ syncLogoutFab(); revTRender(); return; } if(state.screen === 'revision'){ syncLogoutFab(); revRender(); return; } __rr(); };
+  render = function(){ if(state.screen !== 'revision'){ const _o = document.getElementById('revNoteOv'); if(_o) _o.remove(); } if(state.screen === 'revisionTeacher'){ syncLogoutFab(); revTRender(); return; } if(state.screen === 'revision'){ syncLogoutFab(); revRender(); return; } __rr(); };
 
   const R = () => window.__rev;
   const CQ_MIN_SEC = 240;               // ৪ মিনিট বা বেশি বাকি থাকলে CQ/ছবি-প্রশ্ন, নইলে MCQ
@@ -7964,6 +7965,7 @@ window.doSmartSearch = async function(){
     if(r.timer) clearInterval(r.timer);
     r.timer = setInterval(() => {
       if(state.screen !== 'revision' || !R() || R() !== r){ clearInterval(r.timer); return; }
+      if(r.paused) return;
       r.remaining--; localStorage.setItem(doneKey(), doneSec() + 1);
       const el = document.getElementById('revT'); if(el) el.textContent = fmtTime(Math.max(0, r.remaining));
       if(r.remaining <= 0){ r.over = true; clearInterval(r.timer); }
@@ -7974,7 +7976,7 @@ window.doSmartSearch = async function(){
   function revPick(){
     const r = R(); if(r.over) return null;
     const sub = r.segs[r.si].subs, P = r.pool;
-    const ok = i => !r.used[i.key] && (!i.subject || sub.indexOf(i.subject) !== -1);
+    const ok = i => !r.used[i.key] && (i.subject ? sub.indexOf(i.subject) !== -1 : !!(i.amb && i.amb.length && i.amb.every(x => sub.indexOf(x) !== -1)));
     r.seen = r.seen || {};
     const get = k => { const a = (P[k] || []).filter(ok), f = a.filter(i => !r.seen[i.tk]); return f.length ? f : a; };
     r.tog ^= 1;                                   // দুর্বল ↔ সহজ পালাক্রমে
@@ -8007,7 +8009,7 @@ window.doSmartSearch = async function(){
     const sj = it.subject && NOTES_SUBJECTS[it.subject] ? NOTES_SUBJECTS[it.subject].label : '';
     return `<div class="card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
       <div><span class="q-tag">${it.tier === 'weak' ? '🔴 দুর্বল জায়গা' : '🟢 সহজ'}</span> <span class="meta">${escapeHtml(sj)} ${escapeHtml(it.topic || '')}</span></div>
-      <div class="timer-chip" style="position:static;"><span class="timer-dot"></span><span id="revT">${fmtTime(Math.max(0, R().remaining))}</span></div></div>`;
+      <div style="display:flex;align-items:center;gap:8px;"><button class="info-btn" style="background:#FEF6E8;border-color:var(--gold);color:#7B4F06;font-weight:700;" onclick="revPause()">⏸ রিভিশন নোট</button><div class="timer-chip" style="position:static;"><span class="timer-dot"></span><span id="revT">${fmtTime(Math.max(0, R().remaining))}</span></div></div></div>`;
   }
 
   function revItem(){
@@ -8119,6 +8121,92 @@ window.doSmartSearch = async function(){
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('studentDashboard')">ড্যাশবোর্ডে যাও</button></div>${creditFooter()}`;
   }
 
+
+  // ================= ⏸ রিভিশন নোট: টাইমার থামিয়ে নোট পড়া, তারপর টাইমার চালু করে ফিরে আসা =================
+  const rnTok = s => String(s || '').toLowerCase().split(/[^a-z0-9\u0980-\u09FF]+/).filter(x => x.length >= 3);
+  const rnHay = n => (n.title + ' ' + n.chapter + ' ' + n.topic + ' ' + (n.subtopics || []).join(' ')).toLowerCase();
+  window.revPause = async function(){
+    const r = R(); if(!r || r.paused) return;
+    r.paused = true;
+    const chip = document.getElementById('revT'); if(chip) chip.textContent = fmtTime(Math.max(0, r.remaining)) + ' ⏸';
+    const old = document.getElementById('revNoteOv'); if(old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 'revNoteOv';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:150;background:#F5F7FB;overflow:auto;-webkit-overflow-scrolling:touch;';
+    ov.innerHTML = `
+      <div style="position:sticky;top:0;z-index:3;background:#1F2A44;color:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div><b>⏸ টাইমার থামানো আছে</b><div style="font-size:12px;opacity:.8;">${fmtTime(Math.max(0, r.remaining))} বাকি — নোট পড়ে এসে চালু করো</div></div>
+        <button class="btn btn-gold" onclick="revResume()">▶ টাইমার চালু করে ফিরে যাও</button>
+      </div>
+      <div class="wrap" style="padding:14px 16px 50px;" id="revNoteBody"><div class="card center">নোট খোঁজা হচ্ছে...</div></div>`;
+    document.body.appendChild(ov);
+    if(!window.__revNotes) window.__revNotes = await getAllNotes();
+    if(!document.getElementById('revNoteOv')) return;
+    revNoteList();
+  };
+  window.revResume = function(){
+    const r = R(); if(r) r.paused = false;
+    const ov = document.getElementById('revNoteOv'); if(ov) ov.remove();
+    const chip = document.getElementById('revT'); if(chip && r) chip.textContent = fmtTime(Math.max(0, r.remaining));
+    toast('▶ টাইমার চালু হয়েছে');
+  };
+  function revNoteList(){
+    const body = document.getElementById('revNoteBody'); if(!body) return;
+    const r = R() || {}, it = r.cur || {};
+    const subs = it.subject ? [it.subject] : ((it.amb && it.amb.length) ? it.amb : ((r.segs && r.segs[r.si]) ? r.segs[r.si].subs : []));
+    const all = (window.__revNotes || []).filter(n => n.subject && n.subject !== 'untagged' && subs.indexOf(n.subject) !== -1);
+    window.__revNoteList = all;
+    const topicKeys = rnTok(it.topic), qKeys = rnTok(it.text || (it.q && it.q.text) || '');
+    const scored = all.map((n, idx) => {
+      const hay = rnHay(n);
+      const th = topicKeys.filter(k => hay.indexOf(k) !== -1).length, qh = qKeys.filter(k => hay.indexOf(k) !== -1).length;
+      return { n, idx, s: th * 3 + qh, ok: th >= 1 || qh >= 2 };
+    }).filter(x => x.ok).sort((a, b) => b.s - a.s).slice(0, 5);
+    const card = x => `<div class="exam-item" style="margin-bottom:8px;">
+        <h3 style="margin-bottom:4px;font-size:15px;">${escapeHtml(x.n.title)}</h3>
+        <div class="meta">${x.n.chapter ? '📖 ' + escapeHtml(x.n.chapter) + (x.n.topic ? ' › ' + escapeHtml(x.n.topic) : '') : ''}</div>
+        <button class="btn btn-outline btn-block" style="margin-top:6px;" onclick="revNoteOpen(${x.idx})">📄 পড়ো</button></div>`;
+    const byCh = {};
+    all.forEach((n, idx) => { const ch = n.chapter || 'অন্যান্য'; (byCh[ch] = byCh[ch] || []).push({ n, idx }); });
+    body.innerHTML = `
+      <div class="card"><h2>📝 রিভিশন নোট</h2>
+        <p class="hint">${it.topic ? 'এখনকার টপিক: <b>' + escapeHtml(it.topic) + '</b>। ' : ''}নোট পড়ার সময় টাইমার থেমে আছে। পড়া শেষে উপরের "▶ টাইমার চালু করে ফিরে যাও" চাপো।</p>
+        ${scored.length ? `<h3 style="font-size:15px;">🎯 এই প্রশ্নের সাথে মিলে যাওয়া নোট</h3>${scored.map(card).join('')}` : `<div class="empty-state" style="padding:14px 6px;">এই প্রশ্নের সাথে মেলে এমন নোট পাওয়া যায়নি।</div>`}
+      </div>
+      <div class="card"><details ${scored.length ? '' : 'open'}><summary style="cursor:pointer;font-weight:700;">📚 বিষয়ের সব নোট (${all.length}টা)</summary>
+        ${all.length ? Object.keys(byCh).map(ch => `<div style="margin-top:10px;"><div style="font-weight:600;color:var(--pencil);font-size:13.5px;margin-bottom:6px;">📖 ${escapeHtml(ch)}</div>${byCh[ch].map(card).join('')}</div>`).join('') : `<div class="empty-state">এই বিষয়ে এখনো কোনো নোট যোগ করা হয়নি।</div>`}
+      </details></div>`;
+  }
+  window.revNoteOpen = async function(idx){
+    const n = (window.__revNoteList || [])[idx]; if(!n) return;
+    if(n.type !== 'html'){ window.open(n.content, '_blank', 'noopener'); return; }
+    let content = n.content;
+    if(String(content).indexOf('DRIVEHTML:') === 0){
+      toast('লোড হচ্ছে...');
+      const rr = await postToScriptRaw('getNoteContent', { id:n.id });
+      if(!rr || rr.status !== 'success'){ toast('নোট লোড হয়নি'); return; }
+      content = rr.content;
+    }
+    window.__revSlides = { title:n.title, slides:content.split(/\n\s*---\s*\n/), i:0 };
+    revSlideDraw();
+  };
+  function revSlideDraw(){
+    const body = document.getElementById('revNoteBody'), S = window.__revSlides; if(!body || !S) return;
+    const total = S.slides.length;
+    body.innerHTML = `<div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;">
+          <h2 style="margin:0;font-size:18px;">${escapeHtml(S.title)}</h2>${total > 1 ? `<span class="q-tag">${S.i + 1} / ${total}</span>` : ''}</div>
+        <div style="border:1px solid var(--paper-edge);border-radius:8px;padding:18px;min-height:200px;background:#fff;">${S.slides[S.i]}</div>
+        ${total > 1 ? `<div class="row" style="margin-top:12px;">
+          <button class="btn btn-outline btn-block" ${S.i === 0 ? 'disabled' : ''} onclick="revSlideGo(${S.i - 1})">← আগের</button>
+          <button class="btn btn-outline btn-block" ${S.i === total - 1 ? 'disabled' : ''} onclick="revSlideGo(${S.i + 1})">পরের →</button></div>` : ''}
+        <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="revNoteBack()">← নোটের তালিকায় ফিরে যাও</button></div>`;
+    renderAllMath(body);
+    const ov = document.getElementById('revNoteOv'); if(ov) ov.scrollTo(0, 0);
+  }
+  window.revSlideGo = function(i){ if(window.__revSlides){ window.__revSlides.i = i; revSlideDraw(); } };
+  window.revNoteBack = function(){ revNoteList(); };
+
   // ================= শিক্ষক: রিভিশন সেটআপ =================
   window.__revT = { students:[], subMap:{}, bank:[] };
   window.revTOpen = function(){ go('revisionTeacher'); };
@@ -8139,6 +8227,10 @@ window.doSmartSearch = async function(){
     const scopeOpts = `<option value="">সব ছাত্রের জন্য</option>` + T.students.map(s => `<option value="${s.slug}">${escapeHtml(s.name)}</option>`).join('');
     const subOpts = SK.map(k => `<option value="${k}">${NOTES_SUBJECTS[k].label}</option>`).join('');
     app.innerHTML = `${header('রিভিশন সেটআপ')}
+      <div class="card" style="border:1.5px solid var(--gold);"><h2>🏷️ প্রশ্নের বিষয় ঠিক করো (AI)</h2>
+        <p class="hint">একটা exam বা Written-এ একাধিক বিষয়ের প্রশ্ন (যেমন Physics + Higher Math + Chemistry) থাকলে AI প্রতিটা প্রশ্নের নিজের বিষয় ঠিক করে দেয়, তাই ছাত্র যে বিষয় বেছেছে শুধু সেটাই আসে। বিষয় ঠিক না হলে ওই প্রশ্ন রিভিশনে আসে না। নতুন exam/Written বানানোর পর একবার চাপো।</p>
+        <button id="revTagBtn" class="btn btn-primary btn-block" onclick="revTTag()">🤖 প্রশ্নের বিষয় ট্যাগ করো</button>
+        <div id="revTagSt" style="margin-top:8px;"></div></div>
       <div class="card"><h2>📚 কে কোন বিষয় পড়ে</h2>
         <p class="hint">যা বাছবে শুধু সেগুলোই ওই ছাত্রের রিভিশনে দেখাবে। কিছু না বাছলে সব বিষয় দেখাবে।</p>${subjHtml}</div>
       <div class="card"><h2>➕ রিভিশনের প্রশ্ন যোগ করো</h2>
@@ -8158,6 +8250,25 @@ window.doSmartSearch = async function(){
       <div class="card"><h3>তোমার যোগ করা প্রশ্ন (${T.bank.length})</h3>${bankHtml}</div>
       <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
   }
+
+  window.revTTag = async function(){
+    const b = document.getElementById('revTagBtn'), st = document.getElementById('revTagSt');
+    if(b) b.disabled = true;
+    let total = 0, remaining = null, guard = 0, err = false, stuck = false, unclass = 0;
+    while(guard++ < 30){
+      if(st) st.innerHTML = `<p class="hint">🤖 ট্যাগ হচ্ছে... ${total}টা হয়েছে${remaining !== null ? ', বাকি ' + remaining + 'টা' : ''} — পেজ বন্ধ কোরো না</p>`;
+      const res = await postToScriptRaw('revisionTagQuestions', {});
+      if(!res || res.status !== 'success'){ err = true; break; }
+      total += res.tagged; remaining = res.remaining; if(typeof res.unclassified === 'number') unclass = res.unclassified;
+      if(res.remaining <= 0) break;
+      if((typeof res.progress === 'number' ? res.progress : res.tagged) === 0){ stuck = true; break; }
+    }
+    if(st) st.innerHTML = err ? `<p class="hint" style="color:var(--red);">❌ সংযোগ বা সার্ভার সমস্যা, আবার চেষ্টা করো।</p>`
+      : stuck ? `<p class="hint" style="color:#9B6A15;">⚠️ ${total}টা হয়েছে, বাকি ${remaining}টায় AI এখন পারছে না (কোটা শেষ?) — পরে আবার চাপো।</p>`
+      : unclass > 0 ? `<p class="hint" style="color:#9B6A15;">✅ ${total}টা প্রশ্নের বিষয় ঠিক হয়েছে। ⚠️ ${unclass}টা প্রশ্ন AI ধরতে পারেনি (অশ্রেণিবদ্ধ হিসেবে চিহ্নিত) — পরে আবার চাপলে নিজে থেকে আবার চেষ্টা হবে।</p>`
+      : `<p class="hint" style="color:var(--green);">✅ ${total}টা প্রশ্নের বিষয় ঠিক হয়েছে। সব প্রশ্ন এখন বিষয় অনুযায়ী আছে।</p>`;
+    if(b) b.disabled = false;
+  };
   window.revTType = function(){ const m = document.getElementById('rtType').value === 'mcq'; document.getElementById('rtMcq').style.display = m ? 'block' : 'none'; document.getElementById('rtCq').style.display = m ? 'none' : 'block'; };
   window.revTSaveSubs = async function(i){
     const T = window.__revT, s = T.students[i];
@@ -8326,6 +8437,7 @@ window.doSmartSearch = async function(){
         <label class="field-label">কার জন্য</label>
         <select id="asStud"><option value="">সব ছাত্র</option>${studs.map(s => `<option value="${s.slug}">${escapeHtml(s.name)}</option>`).join('')}</select>
         <label class="field-label">কবে থেকে দেখাবে</label><input type="date" id="asDate" value="${todayStr()}">
+        <label class="field-label">ডেডলাইন (এর মধ্যে না করলে ছাত্রকে মোটিভেশন পপআপ আসবে)</label><input type="date" id="asDue" value="${todayStr()}">
         <label class="field-label">বিষয়</label><select id="asSubj" onchange="revAsgFill('subj')">${subjOpts('chemistry')}</select>
         <label class="field-label">অধ্যায়</label><select id="asChap" onchange="revAsgFill('chap')"></select>
         <label class="field-label">টপিক</label><select id="asTopic" onchange="revAsgFill('topic')"></select>
@@ -8354,7 +8466,7 @@ window.doSmartSearch = async function(){
     if(!val('asTopic')){ toast('অধ্যায় ও টপিক বাছো (আগে TOC ইম্পোর্ট করতে হবে)'); return; }
     if(!text && !f){ toast('প্রশ্ন লেখো অথবা ছবি দাও'); return; }
     const b = document.getElementById('asBtn'); b.disabled = true;
-    const params = { slug:val('asStud'), date:val('asDate'), subject:val('asSubj'), chapter:val('asChap'), topic:val('asTopic'), subtopic:val('asSub'), text, modelAnswerText:val('asModel') };
+    const params = { slug:val('asStud'), date:val('asDate'), dueDate:val('asDue'), subject:val('asSubj'), chapter:val('asChap'), topic:val('asTopic'), subtopic:val('asSub'), text, modelAnswerText:val('asModel') };
     if(f){ try{ const c = await compressImageFile(f, 1200, 0.78); params.imageBase64 = c.base64; params.imageMimeType = c.mimeType; }catch(e){ toast('ছবি পড়া যায়নি'); b.disabled = false; return; } }
     const res = await postToScriptRaw('revisionAssignSave', params);
     if(res && res.status === 'success'){ toast('অ্যাসাইন হয়েছে ✅'); revAsgRender(); } else { b.disabled = false; toast('সেভ হয়নি, আবার চেষ্টা করো'); }
@@ -8457,11 +8569,7 @@ window.doSmartSearch = async function(){
         b.textContent = label; b.onclick = fn; t.parentElement.appendChild(b);
       });
     }
-    const s = document.querySelector('#app button[data-rev]');
-    if(s && s.parentElement && !s.parentElement.querySelector('[data-rxs]')){
-      const b = document.createElement('button'); b.className = 'btn btn-outline btn-block'; b.setAttribute('data-rxs', '1');
-      b.textContent = '📌 শিক্ষকের দেওয়া আজকের HW'; b.onclick = revTodayOpen; s.parentElement.appendChild(b);
-    }
+    // (আলাদা "শিক্ষকের দেওয়া আজকের HW" বাটন বাদ — এখন একটাই HW অপশন, দেখো hwHubOpen)
   }
   new MutationObserver(injectRx).observe(document.getElementById('app'), { childList:true, subtree:true });
   injectRx();
@@ -8727,24 +8835,37 @@ window.doSmartSearch = async function(){
         <p class="hint">📝 MCQ / পরীক্ষার প্রশ্ন / Daily HW এমনিতেই প্রতি ১০ মিনিটে অটো ট্যাগ হয় (ট্রিগার চালু থাকলে)। এখনই করাতে চাইলে:</p>
         <button class="btn btn-outline btn-block" id="tagNowBtn" onclick="tagNowUI()">🏷️ এখনই বাকি সব ট্যাগ করো (প্রশ্ন, HW)</button>
         <div id="tagNowStatus" style="margin-top:8px;"></div>
+        <p class="hint" style="margin-top:14px;">🔗 আগে ট্যাগ হওয়া প্রশ্ন/নোটের টপিকের নামে ছোটখাটো পার্থক্য থাকলে (স্পেস, বন্ধনী, বানান) সব এক নামে মিলিয়ে দেয়, যাতে একই টপিকের সব প্রশ্ন ঠিক একই ট্যাগে আসে। একবার চাপলেই হবে (পরে নতুন ট্যাগ নিজেই মিলে যায়)।</p>
+        <button class="btn btn-outline btn-block" id="unifyTagBtn" onclick="unifyTagsUI()">🔗 একই টপিক এক ট্যাগে মেলাও</button>
+        <div id="unifyTagStatus" style="margin-top:8px;"></div>
       </div>`;
     first.parentNode.insertBefore(d, first.nextSibling);
+  };
+  window.unifyTagsUI = async function(){
+    const btn = document.getElementById('unifyTagBtn'), st = document.getElementById('unifyTagStatus');
+    if(btn) btn.disabled = true;
+    if(st) st.innerHTML = `<p class="hint">🔗 নাম মেলানো হচ্ছে... একটু সময় লাগতে পারে — পেজ বন্ধ কোরো না</p>`;
+    const res = await postToScriptRaw('unifyTagsNow', {});
+    if(st) st.innerHTML = (!res || res.status !== 'success')
+      ? `<p class="hint" style="color:var(--red);">❌ সংযোগ/সার্ভার সমস্যা (Apps Script নতুন version Deploy করা আছে তো?)</p>`
+      : `<p class="hint" style="color:var(--green);">✅ ${res.changed || 0}টা ট্যাগের নাম মেলানো হয়েছে (মোট ${res.total || 0}টার মধ্যে)।</p>`;
+    if(btn) btn.disabled = false;
   };
   window.tagNowUI = async function(){
     const btn = document.getElementById('tagNowBtn'), st = document.getElementById('tagNowStatus');
     if(btn) btn.disabled = true;
-    let total = 0, remaining = null, guard = 0, err = false, stuck = false;
+    let total = 0, remaining = null, guard = 0, err = false, stuck = false, unclass = 0;
     while(guard++ < 40){
       if(st) st.innerHTML = `<p class="hint">🤖 ট্যাগ হচ্ছে... ${total}টা হয়েছে${remaining !== null ? ', বাকি ' + remaining + 'টা' : ''} — পেজ বন্ধ কোরো না</p>`;
       const res = await postToScriptRaw('tagPendingNow', {});
       if(!res || res.status !== 'success'){ err = true; break; }
-      total += res.tagged; remaining = res.remaining;
+      total += res.tagged; remaining = res.remaining; if(typeof res.unclassified === 'number') unclass = res.unclassified;
       if(res.remaining <= 0) break;
-      if(res.tagged === 0){ stuck = true; break; }
+      if((typeof res.progress === 'number' ? res.progress : res.tagged) === 0){ stuck = true; break; }
     }
     if(st) st.innerHTML = err ? `<p class="hint" style="color:var(--red);">❌ সংযোগ/সার্ভার সমস্যা (Apps Script নতুন version Deploy করা আছে তো?)</p>`
       : stuck ? `<p class="hint" style="color:#9B6A15;">⚠️ ${total}টা হয়েছে। AI এখন সাড়া দিচ্ছে না (কোটা শেষ?) — বাকি ${remaining}টা পরে আবার চাপো বা ১০ মিনিটের অটো-ট্রিগারে হবে।</p>`
-      : `<p class="hint" style="color:var(--green);">✅ ${total}টা ট্যাগ হয়েছে, বাকি ${remaining || 0}টা।</p>`;
+      : `<p class="hint" style="color:${unclass > 0 ? '#9B6A15' : 'var(--green)'};">✅ ${total}টা ট্যাগ হয়েছে, বাকি ${remaining || 0}টা।${unclass > 0 ? ' ⚠️ ' + unclass + 'টা AI ধরতে পারেনি (অশ্রেণিবদ্ধ) — পরে আবার চাপলে নিজে থেকে আবার চেষ্টা হবে।' : ''}</p>`;
     if(btn) btn.disabled = false;
   };
   window.reorgNotesUI = async function(){
@@ -8769,6 +8890,796 @@ window.doSmartSearch = async function(){
     if(ok > 0) setTimeout(function(){ go('notesManage'); }, 2200);
   };
 })();
+// =====================================================================================
+// BULK UPLOAD + MASTER LIST / MERGE (frontend) — ধাপ ১ ও ২
+// index.html-এ একদম শেষে, `/* ============ NOTES v3 (end) ============ */`-এর ঠিক আগে paste করো
+// (অর্থাৎ শেষ script ট্যাগের ভেতরে)। আলাদা IIFE — আগের কোডে হাত দিতে হয় না।
+// শিক্ষকের ড্যাশবোর্ডে দুটো বাটন নিজে বসে যাবে: "📥 বাল্ক যোগ করুন" ও "🧹 মাস্টার তালিকা / চ্যাপ্টার মার্জ"।
+// ব্যাকএন্ড: Bulk.gs (actions: taxMaster, taxDupes, taxMerge, taxAdd, bulkExtract, bulkTag, bulkSave)
+// =====================================================================================
+(function(){
+  const __rb0 = render;
+  render = function(){
+    const m = { bulkUpload:bkRender, taxMerge:tmRender }[state.screen];
+    if(m){ syncLogoutFab(); m(); return; }
+    __rb0();
+  };
+
+  const esc = s => escapeHtml(String(s == null ? '' : s));
+  const uniq = a => [...new Set(a)];
+  const SUBJ = () => Object.keys(NOTES_SUBJECTS);
+  const subjLabel = k => NOTES_SUBJECTS[k] ? NOTES_SUBJECTS[k].icon + ' ' + NOTES_SUBJECTS[k].label : k;
+  const subjOpts = (sel, blank) => (blank ? `<option value="">${blank}</option>` : '') + SUBJ().map(k => `<option value="${k}" ${sel === k ? 'selected' : ''}>${esc(subjLabel(k))}</option>`).join('');
+  const CHUNK_TAG = 12, CHUNK_SAVE = 20, MAX_FILES = 80;
+
+  // ---------------- অবস্থা ----------------
+  const W = { kind:'cq', subject:'', files:[], results:{}, items:[], master:{}, extra:{}, known:[], busy:false, batch:'' };
+  function resetRun(){ W.results = {}; W.items = []; W.known = []; W.extra = {}; }
+
+  // ---------------- ছবি: কম্প্রেস + পাতা জোড়া (একটা প্রশ্নের ২–৩ পাতা → একটা লম্বা ছবি) ----------------
+  function loadImg(file){
+    return new Promise((res, rej) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); res(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('img')); };
+      img.src = url;
+    });
+  }
+  // সব পাতা একই প্রস্থে এনে উপর-নিচ জোড়া। খুব লম্বা হলে ছোট করে (ফোনের canvas সীমা + Apps Script সাইজ লিমিট এড়াতে)
+  async function stitch(files, maxW, quality){
+    const imgs = []; for(const f of files) imgs.push(await loadImg(f));
+    let w = Math.min(maxW, Math.max(...imgs.map(i => i.width)));
+    let hs = imgs.map(i => Math.round(i.height * (w / i.width)));
+    const GAP = 6, MAXH = 7000;
+    let total = hs.reduce((a, b) => a + b, 0) + GAP * (imgs.length - 1);
+    const k = total > MAXH ? MAXH / total : 1;
+    w = Math.round(w * k); hs = hs.map(h => Math.round(h * k)); total = hs.reduce((a, b) => a + b, 0) + GAP * (imgs.length - 1);
+    const c = document.createElement('canvas'); c.width = w; c.height = total;
+    const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, w, total);
+    let y = 0; imgs.forEach((im, i) => { x.drawImage(im, 0, y, w, hs[i]); y += hs[i] + GAP; });
+    return { base64: c.toDataURL('image/jpeg', quality).split(',')[1], mimeType:'image/jpeg' };
+  }
+
+  // ফাইল তালিকা → গ্রুপ (join=true মানে আগের প্রশ্নেরই পরের পাতা)
+  function groups(){
+    const g = [];
+    W.files.forEach((f, i) => { if(f.join && g.length) g[g.length - 1].push(i); else g.push([i]); });
+    return g;
+  }
+
+  // ---------------- স্ক্রিন ১: বাল্ক আপলোড ----------------
+  window.bulkOpen = function(){ W.files.forEach(f => f.url && URL.revokeObjectURL(f.url)); W.files = []; resetRun(); W.busy = false; go('bulkUpload'); };
+  async function bkRender(){
+    app.innerHTML = `${header('বাল্ক প্রশ্ন যোগ')}
+      <div class="card"><h2>📥 একসাথে অনেক প্রশ্ন যোগ করো</h2>
+        <p class="hint">ছবি দাও → AI প্রশ্ন পড়ে বিষয় › অধ্যায় › টপিক বসাবে → তুমি প্রিভিউয়ে দেখে বদলাতে পারবে → "কনফার্ম" চাপলে তবেই সেভ হবে। অধ্যায়ের নাম সবসময় মাস্টার তালিকা থেকে নেওয়া হয়, নতুন তখনই হয় যখন মেলে না।</p>
+        <div style="display:flex;gap:8px;margin:10px 0;">
+          <button class="btn ${W.kind === 'cq' ? 'btn-primary' : 'btn-outline'}" style="flex:1" onclick="bkKind('cq')">✍️ CQ (সৃজনশীল)</button>
+          <button class="btn ${W.kind === 'mcq' ? 'btn-primary' : 'btn-outline'}" style="flex:1" onclick="bkKind('mcq')">🔘 MCQ</button>
+        </div>
+        <p class="hint">${W.kind === 'cq' ? 'প্রতিটা প্রশ্নের জন্য এক বা একাধিক পাতা — একই প্রশ্নের পরের পাতায় "↳ আগের প্রশ্নের পরের পাতা" টিক দাও।' : 'একটা ছবিতে অনেকগুলো MCQ থাকলে AI আলাদা করে নেবে। সঠিক উত্তর ছবিতে না থাকলে প্রিভিউয়ে তুমি বেছে দেবে।'}</p>
+        <label class="field-label">বিষয় (জানা থাকলে বাছো — ট্যাগ বেশি নির্ভুল হয়)</label>
+        <select id="bkSubj" onchange="bkSetSubj(this.value)">${subjOpts(W.subject, '— AI ঠিক করুক (মিশ্র বিষয়) —')}</select>
+        <label class="field-label">ছবি (একসাথে অনেকগুলো বাছো, সর্বোচ্চ ${MAX_FILES}টা)</label>
+        <input type="file" id="bkFiles" accept="image/*" multiple style="margin-bottom:10px;" onchange="bkPick(this)">
+        <div id="bkFileList"></div>
+        <button class="btn btn-primary btn-block" id="bkGo" onclick="bkRun()" style="margin-top:10px;">🤖 AI দিয়ে পড়ো ও ট্যাগ করো</button>
+        <div id="bkProg" style="margin-top:10px;"></div>
+      </div>
+      <div id="bkPreview"></div>
+      <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+    bkFilesDraw();
+    if(W.items.length) bkPreviewDraw();
+    if(!Object.keys(W.master).length) await bkLoadMaster();
+  }
+  async function bkLoadMaster(){
+    const r = await postToScriptRaw('taxMaster', {});
+    if(r && r.status === 'success'){ W.master = r.tree || {}; }
+    else toast('মাস্টার তালিকা আনা যায়নি (Apps Script নতুন version Deploy করা আছে তো?)');
+  }
+  window.bkKind = function(k){ if(W.busy) return; W.kind = k; W.files.forEach(f => f.join = false); resetRun(); bkRender(); };
+  window.bkSetSubj = function(v){ W.subject = v; if(W.items.length){ W.items.forEach(x => { x.tag = null; x.tagTried = false; }); W.known = []; bkPreviewDraw(); toast('বিষয় বদলেছে — "আবার চেষ্টা" চাপলে নতুন বিষয়ে ট্যাগ হবে'); } };
+  window.bkPick = function(inp){
+    const list = [...inp.files].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric:true }));
+    if(list.length + W.files.length > MAX_FILES){ toast(`একবারে সর্বোচ্চ ${MAX_FILES}টা ছবি`); }
+    list.slice(0, MAX_FILES - W.files.length).forEach(f => W.files.push({ file:f, url:URL.createObjectURL(f), join:false }));
+    inp.value = ''; resetRun(); bkFilesDraw();
+  };
+  function bkFilesDraw(){
+    const el = document.getElementById('bkFileList'); if(!el) return;
+    if(!W.files.length){ el.innerHTML = ''; return; }
+    let q = 0;
+    el.innerHTML = `<p class="hint">${W.files.length}টা ছবি → ${groups().length}টা প্রশ্ন/গ্রুপ</p>` + W.files.map((f, i) => {
+      if(!f.join || i === 0) q++;
+      const head = (!f.join || i === 0) ? `<div style="font-weight:700;margin-top:10px;">${W.kind === 'cq' ? 'প্রশ্ন' : 'পাতা'} #${q}</div>` : '';
+      return `${head}<div style="display:flex;gap:8px;align-items:center;margin:4px 0;padding:6px;border:1px solid var(--rule);border-radius:8px;${f.join ? 'margin-left:18px;' : ''}">
+        <img src="${f.url}" style="width:54px;height:54px;object-fit:cover;border-radius:6px;">
+        <div style="flex:1;min-width:0;"><div class="meta" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(f.file.name)}</div>
+          ${i > 0 ? `<label style="font-size:12.5px;display:flex;gap:4px;align-items:center;"><input type="checkbox" style="width:auto;margin:0;" ${f.join ? 'checked' : ''} onchange="bkJoin(${i}, this.checked)"> ↳ আগের প্রশ্নের পরের পাতা</label>` : ''}</div>
+        <button class="info-btn" onclick="bkMove(${i}, -1)">▲</button><button class="info-btn" onclick="bkMove(${i}, 1)">▼</button><button class="info-btn" style="color:var(--red)" onclick="bkDel(${i})">✕</button></div>`;
+    }).join('');
+  }
+  window.bkJoin = function(i, v){ W.files[i].join = v; resetRun(); bkFilesDraw(); };
+  window.bkDel = function(i){ URL.revokeObjectURL(W.files[i].url); W.files.splice(i, 1); if(W.files[0]) W.files[0].join = false; resetRun(); bkFilesDraw(); };
+  window.bkMove = function(i, d){ const j = i + d; if(j < 0 || j >= W.files.length) return; [W.files[i], W.files[j]] = [W.files[j], W.files[i]]; W.files[0].join = false; resetRun(); bkFilesDraw(); };
+
+  // ---------------- পাইপলাইন: (ক) প্রতি গ্রুপ থেকে প্রশ্ন বের করা, (খ) ১২টা করে ট্যাগ ----------------
+  // আবার চাপলে যেগুলো আগেই হয়ে গেছে সেগুলো বাদ দিয়ে শুধু বাকিগুলো চলে (ব্যর্থ হলে থেমে থাকে না, পরে আবার চেষ্টা করা যায়)
+  function setProg(frac, msg){
+    const el = document.getElementById('bkProg'); if(!el) return;
+    const pct = Math.max(0, Math.min(100, Math.round(frac * 100)));
+    el.innerHTML = `<div style="background:#E8ECF3;border-radius:8px;height:10px;overflow:hidden;"><div style="height:10px;width:${pct}%;background:var(--green);transition:width .3s"></div></div><p class="hint" style="margin-top:6px;">${msg} (${pct}%) — পেজ বন্ধ কোরো না</p>`;
+  }
+  window.bkRun = async function(){
+    if(W.busy) return;
+    if(!W.files.length){ toast('আগে ছবি বাছো'); return; }
+    W.busy = true; const btn = document.getElementById('bkGo'); if(btn) btn.disabled = true;
+    const gs = groups(), failed = [];
+    const needTag = () => W.items.filter(x => !x.tag && !x.tagTried);
+    W.items.forEach(x => { if(!x.tag) x.tagTried = false; });   // আগের রানে যেগুলো ট্যাগ হয়নি সেগুলো আবার চেষ্টা
+    if(!Object.keys(W.master).length) await bkLoadMaster();
+    let done = 0;
+
+    // (ক)
+    for(let gi = 0; gi < gs.length; gi++){
+      if(W.results[gi] && W.results[gi].ok){ done++; continue; }
+      setProg(0.7 * done / gs.length, `প্রশ্ন পড়া হচ্ছে — ${gi + 1}/${gs.length}`);
+      let img; try{ img = await stitch(gs[gi].map(i => W.files[i].file), 1200, 0.72); }
+      catch(e){ W.results[gi] = { ok:false, msg:'ছবি পড়া যায়নি' }; failed.push(gi); continue; }
+      let r = await postToScriptRaw('bulkExtract', { kind:W.kind, base64:img.base64, mimeType:img.mimeType });
+      if(r && r.status === 'error' && (r.message === 'ai_unavailable' || r.message === 'network')){ await new Promise(s => setTimeout(s, 2500)); r = await postToScriptRaw('bulkExtract', { kind:W.kind, base64:img.base64, mimeType:img.mimeType }); }
+      if(r && r.status === 'success'){
+        W.results[gi] = { ok:true };
+        r.questions.forEach(q => W.items.push({ gi, kind:W.kind, text:q.text, options:q.options || null, correct:(q.correct === undefined ? null : q.correct),
+          modelAnswerText:q.modelAnswerText || '', imageUrl:(W.kind === 'cq' || q.needsImage) ? (r.imageUrl || '') : '', tag:null, tagTried:false, removed:false }));
+        done++;
+      } else {
+        W.results[gi] = { ok:false, msg: r && r.message === 'ai_unavailable' ? 'AI এখন সাড়া দিচ্ছে না' : r && r.message === 'nothing_found' ? 'ছবিতে প্রশ্ন পাওয়া যায়নি' : 'পড়া যায়নি' };
+        failed.push(gi);
+      }
+    }
+    // (খ) ট্যাগ — নতুন নামগুলো পরের ব্যাচকে জানানো হয়, যাতে একই টপিক ব্যাচ ভেদে আলাদা নাম না পায়
+    let aiDown = false; const tagTotal = needTag().length || 1;
+    while(!aiDown){
+      const pend = needTag().slice(0, CHUNK_TAG); if(!pend.length) break;
+      setProg(0.7 + 0.3 * (1 - needTag().length / tagTotal), `অধ্যায়/টপিক ঠিক করা হচ্ছে — বাকি ${needTag().length}টা`);
+      const r = await postToScriptRaw('bulkTag', { subject:W.subject, known:JSON.stringify(W.known), items:JSON.stringify(pend.map(x => ({ text:x.text + (x.options ? ' ; ' + x.options.join(' ; ') : ''), subject:W.subject }))) });
+      if(!r || r.status !== 'success'){ aiDown = true; break; }
+      pend.forEach((it, i) => {
+        it.tagTried = true; const t = r.tags[i];
+        if(t){ it.tag = { subject:t.subject, chapter:t.chapter, topic:t.topic, subs:t.subs || [] }; bkRegister(it.tag); if(t.isNew) W.known.push({ subject:t.subject, chapter:t.chapter, topic:t.topic }); }
+      });
+    }
+    W.busy = false;
+    const prog = document.getElementById('bkProg');
+    if(prog){
+      const bad = failed.length ? `<p class="hint" style="color:#9B6A15;">⚠️ ${failed.length}টা গ্রুপ পড়া যায়নি: ${failed.map(g => `#${g + 1} (${esc(W.results[g].msg)})`).join(', ')} — আবার চাপলে শুধু এগুলোই চেষ্টা হবে।</p>` : '';
+      const dn = aiDown ? `<p class="hint" style="color:#9B6A15;">⚠️ AI এখন ট্যাগ বসাতে পারেনি — প্রশ্নগুলো নিচে আছে, নিজে ট্যাগ বেছে নিতে পারো, বা পরে আবার চাপো।</p>` : '';
+      prog.innerHTML = `<p class="hint" style="color:var(--green);">✅ ${W.items.length}টা প্রশ্ন পাওয়া গেছে।</p>${bad}${dn}`;
+    }
+    if(btn){ btn.disabled = false; btn.textContent = '🔄 বাকিগুলো আবার চেষ্টা করো'; }
+    bkPreviewDraw();
+  };
+
+  // ---------------- মাস্টার তালিকা থেকে অপশন (AI/শিক্ষকের বানানো নতুন নামও পরের কার্ডে পাওয়া যায়) ----------------
+  function bkRegister(t){ if(!t || !t.subject || !t.chapter || !t.topic) return; const e = (W.extra[t.subject] = W.extra[t.subject] || {}); (e[t.chapter] = e[t.chapter] || {})[t.topic] = true; }
+  const bkChs = sj => uniq(((W.master[sj] || []).map(c => c.chapter)).concat(Object.keys(W.extra[sj] || {})));
+  function bkTps(sj, ch){ const m = (W.master[sj] || []).find(c => c.chapter === ch); return uniq((m ? m.topics.map(t => t.topic) : []).concat(Object.keys(((W.extra[sj] || {})[ch]) || {}))); }
+  const bkIsNew = (sj, ch) => !(W.master[sj] || []).some(c => c.chapter === ch);
+
+  // ---------------- প্রিভিউ ----------------
+  function bkInvalid(it){ const t = it.tag; return !t || !t.subject || !t.chapter || !t.topic || (it.kind === 'mcq' && !(it.correct >= 0 && it.correct <= 3 && it.correct !== null)); }
+  function bkCard(it, i){
+    const t = it.tag || { subject:W.subject || '', chapter:'', topic:'' };
+    const chs = t.subject ? bkChs(t.subject) : [], tps = (t.subject && t.chapter) ? bkTps(t.subject, t.chapter) : [];
+    const isNew = t.subject && t.chapter && bkIsNew(t.subject, t.chapter);
+    const L = ['ক', 'খ', 'গ', 'ঘ'];
+    return `<div class="card" id="bkC${i}" style="${it.removed ? 'display:none;' : ''}${bkInvalid(it) ? 'border:2px solid var(--red);' : ''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;"><b>${it.kind === 'cq' ? 'CQ' : 'MCQ'} #${i + 1}</b>
+        <span><span class="meta">${W.kind === 'cq' ? 'ছবি-গ্রুপ #' + (it.gi + 1) : ''}</span> <button class="info-btn" style="color:var(--red)" onclick="bkRemove(${i})">🗑️ বাদ</button></span></div>
+      ${it.imageUrl ? `<img src="${driveImg(it.imageUrl)}" style="max-width:100%;max-height:260px;border-radius:8px;margin:6px 0;">` : ''}
+      <textarea style="min-height:${it.kind === 'cq' ? 110 : 60}px;font-size:14px;" oninput="bkSet(${i},'text',this.value)">${esc(it.text)}</textarea>
+      ${it.kind === 'mcq' ? `<div style="margin-top:6px;">${it.options.map((o, j) => `<div style="display:flex;gap:6px;align-items:center;margin:3px 0;"><b>${L[j]})</b><input type="text" value="${esc(o)}" style="margin:0;" oninput="bkOpt(${i},${j},this.value)"></div>`).join('')}
+        <label class="field-label">সঠিক উত্তর ${it.correct === null ? '<span style="color:var(--red)">(বাছতে হবে)</span>' : ''}</label>
+        <select onchange="bkSet(${i},'correct',this.value === '' ? null : Number(this.value)); bkRedraw(${i})"><option value="">— বাছো —</option>${L.map((l, j) => `<option value="${j}" ${it.correct === j ? 'selected' : ''}>${l}</option>`).join('')}</select></div>` : ''}
+      <div style="margin-top:8px;padding:8px;background:#F4F6FA;border-radius:8px;">
+        <div class="meta" style="margin-bottom:4px;">🏷️ ট্যাগ ${!it.tag ? '<span style="color:var(--red)">— AI ধরতে পারেনি, নিজে বাছো</span>' : isNew ? '<span style="color:#9B6A15">— 🆕 মাস্টার তালিকায় নেই (কনফার্ম করলে নতুন অধ্যায় হিসেবে যোগ হবে)</span>' : '<span style="color:var(--green)">— মাস্টার তালিকা থেকে</span>'}</div>
+        <select onchange="bkSubjC(${i}, this.value)">${subjOpts(t.subject, '— বিষয় —')}</select>
+        <select onchange="bkChC(${i}, this.value)" style="margin-top:6px;"><option value="">— অধ্যায় —</option>${chs.map((c, j) => `<option value="${j}" ${t.chapter === c ? 'selected' : ''}>${esc(c)}${bkIsNew(t.subject, c) ? ' 🆕' : ''}</option>`).join('')}<option value="__new">➕ নতুন অধ্যায়...</option></select>
+        <select onchange="bkTpC(${i}, this.value)" style="margin-top:6px;"><option value="">— টপিক —</option>${tps.map((c, j) => `<option value="${j}" ${t.topic === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}<option value="__new">➕ নতুন টপিক...</option></select>
+      </div></div>`;
+  }
+  function bkPreviewDraw(){
+    const el = document.getElementById('bkPreview'); if(!el) return;
+    if(!W.items.length){ el.innerHTML = ''; return; }
+    el.innerHTML = `<div class="card" id="bkSummary"></div>${W.items.map(bkCard).join('')}
+      <div class="card"><button class="btn btn-primary btn-block" id="bkSave" onclick="bkConfirm()">✅ কনফার্ম ও সেভ করো</button><div id="bkSaveSt" style="margin-top:8px;"></div></div>`;
+    bkSummary();
+  }
+  function bkSummary(){
+    const el = document.getElementById('bkSummary'); if(!el) return;
+    const live = W.items.filter(x => !x.removed), bad = live.filter(bkInvalid).length;
+    const nw = live.filter(x => x.tag && x.tag.chapter && bkIsNew(x.tag.subject, x.tag.chapter)).length;
+    el.innerHTML = `<h2>👀 প্রিভিউ — ${live.length}টা প্রশ্ন</h2><p class="hint">${bad ? `<span style="color:var(--red)">⚠️ ${bad}টায় ট্যাগ/উত্তর বাকি (লাল বর্ডার)।</span> ` : '<span style="color:var(--green)">✅ সব ঠিক আছে।</span> '}${nw ? `🆕 ${nw}টা প্রশ্ন মাস্টার তালিকায় নেই এমন অধ্যায়ে — নাম মিলিয়ে দেখো, একই অধ্যায় আলাদা নামে যেন না যায়।` : ''}</p>`;
+  }
+  window.bkRedraw = function(i){ const el = document.getElementById('bkC' + i); if(el){ const d = document.createElement('div'); d.innerHTML = bkCard(W.items[i], i); el.replaceWith(d.firstElementChild); } bkSummary(); };
+  window.bkSet = function(i, k, v){ W.items[i][k] = v; };
+  window.bkOpt = function(i, j, v){ W.items[i].options[j] = v; };
+  window.bkRemove = function(i){ W.items[i].removed = true; const el = document.getElementById('bkC' + i); if(el) el.style.display = 'none'; bkSummary(); };
+  window.bkSubjC = function(i, v){ W.items[i].tag = { subject:v, chapter:'', topic:'', subs:[] }; bkRedraw(i); };
+  window.bkChC = function(i, v){
+    const it = W.items[i], t = it.tag || (it.tag = { subject:W.subject, chapter:'', topic:'', subs:[] });
+    if(!t.subject){ toast('আগে বিষয় বাছো'); bkRedraw(i); return; }
+    if(v === '__new'){
+      const name = (prompt('নতুন অধ্যায়ের নাম (মাস্টার তালিকার ফরম্যাটে, যেমন: ১ম পত্র · অধ্যায়-০২: ভেক্টর)') || '').replace(/\|/g, ' ').trim();
+      if(name){ t.chapter = name; t.topic = ''; (W.extra[t.subject] = W.extra[t.subject] || {})[name] = W.extra[t.subject][name] || {}; }
+    } else if(v !== ''){ t.chapter = bkChs(t.subject)[Number(v)] || ''; t.topic = ''; }
+    bkRedraw(i);
+  };
+  window.bkTpC = function(i, v){
+    const it = W.items[i], t = it.tag;
+    if(!t || !t.chapter){ toast('আগে অধ্যায় বাছো'); bkRedraw(i); return; }
+    if(v === '__new'){
+      const name = (prompt('নতুন টপিকের নাম') || '').replace(/\|/g, ' ').trim();
+      if(name){ t.topic = name; bkRegister(t); }
+    } else if(v !== ''){ t.topic = bkTps(t.subject, t.chapter)[Number(v)] || ''; }
+    bkRedraw(i);
+  };
+
+  // ---------------- কনফার্ম → সেভ ----------------
+  window.bkConfirm = async function(){
+    if(W.busy) return;
+    const live = W.items.filter(x => !x.removed);
+    if(!live.length){ toast('সেভ করার মতো প্রশ্ন নেই'); return; }
+    const badIdx = W.items.findIndex(x => !x.removed && bkInvalid(x));
+    if(badIdx !== -1){ toast('লাল বর্ডারের প্রশ্নগুলোতে ট্যাগ/সঠিক উত্তর বাছো, নয়তো 🗑️ দিয়ে বাদ দাও'); const el = document.getElementById('bkC' + badIdx); if(el) el.scrollIntoView({ behavior:'smooth', block:'center' }); return; }
+    const newCh = uniq(live.filter(x => bkIsNew(x.tag.subject, x.tag.chapter)).map(x => x.tag.chapter));
+    if(newCh.length && !confirm(`${newCh.length}টা নতুন অধ্যায় মাস্টার তালিকায় যোগ হবে:\n\n${newCh.slice(0, 8).join('\n')}${newCh.length > 8 ? '\n...' : ''}\n\nনামগুলো ঠিক আছে তো? এগিয়ে যাবে?`)) return;
+    W.busy = true; const btn = document.getElementById('bkSave'), st = document.getElementById('bkSaveSt'); if(btn) btn.disabled = true;
+    W.batch = 'b' + Date.now();
+    let saved = 0, skipped = 0, err = false;
+    for(let i = 0; i < live.length; i += CHUNK_SAVE){
+      if(st) st.innerHTML = `<p class="hint">সেভ হচ্ছে... ${saved}/${live.length}</p>`;
+      const chunk = live.slice(i, i + CHUNK_SAVE).map(x => ({ kind:x.kind, subject:x.tag.subject, chapter:x.tag.chapter, topic:x.tag.topic, subtopic:(x.tag.subs && x.tag.subs[0]) || '',
+        text:x.text, options:x.options, correct:x.correct, modelAnswerText:x.modelAnswerText, imageUrl:x.imageUrl }));
+      const r = await postToScriptRaw('bulkSave', { batch:W.batch, items:JSON.stringify(chunk) });
+      if(!r || r.status !== 'success'){ err = true; break; }
+      saved += r.saved; skipped += r.skipped;
+      live.slice(i, i + CHUNK_SAVE).forEach(x => x.removed = true);   // সেভ হয়ে গেছে — আবার চাপলে ডাবল সেভ হবে না
+    }
+    W.busy = false;
+    window.__revTax = null;   // রিভিশন মডিউলের Taxonomy ক্যাশ নতুন করে আনাতে
+    if(err){ if(st) st.innerHTML = `<p class="hint" style="color:var(--red);">❌ ${saved}টা সেভ হয়েছে, তারপর সংযোগ/সার্ভার সমস্যা। আবার "কনফার্ম" চাপলে বাকিগুলো সেভ হবে (যেগুলো হয়ে গেছে সেগুলো আর যাবে না)।</p>`; if(btn) btn.disabled = false; bkPreviewDraw(); return; }
+    toast(saved + 'টা প্রশ্ন সেভ হয়েছে ✅');
+    const el = document.getElementById('bkPreview');
+    if(el) el.innerHTML = `<div class="card center"><h2>✅ ${saved}টা প্রশ্ন সেভ হয়েছে</h2>${skipped ? `<p class="hint" style="color:#9B6A15;">${skipped}টা বাদ গেছে (ট্যাগ বা উত্তর অসম্পূর্ণ ছিল)।</p>` : ''}<button class="btn btn-primary btn-block" onclick="bulkOpen()">➕ আরও যোগ করো</button><button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="tmOpen()">🧹 মাস্টার তালিকা দেখো</button></div>`;
+    W.master = {}; W.items = [];
+  };
+
+  // ---------------- স্ক্রিন ২: মাস্টার তালিকা + মার্জ ----------------
+  const M = { subject:'physics', mode:'chapter', tree:{}, dupes:[], chapter:'' };
+  window.tmOpen = function(){ go('taxMerge'); };
+  async function tmRender(){
+    app.innerHTML = header('মাস্টার তালিকা / মার্জ') + `<div class="card center">লোড হচ্ছে...</div>`;
+    const [a, b] = await Promise.all([postToScriptRaw('taxMaster', {}), postToScriptRaw('taxDupes', {})]);
+    if(!a || a.status !== 'success'){ app.innerHTML = `${header('মাস্টার তালিকা / মার্জ')}<div class="card"><p class="hint" style="color:var(--red);">❌ তালিকা আনা যায়নি (Apps Script নতুন version Deploy করা আছে তো?)</p></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>`; return; }
+    M.tree = a.tree || {}; M.dupes = (b && b.status === 'success') ? b.groups : []; M.unclassified = a.unclassified || 0;
+    tmDraw();
+  }
+  const countOf = (sj, ch, tp) => { const c = (M.tree[sj] || []).find(x => x.chapter === ch); if(!c) return 0; if(!tp) return c.n; const t = c.topics.find(x => x.topic === tp); return t ? t.n : 0; };
+  function tmDraw(){
+    const dg = M.dupes.map((g, gi) => `<div style="border:1px solid var(--rule);border-radius:8px;padding:8px;margin:8px 0;">
+        <div class="meta">${esc(subjLabel(g.subject))}${g.level === 'topic' ? ' · টপিক (' + esc(g.chapter) + ')' : ' · অধ্যায়'}</div>
+        ${g.names.map((n, ni) => `<label style="display:flex;gap:6px;align-items:flex-start;margin:4px 0;font-size:13.5px;"><input type="radio" name="dg${gi}" value="${ni}" ${ni === 0 ? 'checked' : ''} style="width:auto;margin-top:3px;"><span>${esc(n)} <span class="meta">(${g.level === 'topic' ? countOf(g.subject, g.chapter, n) : countOf(g.subject, n)}টা প্রশ্ন/নোট)</span></span></label>`).join('')}
+        <p class="hint" style="margin:4px 0;">যেটা টিক দেওয়া সেই নামটা থাকবে, বাকিগুলো এতে মিশে যাবে।</p>
+        <button class="btn btn-gold btn-block" onclick="tmMergeDupe(${gi})">🔗 এক ক্লিকে জোড়া লাগাও</button></div>`).join('');
+    const chs = M.tree[M.subject] || [];
+    if(M.mode === 'topic' && !chs.find(c => c.chapter === M.chapter)) M.chapter = chs.length ? chs[0].chapter : '';
+    const topicsOf = (chs.find(c => c.chapter === M.chapter) || { topics:[] }).topics;
+    const items = M.mode === 'chapter' ? chs.map(c => ({ name:c.chapter, n:c.n, sub:c.topics.length + 'টা টপিক' })) : topicsOf.map(t => ({ name:t.topic, n:t.n, sub:'' }));
+    app.innerHTML = `${header('মাস্টার তালিকা / মার্জ')}
+      <div class="card"><h2>🧹 ডুপ্লিকেট চ্যাপ্টার/টপিক</h2>
+        ${M.unclassified ? `<p class="hint" style="color:#9B6A15;">⚠️ ${M.unclassified}টা আইটেম এখনো "অশ্রেণিবদ্ধ"।</p>` : ''}
+        ${M.dupes.length ? `<p class="hint">অ্যাপ নিজে ${M.dupes.length}টা সম্ভাব্য ডুপ্লিকেট পেয়েছে। দেখে মিলিয়ে নাও:</p>${dg}<button class="btn btn-outline btn-block" onclick="tmMergeAll()">⚡ সবগুলো একসাথে মার্জ করো (প্রতিটায় প্রথমটা থাকবে)</button>` : `<p class="hint" style="color:var(--green);">✅ কোনো সম্ভাব্য ডুপ্লিকেট পাওয়া যায়নি।</p>`}
+        <div id="tmSt" style="margin-top:8px;"></div></div>
+      <div class="card"><h2>✋ নিজে বেছে মার্জ / নাম বদল</h2>
+        <select onchange="M_set('subject', this.value)">${subjOpts(M.subject)}</select>
+        <div style="display:flex;gap:8px;margin:8px 0;"><button class="btn ${M.mode === 'chapter' ? 'btn-primary' : 'btn-outline'}" style="flex:1" onclick="M_set('mode','chapter')">অধ্যায়</button><button class="btn ${M.mode === 'topic' ? 'btn-primary' : 'btn-outline'}" style="flex:1" onclick="M_set('mode','topic')">টপিক</button></div>
+        ${M.mode === 'topic' ? `<select onchange="M_set('chapter', this.value)">${chs.map(c => `<option value="${esc(c.chapter)}" ${c.chapter === M.chapter ? 'selected' : ''}>${esc(c.chapter)}</option>`).join('')}</select>` : ''}
+        ${items.length ? items.map((x, i) => `<label style="display:flex;gap:6px;align-items:flex-start;margin:6px 0;font-size:13.5px;"><input type="checkbox" class="tmChk" value="${i}" style="width:auto;margin-top:3px;"><span>${esc(x.name)} <span class="meta">(${x.n}টা প্রশ্ন/নোট${x.sub ? ' · ' + x.sub : ''})</span></span></label>`).join('') : `<div class="empty-state">এই বিষয়ে কিছু নেই।</div>`}
+        <label class="field-label">এই নামে মিলিয়ে দাও (বর্তমান কোনো নাম, বা নতুন নাম লিখলে নাম বদলে যাবে)</label>
+        <input type="text" id="tmTo" list="tmList" placeholder="চূড়ান্ত নাম"><datalist id="tmList">${items.map(x => `<option value="${esc(x.name)}">`).join('')}</datalist>
+        <button class="btn btn-primary btn-block" onclick="tmMergeManual()">🔗 টিক দেওয়াগুলো এই নামে মার্জ করো</button></div>
+      <div class="card"><h2>➕ মাস্টার তালিকায় নতুন যোগ</h2>
+        <select id="taSubj">${subjOpts(M.subject)}</select>
+        <input type="text" id="taCh" placeholder="অধ্যায় (যেমন: ১ম পত্র · অধ্যায়-০২: ভেক্টর)" style="margin-top:6px;">
+        <input type="text" id="taTp" placeholder="প্রথম টপিক" style="margin-top:6px;">
+        <button class="btn btn-outline btn-block" style="margin-top:6px;" onclick="tmAdd()">➕ যোগ করো</button></div>
+      <div class="card"><h2>🗂️ মাস্টার তালিকা — ${esc(subjLabel(M.subject))}</h2>${chs.length ? chs.map(c => `<details style="margin:6px 0;"><summary style="cursor:pointer;font-weight:700;">${esc(c.chapter)} <span class="meta">(${c.n}টা প্রশ্ন/নোট · ${c.topics.length}টা টপিক)</span></summary>${c.topics.map(t => `<div style="margin:4px 0 4px 14px;font-size:13.5px;">${esc(t.topic)} <span class="meta">(${t.n})</span></div>`).join('')}</details>`).join('') : `<div class="empty-state">খালি — "বই TOC / Taxonomy" থেকে লোড করো বা ওপরে যোগ করো।</div>`}</div>
+      <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+  }
+  window.M_set = function(k, v){ M[k] = v; if(k === 'subject') M.chapter = ''; tmDraw(); };
+  async function doMerge(p, label){
+    const st = document.getElementById('tmSt'); if(st) st.innerHTML = `<p class="hint">মার্জ হচ্ছে... একটু সময় লাগতে পারে</p>`;
+    const r = await postToScriptRaw('taxMerge', p);
+    if(!r || r.status !== 'success'){ toast(r && r.message === 'busy_try_again' ? 'এখন ব্যস্ত, একটু পরে আবার চাপো' : 'মার্জ হয়নি'); return false; }
+    window.__revTax = null; return r;
+  }
+  window.tmMergeDupe = async function(gi){
+    const g = M.dupes[gi], pick = Number((document.querySelector(`input[name="dg${gi}"]:checked`) || {}).value || 0), keep = g.names[pick];
+    const from = g.names.filter(n => n !== keep);
+    if(!confirm(`"${keep}" নামটা থাকবে।\n\nএগুলো এতে মিশে যাবে:\n${from.join('\n')}\n\nএটা ফেরানো যায় না। এগোবে?`)) return;
+    const r = await doMerge({ mode:g.level, subject:g.subject, chapter:g.chapter || '', from:JSON.stringify(from), to:keep });
+    if(r){ toast('মার্জ হয়েছে ✅'); tmRender(); }
+  };
+  window.tmMergeAll = async function(){
+    if(!confirm(`${M.dupes.length}টা গ্রুপ মার্জ হবে — প্রতিটায় প্রথম নামটা থাকবে (বইয়ের সূচিপত্র থেকে যেটা আগে এসেছে)। ফেরানো যায় না। এগোবে?`)) return;
+    let ok = 0;
+    for(const g of M.dupes.filter(x => x.level === 'chapter').concat(M.dupes.filter(x => x.level === 'topic'))){   // আগে অধ্যায়, তারপর টপিক
+      const r = await doMerge({ mode:g.level, subject:g.subject, chapter:g.chapter || '', from:JSON.stringify(g.names.slice(1)), to:g.names[0] });
+      if(r) ok++;
+    }
+    toast(ok + 'টা গ্রুপ মার্জ হয়েছে ✅'); tmRender();
+  };
+  window.tmMergeManual = async function(){
+    const chs = M.tree[M.subject] || [];
+    const names = M.mode === 'chapter' ? chs.map(c => c.chapter) : ((chs.find(c => c.chapter === M.chapter) || { topics:[] }).topics.map(t => t.topic));
+    const from = [...document.querySelectorAll('.tmChk:checked')].map(c => names[Number(c.value)]);
+    const to = (document.getElementById('tmTo').value || '').replace(/\|/g, ' ').trim();
+    if(!from.length || !to){ toast('টিক দাও আর চূড়ান্ত নাম লেখো'); return; }
+    if(!confirm(`"${to}" নামে মিলবে:\n${from.join('\n')}\n\nফেরানো যায় না। এগোবে?`)) return;
+    const r = await doMerge({ mode:M.mode, subject:M.subject, chapter:M.mode === 'topic' ? M.chapter : '', from:JSON.stringify(from), to });
+    if(r){ toast('মার্জ হয়েছে ✅'); tmRender(); }
+  };
+  window.tmAdd = async function(){
+    const v = id => (document.getElementById(id) || {}).value || '';
+    const r = await postToScriptRaw('taxAdd', { subject:v('taSubj'), chapter:v('taCh'), topic:v('taTp') });
+    if(r && r.status === 'success'){ toast(r.added ? 'যোগ হয়েছে ✅' : 'এটা আগে থেকেই আছে'); window.__revTax = null; tmRender(); } else toast('অধ্যায় আর টপিক দুটোই লাগবে');
+  };
+
+  // ---------------- ড্যাশবোর্ডে বাটন ----------------
+  function injectBulk(){
+    const t = document.querySelector('#app button[data-revt]');
+    if(t && t.parentElement && !t.parentElement.querySelector('[data-bulk]')){
+      [['📥 বাল্ক যোগ করুন (CQ / MCQ)', bulkOpen], ['🧹 মাস্টার তালিকা / চ্যাপ্টার মার্জ', tmOpen]].forEach(([label, fn]) => {
+        const b = document.createElement('button'); b.className = 'btn btn-outline btn-block'; b.setAttribute('data-bulk', '1');
+        b.textContent = label; b.onclick = fn; t.parentElement.appendChild(b);
+      });
+    }
+  }
+  new MutationObserver(injectBulk).observe(document.getElementById('app'), { childList:true, subtree:true });
+  injectBulk();
+})();
+
+// =====================================================================================
+// PLAN FRONTEND — ধাপ ৩ (একটাই HW), ধাপ ৪ (রিভিশন সেট), ধাপ ৫ (একটাই ক্যালেন্ডার + মিস করলে ওয়ার্নিং)
+// bulk_frontend.js-এর ঠিক নিচে (NOTES v3 (end) মার্কারের আগে) বসে। আলাদা IIFE।
+// ব্যাকএন্ড: Plan.gs (planHub, planSetToday, planSetOpen, planSetMcq, planSetCq, planCalendar, planMissed, planBankList, planBatches, planSetSave, planSetList, planSetDelete)
+// =====================================================================================
+(function(){
+  const __pl0 = render;
+  render = function(){
+    const m = { hwHub:hhRender, hwSubmit2:hsRender, revSets:rsRender, revSetRun:srRender, myCal:mcRender, revSetBuild:sbRender }[state.screen];
+    if(m){ syncLogoutFab(); m(); return; }
+    __pl0();
+  };
+  const esc = s => escapeHtml(String(s == null ? '' : s));
+  const val = id => (document.getElementById(id) || {}).value || '';
+  const uniq = a => [...new Set(a)];
+  const subjLabel = k => NOTES_SUBJECTS[k] ? NOTES_SUBJECTS[k].icon + ' ' + NOTES_SUBJECTS[k].label : '📂 অন্যান্য / ট্যাগ হচ্ছে';
+  const subjOpts = (sel, blank) => (blank ? `<option value="">${blank}</option>` : '') + Object.keys(NOTES_SUBJECTS).map(k => `<option value="${k}" ${sel === k ? 'selected' : ''}>${esc(subjLabel(k))}</option>`).join('');
+  const chip = (st, overdue) => ({
+    pending: `<span class="widget-tag ${overdue ? 'tag-red' : 'tag-blue'}">${overdue ? '⚠️ বাকি (ডেডলাইন পার)' : 'বাকি'}</span>`,
+    submitted: `<span class="widget-tag" style="background:#FEF8EC;color:#9B6A15;">📤 জমা</span>`,
+    checked: `<span class="widget-tag tag-green">✅ চেক হয়েছে</span>`
+  }[st] || '');
+  const needStud = () => { const s = getLoggedStudent(); if(!s){ go('studentAuth'); return null; } return s; };
+  const loading = t => { app.innerHTML = header(t) + `<div class="card center">লোড হচ্ছে...</div>`; };
+  const failCard = (t, back) => { app.innerHTML = `${header(t)}<div class="card"><p class="hint" style="color:var(--red);">❌ লোড করা যায়নি — ইন্টারনেট বা Apps Script-এর নতুন version Deploy চেক করো।</p><button class="btn btn-outline btn-block" onclick="${back}">🔄 আবার চেষ্টা</button></div><div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>`; };
+
+  // ---------- একাধিক পাতা → একটা লম্বা ছবি (কম্প্রেস সহ) ----------
+  function loadImg(file){
+    return new Promise((res, rej) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); res(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('img')); };
+      img.src = url;
+    });
+  }
+  async function stitch(files, maxW, quality){
+    const imgs = []; for(const f of files) imgs.push(await loadImg(f));
+    let w = Math.min(maxW, Math.max(...imgs.map(i => i.width)));
+    let hs = imgs.map(i => Math.round(i.height * (w / i.width)));
+    const GAP = 6, MAXH = 7000;
+    let total = hs.reduce((a, b) => a + b, 0) + GAP * (imgs.length - 1);
+    const k = total > MAXH ? MAXH / total : 1;
+    w = Math.round(w * k); hs = hs.map(h => Math.round(h * k)); total = hs.reduce((a, b) => a + b, 0) + GAP * (imgs.length - 1);
+    const c = document.createElement('canvas'); c.width = w; c.height = total;
+    const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, w, total);
+    let y = 0; imgs.forEach((im, i) => { x.drawImage(im, 0, y, w, hs[i]); y += hs[i] + GAP; });
+    return { base64: c.toDataURL('image/jpeg', quality).split(',')[1], mimeType:'image/jpeg' };
+  }
+  const sortFiles = l => [...l].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric:true }));
+  // পাতার তালিকা (প্রিভিউ + ▲▼✕): store = { list:[{file,url}] }
+  function pagesHtml(list, fnBase){
+    if(!list.length) return '';
+    return list.map((f, i) => `<div style="display:flex;gap:8px;align-items:center;margin:4px 0;padding:6px;border:1px solid var(--rule);border-radius:8px;">
+      <img src="${f.url}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;"><div style="flex:1;" class="meta">পাতা ${i + 1}</div>
+      <button class="info-btn" onclick="${fnBase}(${i},-1)">▲</button><button class="info-btn" onclick="${fnBase}(${i},1)">▼</button><button class="info-btn" style="color:var(--red)" onclick="${fnBase}(${i},0)">✕</button></div>`).join('');
+  }
+  function listOp(list, i, d){
+    if(d === 0){ URL.revokeObjectURL(list[i].url); list.splice(i, 1); return; }
+    const j = i + d; if(j < 0 || j >= list.length) return; [list[i], list[j]] = [list[j], list[i]];
+  }
+  const addFiles = (list, input) => { sortFiles(input.files).forEach(f => list.push({ file:f, url:URL.createObjectURL(f) })); input.value = ''; };
+
+  // =====================================================================================
+  // ধাপ ৩: ছাত্রের একটাই "HW" — বিষয়ভিত্তিক কার্ড, প্রতিটার আলাদা স্ট্যাটাস
+  // =====================================================================================
+  const H = { data:null, pages:{} };
+  window.hwHubOpen = function(){ if(!needStud()) return; go('hwHub'); };
+  async function hhRender(){
+    const stud = needStud(); if(!stud) return;
+    loading('HW');
+    const r = await postToScriptRaw('planHub', { slug:stud.slug, today:todayStr() });
+    if(!r || r.status !== 'success'){ failCard('HW', 'hhRender()'); return; }
+    H.data = r; H.pages = {}; hhDraw();
+  }
+  function hhDraw(){
+    const d = H.data, groups = {};
+    d.assigned.forEach(a => (groups[a.subject] = groups[a.subject] || { a:[], o:[] }).a.push(a));
+    d.own.forEach(o => (groups[o.subject || 'other'] = groups[o.subject || 'other'] || { a:[], o:[] }).o.push(o));
+    const pend = d.assigned.filter(a => a.status === 'pending').length;
+    const order = Object.keys(NOTES_SUBJECTS).concat('other').filter(k => groups[k]);
+    const cards = order.map(k => {
+      const g = groups[k], pk = g.a.filter(a => a.status === 'pending').length;
+      return `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;"><h2 style="margin:0;">${esc(subjLabel(k))}</h2>
+          ${pk ? `<span class="widget-tag tag-red">${pk}টা বাকি</span>` : `<span class="widget-tag tag-green">সব জমা</span>`}</div>
+        ${g.a.length ? `<h3 style="margin:12px 0 4px;font-size:14px;">📌 শিক্ষকের দেওয়া HW</h3>` + g.a.map(hhAssigned).join('') : ''}
+        ${g.o.length ? `<h3 style="margin:12px 0 4px;font-size:14px;">✍️ আমার জমা দেওয়া HW</h3>` + g.o.map(hhOwn).join('') : ''}</div>`;
+    }).join('');
+    app.innerHTML = `${header('HW')}
+      <div class="card"><h2>📚 আমার HW</h2>
+        <p class="hint">শিক্ষক যে HW দিয়েছেন আর তুমি নিজে যা জমা দিয়েছো — সব এক জায়গায়, বিষয় অনুযায়ী। নিজের HW জমা দিলে AI নিজেই বিষয় › অধ্যায় › টপিক ঠিক করবে, তোমাকে টপিক লিখতে হবে না।</p>
+        <div class="row"><button class="btn btn-gold btn-block" onclick="go('hwSubmit2')">➕ নিজের HW জমা দাও</button><button class="btn btn-outline btn-block" onclick="go('myCal')">📅 ক্যালেন্ডার</button></div>
+        ${pend ? `<p class="hint" style="margin-top:8px;color:var(--red);">শিক্ষকের দেওয়া ${pend}টা HW বাকি আছে।</p>` : ''}</div>
+      ${cards || `<div class="card"><div class="empty-state">এখনো কোনো HW নেই। 🎉</div></div>`}
+      <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>${creditFooter()}`;
+    renderAllMath(app);
+  }
+  function hhAssigned(a){
+    const head = `<div class="meta"><span class="q-tag">${esc(a.chapter)} › ${esc(a.topic)}${a.subtopic ? ' › ' + esc(a.subtopic) : ''}</span> ডেডলাইন: ${esc(a.due)}</div>`;
+    const body = `${a.text ? `<div class="q-text" style="margin-top:6px;">${esc(a.text)}</div>` : ''}${a.imageUrl ? `<img src="${driveImg(a.imageUrl)}" style="max-width:100%;border-radius:8px;margin:6px 0;">` : ''}`;
+    if(a.status === 'checked') return `<div class="exam-item">${head}${body}<div style="margin-top:6px;">${chip('checked')}</div><div class="review-ans ${a.percent >= 50 ? 'right' : 'wrong'}" style="margin-top:6px;">${a.percent}% — ${esc(a.feedback)}</div></div>`;
+    return `<div class="exam-item" id="hhA_${a.id}">${head}${body}<div style="margin:6px 0;">${chip('pending', a.overdue)}</div>
+      <button class="btn btn-primary btn-block" onclick="hhOpenForm('${a.id}')">✍️ সমাধান জমা দাও</button><div id="hhF_${a.id}"></div></div>`;
+  }
+  function hhOwn(o){
+    return `<div class="exam-item"><div class="meta"><span class="q-tag">${esc(o.chapter ? o.chapter + ' › ' : '')}${esc(o.topic)}${o.tagged ? '' : ' (ট্যাগ হচ্ছে...)'}</span> ${esc(o.date)}</div>
+      <div style="margin:6px 0;">${chip(o.status)}</div>
+      <div style="display:flex;gap:8px;">${o.qUrl ? `<a href="${driveImg(o.qUrl)}" target="_blank"><img src="${driveImg(o.qUrl)}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;"></a>` : ''}${o.aUrl ? `<a href="${driveImg(o.aUrl)}" target="_blank"><img src="${driveImg(o.aUrl)}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;"></a>` : ''}</div>
+      ${o.feedback ? `<details style="margin-top:6px;"><summary>🤖 AI-র ফিডব্যাক</summary><div style="white-space:pre-wrap;">${esc(o.feedback)}</div></details>` : ''}</div>`;
+  }
+  // শিক্ষকের দেওয়া HW-র সমাধান: একাধিক পাতা
+  window.hhOpenForm = function(id){
+    const el = document.getElementById('hhF_' + id); if(!el) return;
+    if(el.innerHTML){ el.innerHTML = ''; return; }
+    H.pages[id] = H.pages[id] || [];
+    el.innerHTML = `<div style="margin-top:8px;"><p class="hint">খাতার সবগুলো পাতার ছবি দাও (একটা সমাধানে ২–৩ পাতা লাগলেও একসাথে জমা হবে)।</p>
+      <input type="file" accept="image/*" multiple onchange="hhAdd('${id}', this)" style="margin-bottom:6px;"><div id="hhP_${id}"></div>
+      <button class="btn btn-primary btn-block" id="hhB_${id}" onclick="hhSubmit('${id}')">📤 জমা দাও</button><div id="hhR_${id}" style="margin-top:8px;"></div></div>`;
+  };
+  window.hhAdd = function(id, input){ addFiles(H.pages[id], input); hhPg(id); };
+  window.hhPgOp = function(id, i, d){ listOp(H.pages[id], i, d); hhPg(id); };
+  function hhPg(id){ const el = document.getElementById('hhP_' + id); if(el) el.innerHTML = pagesHtml(H.pages[id], `(function(i,d){hhPgOp('${id}',i,d)})`); }
+  window.hhSubmit = async function(id){
+    const stud = needStud(); if(!stud) return;
+    const list = H.pages[id] || []; if(!list.length){ toast('আগে খাতার ছবি দাও'); return; }
+    const b = document.getElementById('hhB_' + id), out = document.getElementById('hhR_' + id); b.disabled = true;
+    out.innerHTML = `<p class="hint">ছবি প্রস্তুত করা হচ্ছে...</p>`;
+    let img; try{ img = await stitch(list.map(x => x.file), 1200, 0.72); }catch(e){ out.innerHTML = `<p class="hint" style="color:var(--red);">ছবি পড়া যায়নি।</p>`; b.disabled = false; return; }
+    out.innerHTML = `<p class="hint">AI চেক করছে, একটু অপেক্ষা করো...</p>`;
+    const res = await postToScriptRaw('revisionAssignAnswer', { slug:stud.slug, id, base64:img.base64, mimeType:img.mimeType, today:todayStr() });
+    if(res && res.status === 'success'){
+      out.innerHTML = `<div class="stamp ${res.percent >= 50 ? '' : 'fail'}">${res.percent}%</div><div class="review-ans ${res.percent >= 50 ? 'right' : 'wrong'}" style="margin-top:8px;">${esc(res.feedback || '')}</div>
+        ${res.modelAnswerText ? `<details style="margin-top:8px;"><summary>✅ মডেল উত্তর দেখো</summary><div style="white-space:pre-wrap;">${esc(res.modelAnswerText)}</div></details>` : ''}
+        <button class="btn btn-gold btn-block" style="margin-top:8px;" onclick="hhRender()">🔄 তালিকা নতুন করো</button>`;
+      renderAllMath(out);
+    } else { b.disabled = false; out.innerHTML = `<p class="hint" style="color:var(--red);">❌ ${res && res.message === 'ai_unavailable' ? 'AI এখন চেক করতে পারেনি, একটু পরে আবার জমা দাও' : 'জমা হয়নি, আবার চেষ্টা করো'}</p>`; }
+  };
+  window.hhRender = hhRender;
+  window.rsRender = rsRender; window.srRender = srRender; window.mcRender = mcRender;
+
+  // ---------- নিজের HW জমা: প্রশ্নের পাতা + খাতার পাতা (দুটোই একাধিক), টপিক লিখতে হয় না ----------
+  const S2 = { q:[], a:[], busy:false };
+  async function hsRender(){
+    const stud = needStud(); if(!stud) return;
+    app.innerHTML = `${header('নিজের HW জমা দাও')}
+      <div class="card"><h2>➕ নতুন HW জমা</h2>
+        <p class="hint">টপিক লিখতে হবে না — AI ছবি দেখে বিষয়, অধ্যায় ও টপিক নিজে ঠিক করবে। একটা অঙ্কে একাধিক পাতা লাগলে সবগুলো একসাথে দাও।</p>
+        <label class="field-label">📄 প্রশ্নের ছবি (এক বা একাধিক পাতা)</label>
+        <input type="file" accept="image/*" multiple onchange="hsAdd('q', this)" style="margin-bottom:6px;"><div id="hsQ"></div>
+        <label class="field-label">✍️ তোমার খাতার (সমাধানের) ছবি — সব পাতা</label>
+        <input type="file" accept="image/*" multiple onchange="hsAdd('a', this)" style="margin-bottom:6px;"><div id="hsA"></div>
+        <button class="btn btn-primary btn-block" id="hsBtn" onclick="hsSubmit()">📤 জমা দাও</button><div id="hsSt" style="margin-top:12px;"></div></div>
+      <div class="center"><a class="link-back" onclick="go('hwHub')">← HW-তে ফিরে যাও</a></div>${creditFooter()}`;
+    hsDraw();
+  }
+  function hsDraw(){ ['q', 'a'].forEach(k => { const el = document.getElementById(k === 'q' ? 'hsQ' : 'hsA'); if(el) el.innerHTML = pagesHtml(S2[k], `(function(i,d){hsOp('${k}',i,d)})`); }); }
+  window.hsAdd = function(k, input){ addFiles(S2[k], input); hsDraw(); };
+  window.hsOp = function(k, i, d){ listOp(S2[k], i, d); hsDraw(); };
+  window.hsSubmit = async function(){
+    const stud = needStud(); if(!stud || S2.busy) return;
+    if(!S2.q.length || !S2.a.length){ toast('প্রশ্ন ও খাতা — দুটোরই অন্তত একটা ছবি দাও'); return; }
+    S2.busy = true; const b = document.getElementById('hsBtn'), st = document.getElementById('hsSt'); b.disabled = true;
+    st.innerHTML = `<p class="hint">ছবি প্রস্তুত করা হচ্ছে...</p>`;
+    let q, a; try{ q = await stitch(S2.q.map(x => x.file), 1200, 0.74); a = await stitch(S2.a.map(x => x.file), 1200, 0.72); }
+    catch(e){ st.innerHTML = `<p class="hint" style="color:var(--red);">ছবি পড়া যায়নি, অন্য ছবি দিয়ে চেষ্টা করো।</p>`; S2.busy = false; b.disabled = false; return; }
+    st.innerHTML = `<p class="hint">জমা হচ্ছে, চেক ও ট্যাগ করা হচ্ছে — ১০–৪০ সেকেন্ড লাগতে পারে, পেজ বন্ধ কোরো না...</p>`;
+    const res = await submitDailyHomeworkRemote(stud.slug, todayStr(), '', q.base64, q.mimeType, a.base64, a.mimeType);
+    S2.busy = false; b.disabled = false;
+    if(res && res.status === 'success'){
+      S2.q.forEach(x => URL.revokeObjectURL(x.url)); S2.a.forEach(x => URL.revokeObjectURL(x.url)); S2.q = []; S2.a = [];
+      window.__hwAll = null; toast('HW জমা হয়েছে ✅'); go('hwHub');
+    } else st.innerHTML = `<p class="hint" style="color:var(--red);">❌ ${esc(typeof hwFriendlyError === 'function' ? hwFriendlyError(res) : 'জমা হয়নি, আবার চেষ্টা করো')}</p>`;
+  };
+
+  // ড্যাশবোর্ডের পুরনো "Daily HW" উইজেট → একটাই HW উইজেট (+ রিভিশন সেট, ক্যালেন্ডার)
+  fillDailyHwWidget = async function(){
+    const stud = getLoggedStudent(); if(!stud) return;
+    const tag = document.getElementById('dailyHwStatusTag'), body = document.getElementById('dailyHwWidgetBody');
+    if(body) body.innerHTML = `<p class="hint">লোড হচ্ছে...</p>`;
+    const [h, s] = await Promise.all([postToScriptRaw('planHub', { slug:stud.slug, today:todayStr() }), postToScriptRaw('planSetToday', { slug:stud.slug, today:todayStr() })]);
+    const tg = document.getElementById('dailyHwStatusTag'), bd = document.getElementById('dailyHwWidgetBody'); if(!tg || !bd) return;
+    const pend = (h && h.assigned) ? h.assigned.filter(a => a.status === 'pending').length : 0, sp = (s && s.pending) || 0;
+    if(pend + sp > 0){ tg.textContent = `${pend + sp}টা বাকি`; tg.className = 'widget-tag tag-red'; } else { tg.textContent = '✅ সব ঠিক'; tg.className = 'widget-tag tag-green'; }
+    bd.innerHTML = `<p class="hint" style="margin-bottom:10px;">শিক্ষকের HW আর তোমার নিজের HW এক জায়গায়। রিভিশন সেট ও সব কাজের ক্যালেন্ডারও এখানে।</p>
+      <button class="btn btn-gold btn-block" onclick="hwHubOpen()">📚 HW ${pend ? `(${pend}টা বাকি)` : ''}</button>
+      <div class="row" style="margin-top:8px;"><button class="btn btn-outline btn-block" onclick="go('revSets')">🗂️ রিভিশন সেট ${sp ? `(${sp})` : ''}</button><button class="btn btn-outline btn-block" onclick="go('myCal')">📅 ক্যালেন্ডার</button></div>`;
+  };
+
+  // =====================================================================================
+  // ধাপ ৪: রিভিশন সেট — ছাত্র
+  // =====================================================================================
+  const R = { list:[], set:null, items:[], pages:{} };
+  async function rsRender(){
+    const stud = needStud(); if(!stud) return;
+    loading('রিভিশন সেট');
+    const r = await postToScriptRaw('planSetToday', { slug:stud.slug, today:todayStr() });
+    if(!r || r.status !== 'success'){ failCard('রিভিশন সেট', 'rsRender()'); return; }
+    R.list = r.data;
+    const rows = r.data.map(s => `<div class="exam-item"><div class="row-top"><div><div style="font-weight:700;">${esc(s.title)}</div>
+        <div class="meta">${esc(subjLabel(s.subject))} · তারিখ ${esc(s.date)} · ডেডলাইন ${esc(s.due)} · ${s.done}/${s.total} করা${s.avg !== null ? ' · গড় ' + s.avg + '%' : ''}</div>
+        <div style="margin-top:4px;">${s.finished ? chip('checked') : chip('pending', s.overdue)}</div></div>
+        <button class="btn btn-primary" style="padding:6px 14px;font-size:12.5px;" onclick="srOpen('${s.id}')">${s.finished ? 'দেখো' : (s.done ? 'চালিয়ে যাও' : 'শুরু করো')}</button></div></div>`).join('');
+    app.innerHTML = `${header('রিভিশন সেট')}
+      <div class="card"><h2>🗂️ শিক্ষকের দেওয়া রিভিশন সেট</h2>
+        <p class="hint">এখানে শুধু সেই চ্যাপ্টারগুলোর প্রশ্ন আসে যেগুলো ক্লাসে পড়ানো হয়েছে। শিক্ষক সেট না দিলে নিচের "অটো রিভিশন" থেকে নিজের দুর্বল টপিকের প্রশ্ন করতে পারো।</p>
+        ${rows || `<div class="empty-state">এখন কোনো সেট নেই।</div>`}
+        <button class="btn btn-gold btn-block" style="margin-top:10px;" onclick="revOpen()">🔁 অটো রিভিশন (আজকের)</button></div>
+      <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>${creditFooter()}`;
+  }
+  window.srOpen = function(id){ go('revSetRun', { setId:id }); };
+  async function srRender(){
+    const stud = needStud(); if(!stud) return;
+    loading('রিভিশন সেট');
+    const r = await postToScriptRaw('planSetOpen', { slug:stud.slug, id:state.setId });
+    if(!r || r.status !== 'success'){ failCard('রিভিশন সেট', 'srRender()'); return; }
+    R.set = r.set; R.items = r.items; R.pages = {}; srDraw(r.done, r.total);
+  }
+  function srDraw(done, total){
+    const L = ['ক', 'খ', 'গ', 'ঘ'];
+    const cards = R.items.map((it, i) => {
+      const head = `<div class="meta"><b>#${i + 1}</b> <span class="q-tag">${esc(it.chapter)} › ${esc(it.topic)}</span> ${it.kind === 'mcq' ? 'MCQ' : 'CQ'}</div>
+        <div class="q-text" style="margin-top:6px;white-space:pre-wrap;">${esc(it.text)}</div>${it.imageUrl ? `<img src="${driveImg(it.imageUrl)}" style="max-width:100%;border-radius:8px;margin:6px 0;">` : ''}`;
+      if(it.kind === 'mcq'){
+        const opts = it.options.map((o, j) => `<button class="btn btn-outline btn-block" style="text-align:left;margin:4px 0;${it.answered ? (j === it.correct ? 'border-color:var(--green);background:#EBF7EE;' : '') : ''}" ${it.answered ? 'disabled' : ''} onclick="srMcq('${it.id}', ${j})">${L[j]}) ${esc(o)}</button>`).join('');
+        return `<div class="card" id="srC_${it.id}">${head}${opts}${it.answered ? `<div class="review-ans ${it.score === 100 ? 'right' : 'wrong'}">${it.score === 100 ? '✅ সঠিক' : '❌ ভুল — সঠিক উত্তর ' + L[it.correct]}</div>` : ''}</div>`;
+      }
+      return `<div class="card" id="srC_${it.id}">${head}${it.answered ? `<div style="margin-top:6px;">${chip('checked')} <b>${it.score}%</b></div>` : `
+        <input type="file" accept="image/*" multiple onchange="srAdd('${it.id}', this)" style="margin:8px 0;"><div id="srP_${it.id}"></div>
+        <button class="btn btn-primary btn-block" id="srB_${it.id}" onclick="srCq('${it.id}')">📤 খাতার ছবি জমা দাও</button>`}<div id="srR_${it.id}" style="margin-top:8px;"></div></div>`;
+    }).join('');
+    app.innerHTML = `${header(R.set.title)}
+      <div class="card"><h2>🗂️ ${esc(R.set.title)}</h2><div class="meta">${esc(subjLabel(R.set.subject))} · ডেডলাইন ${esc(R.set.due)}</div>
+        <p class="hint" style="margin-top:6px;">প্রগ্রেস: <b>${done}/${total}</b>। প্রতিটা প্রশ্নে একবারই উত্তর দেওয়া যায়।</p></div>
+      ${cards}<div class="center"><a class="link-back" onclick="go('revSets')">← সেটের তালিকা</a></div>${creditFooter()}`;
+    renderAllMath(app);
+  }
+  window.srMcq = async function(itemId, choice){
+    const stud = needStud(); if(!stud) return;
+    const r = await postToScriptRaw('planSetMcq', { slug:stud.slug, setId:R.set.id, itemId, choice, today:todayStr() });
+    if(r && r.status === 'success'){ const it = R.items.find(x => x.id === itemId); it.answered = true; it.score = r.correct ? 100 : 0; it.correct = r.right; srDraw(R.items.filter(x => x.answered).length, R.items.length); }
+    else toast('সেভ হয়নি, আবার চেষ্টা করো');
+  };
+  window.srAdd = function(id, input){ R.pages[id] = R.pages[id] || []; addFiles(R.pages[id], input); srPg(id); };
+  window.srPgOp = function(id, i, d){ listOp(R.pages[id], i, d); srPg(id); };
+  function srPg(id){ const el = document.getElementById('srP_' + id); if(el) el.innerHTML = pagesHtml(R.pages[id], `(function(i,d){srPgOp('${id}',i,d)})`); }
+  window.srCq = async function(itemId){
+    const stud = needStud(); if(!stud) return;
+    const list = R.pages[itemId] || []; if(!list.length){ toast('আগে খাতার ছবি দাও'); return; }
+    const b = document.getElementById('srB_' + itemId), out = document.getElementById('srR_' + itemId); b.disabled = true;
+    out.innerHTML = `<p class="hint">AI চেক করছে, একটু অপেক্ষা করো...</p>`;
+    let img; try{ img = await stitch(list.map(x => x.file), 1200, 0.72); }catch(e){ out.innerHTML = `<p class="hint" style="color:var(--red);">ছবি পড়া যায়নি।</p>`; b.disabled = false; return; }
+    const r = await postToScriptRaw('planSetCq', { slug:stud.slug, setId:R.set.id, itemId, base64:img.base64, mimeType:img.mimeType, today:todayStr() });
+    if(r && r.status === 'success'){
+      const it = R.items.find(x => x.id === itemId); it.answered = true; it.score = r.percent;
+      srDraw(R.items.filter(x => x.answered).length, R.items.length);
+      const o2 = document.getElementById('srR_' + itemId);
+      if(o2){ o2.innerHTML = `<div class="review-ans ${r.percent >= 50 ? 'right' : 'wrong'}">${esc(r.feedback || '')}</div>${r.modelAnswerText ? `<details style="margin-top:6px;"><summary>✅ মডেল উত্তর দেখো</summary><div style="white-space:pre-wrap;">${esc(r.modelAnswerText)}</div></details>` : ''}`; renderAllMath(o2); }
+    } else { b.disabled = false; out.innerHTML = `<p class="hint" style="color:var(--red);">❌ ${r && r.message === 'ai_unavailable' ? 'AI এখন চেক করতে পারেনি, একটু পরে আবার জমা দাও' : 'জমা হয়নি, আবার চেষ্টা করো'}</p>`; }
+  };
+
+  // =====================================================================================
+  // ধাপ ৫ক: একটাই ক্যালেন্ডার — HW (লাল), রিভিশন (নীল), ক্লাস (সবুজ)
+  // =====================================================================================
+  const COL = { hw:'#D64545', rev:'#3B82F6', class:'#2E9E5B' };
+  const TYPE_LABEL = { hw:'HW', rev:'রিভিশন', class:'ক্লাস' };
+  const C = { y:null, m:null, events:[], sel:'' };
+  async function mcRender(){
+    const stud = needStud(); if(!stud) return;
+    const now = new Date(); if(C.y === null){ C.y = now.getFullYear(); C.m = now.getMonth(); C.sel = todayStr(); }
+    loading('আমার ক্যালেন্ডার');
+    const r = await postToScriptRaw('planCalendar', { slug:stud.slug, month:`${C.y}-${String(C.m + 1).padStart(2, '0')}`, today:todayStr() });
+    if(!r || r.status !== 'success'){ failCard('আমার ক্যালেন্ডার', 'mcRender()'); return; }
+    C.events = r.events; mcDraw();
+  }
+  function mcDraw(){
+    const first = new Date(C.y, C.m, 1).getDay(), dim = new Date(C.y, C.m + 1, 0).getDate(), today = todayStr(), by = {};
+    C.events.forEach(e => (by[e.date] = by[e.date] || []).push(e));
+    let cells = ''; for(let i = 0; i < first; i++) cells += '<div></div>';
+    for(let d = 1; d <= dim; d++){
+      const ds = `${C.y}-${String(C.m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`, ev = by[ds] || [];
+      const types = uniq(ev.map(e => e.type)), missed = ev.some(e => e.status === 'missed');
+      cells += `<div onclick="mcPick('${ds}')" style="cursor:pointer;border:${ds === C.sel ? '2px solid var(--ink)' : '1px solid var(--rule)'};${ds === today ? 'outline:2px solid var(--margin-red);' : ''}border-radius:8px;height:46px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:13px;background:${missed ? '#FDEDED' : '#F5F9FE'};">
+        <span>${d}</span><span style="display:flex;gap:3px;margin-top:3px;">${types.map(t => `<span style="width:7px;height:7px;border-radius:50%;background:${COL[t]};display:inline-block;"></span>`).join('')}</span></div>`;
+    }
+    const sel = by[C.sel] || [];
+    const list = sel.map(e => {
+      const st = { done:'✅ হয়েছে', todo:'⏳ বাকি', missed:'⚠️ মিস' }[e.status] || '';
+      const act = e.type === 'hw' ? `go('hwHub')` : e.type === 'rev' ? `srOpen('${e.id}')` : '';
+      return `<div class="exam-item" style="border-left:5px solid ${COL[e.type]};"><div class="row-top"><div><div style="font-weight:700;">${TYPE_LABEL[e.type]}${e.subject ? ' · ' + esc(NOTES_SUBJECTS[e.subject] ? NOTES_SUBJECTS[e.subject].label : e.subject) : ''}</div>
+        <div class="meta">${esc(e.title)} · ${st}</div></div>${act ? `<button class="info-btn" onclick="${act}">খুলো</button>` : ''}</div></div>`;
+    }).join('') || `<div class="empty-state">এই দিনে কিছু নেই।</div>`;
+    app.innerHTML = `${header('আমার ক্যালেন্ডার')}
+      <div class="card" style="padding:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><a class="link-back" onclick="mcNav(-1)">‹</a><b style="font-family:var(--font-display);font-size:16px;">${BN_MONTHS[C.m]} ${C.y}</b><a class="link-back" onclick="mcNav(1)">›</a></div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px;">${BN_WEEKDAYS.map(w => `<div style="text-align:center;font-size:11px;color:var(--pencil);font-weight:600;">${w}</div>`).join('')}</div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">${cells}</div>
+        <div style="margin-top:12px;font-size:12px;color:var(--pencil);display:flex;gap:14px;flex-wrap:wrap;"><span>🔴 HW</span><span>🔵 রিভিশন</span><span>🟢 ক্লাস</span><span style="background:#FDEDED;padding:0 6px;border-radius:4px;">মিস হওয়া দিন</span></div></div>
+      <div class="card"><h3>${esc(C.sel)} — সেদিনের কাজ</h3>${list}</div>
+      <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>${creditFooter()}`;
+  }
+  window.mcNav = function(d){ C.m += d; if(C.m < 0){ C.m = 11; C.y--; } if(C.m > 11){ C.m = 0; C.y++; } C.sel = ''; mcRender(); };
+  window.mcPick = function(ds){ C.sel = ds; mcDraw(); };
+
+  // =====================================================================================
+  // ধাপ ৫খ: মিস করলে উৎসাহমূলক পপআপ (অ্যাপ খোলার সময়, একবার)
+  // =====================================================================================
+  const MSGS = [
+    'মাত্র ১ ঘণ্টা তোমার জীবন বদলে দিতে পারে। আজ একটু সময় দাও, তোমার স্বপ্নটা অপেক্ষা করছে।',
+    'একটা অসমাপ্ত কাজ মানেই হেরে যাওয়া নয় — আজ শুরু করলেই আবার ট্র্যাকে ফিরে আসবে।',
+    'প্রতিদিনের ছোট ছোট চেষ্টাই একদিন বড় সাফল্য হয়ে ধরা দেয়। আজকের চেষ্টাটা এখনই শুরু করো।',
+    'তুমি পারবে — তোমার ওপর আমাদের বিশ্বাস আছে। একটু সময় দিলেই কাজটা শেষ হয়ে যাবে।',
+    'যে আজ একটু কষ্ট করে, আগামীকাল সে হাসে। চলো, ১৫ মিনিট দিয়ে শুরু করি!',
+    'দেরি হয়ে গেছে তাতে কী? শুরু করার জন্য এখনই সবচেয়ে ভালো সময়।',
+    'তোমার স্বপ্ন বড়, আর তুমি তার জন্য যথেষ্ট যোগ্য। আজকের পড়াটা সেই স্বপ্নের এক ধাপ কাছে নিয়ে যাবে।',
+    'ভুল করা শেখারই অংশ। আরেকবার দেখে নিলে আগের চেয়ে ভালো করবে — নিশ্চিত!'
+  ];
+  function pickMsg(){
+    let last = -1; try{ last = Number(localStorage.getItem('plan_last_msg')); }catch(e){}
+    let i; do{ i = Math.floor(Math.random() * MSGS.length); }while(i === last && MSGS.length > 1);
+    try{ localStorage.setItem('plan_last_msg', String(i)); }catch(e){}
+    return MSGS[i];
+  }
+  window.planMissedPopup = async function(){
+    const stud = getLoggedStudent(); if(!stud) return;
+    const key = 'plan_popup_' + stud.slug + '_' + todayStr();
+    try{ if(sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); }catch(e){}
+    const r = await postToScriptRaw('planMissed', { slug:stud.slug, today:todayStr() });
+    if(!r || r.status !== 'success' || !r.items.length || state.screen !== 'studentDashboard') return;
+    const missed = r.items.some(x => x.reason === 'missed'), first = r.items[0];
+    const rows = r.items.slice(0, 3).map(x => `<div style="font-size:13.5px;margin:4px 0;">${x.reason === 'missed' ? '⏰' : '🔁'} ${x.type === 'hw' ? 'HW' : 'রিভিশন'} · ${esc(x.title)} <span class="meta">(${x.reason === 'missed' ? 'ডেডলাইন ' : 'করেছো '}${esc(x.date)})</span></div>`).join('');
+    const ov = document.createElement('div'); ov.id = 'planPop';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(20,30,50,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    ov.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:420px;width:100%;padding:22px;box-shadow:0 10px 40px rgba(0,0,0,.25);text-align:center;">
+      <div style="font-size:38px;">${missed ? '🌱' : '💪'}</div>
+      <h3 style="margin:6px 0 10px;">${missed ? 'কিছু কাজ এখনো বাকি আছে' : 'আরেকবার দেখে নিলে আরও ভালো হবে'}</h3>
+      <p style="font-size:15px;line-height:1.6;color:var(--ink);">${esc(pickMsg())}</p>
+      <div style="text-align:left;margin:12px 0;padding:10px;background:#F4F6FA;border-radius:10px;">${rows}</div>
+      <button class="btn btn-gold btn-block" id="planPopGo">🚀 এখনই শুরু করি</button>
+      <button class="btn btn-outline btn-block" id="planPopLater" style="margin-top:8px;">পরে করবো</button></div>`;
+    document.body.appendChild(ov);
+    const close = () => { if(ov.parentNode) ov.parentNode.removeChild(ov); };
+    document.getElementById('planPopLater').onclick = close;
+    document.getElementById('planPopGo').onclick = () => { close(); if(first.type === 'set') srOpen(first.id); else go('hwHub'); };
+  };
+
+  // =====================================================================================
+  // ধাপ ৪খ: রিভিশন সেট বানানো — শিক্ষক (হাতে বেছে / ট্যাগ ফিল্টার / বাল্ক আপলোড থেকে)
+  // =====================================================================================
+  const B = { mode:'manual', sel:new Set(), rows:[], total:0, tree:{}, batches:[], studs:[], f:{ subject:'', chapter:'', topic:'', batch:'', kind:'', q:'' }, meta:{ slug:'', title:'', date:'', due:'' }, sets:[] };
+  window.revSetBuildOpen = function(){ B.sel = new Set(); B.rows = []; B.total = 0; B.f = { subject:'', chapter:'', topic:'', batch:'', kind:'', q:'' }; B.meta = { slug:'', title:'', date:todayStr(), due:todayStr() }; go('revSetBuild'); };
+  async function sbRender(){
+    app.innerHTML = header('রিভিশন সেট বানাও') + `<div class="card center">লোড হচ্ছে...</div>`;
+    const [studs, tax, bt, sets] = await Promise.all([listStudentsRemote(), postToScriptRaw('taxMaster', {}), postToScriptRaw('planBatches', {}), postToScriptRaw('planSetList', {})]);
+    B.studs = studs || []; B.tree = (tax && tax.tree) || {}; B.batches = (bt && bt.data) || []; B.sets = (sets && sets.data) || [];
+    sbDraw(); sbFetch();
+  }
+  function sbDraw(){
+    const chs = B.f.subject ? (B.tree[B.f.subject] || []) : [], tps = (chs.find(c => c.chapter === B.f.chapter) || { topics:[] }).topics;
+    const tab = (k, l) => `<button class="btn ${B.mode === k ? 'btn-primary' : 'btn-outline'}" style="flex:1;font-size:12.5px;padding:8px 4px;" onclick="sbMode('${k}')">${l}</button>`;
+    const filters = B.mode === 'manual' ? `<input type="text" placeholder="প্রশ্নের লেখা খোঁজো" value="${esc(B.f.q)}" onchange="sbF('q', this.value)">
+        <select onchange="sbF('kind', this.value)"><option value="">CQ + MCQ</option><option value="cq" ${B.f.kind === 'cq' ? 'selected' : ''}>শুধু CQ</option><option value="mcq" ${B.f.kind === 'mcq' ? 'selected' : ''}>শুধু MCQ</option></select>`
+      : B.mode === 'tag' ? `<select onchange="sbF('chapter', this.value)"><option value="">— অধ্যায় (সব) —</option>${chs.map(c => `<option value="${esc(c.chapter)}" ${B.f.chapter === c.chapter ? 'selected' : ''}>${esc(c.chapter)}</option>`).join('')}</select>
+        <select onchange="sbF('topic', this.value)"><option value="">— টপিক (সব) —</option>${tps.map(t => `<option value="${esc(t.topic)}" ${B.f.topic === t.topic ? 'selected' : ''}>${esc(t.topic)}</option>`).join('')}</select>`
+      : `<select onchange="sbF('batch', this.value)"><option value="">— বাল্ক আপলোডের ব্যাচ বাছো —</option>${B.batches.map(b => `<option value="${b.batch}" ${B.f.batch === b.batch ? 'selected' : ''}>${new Date(Number(String(b.batch).replace(/\D/g, ''))).toLocaleString('bn-BD')} · ${b.n}টা · ${b.kinds.join('/').toUpperCase()}</option>`).join('')}</select>`;
+    const sets = B.sets.map(s => `<div class="exam-item"><div class="meta"><span class="q-tag">${esc(s.date)}</span> ডেডলাইন ${esc(s.due)} · ${esc(s.studentName)} · ${esc(subjLabel(s.subject))}</div>
+        <div style="font-size:13.5px;margin-top:4px;"><b>${esc(s.title)}</b> — ${s.count}টা প্রশ্ন</div><div class="meta">${s.answeredBy} জন করেছে · <a class="link-back" onclick="sbDel('${s.id}')">🗑️ মুছো</a></div></div>`).join('') || `<div class="empty-state">এখনো কোনো সেট বানাওনি।</div>`;
+    app.innerHTML = `${header('রিভিশন সেট বানাও')}
+      <div class="card"><h2>🗂️ নতুন রিভিশন সেট</h2>
+        <p class="hint">সেট না দিলে ছাত্রের অটো রিভিশন আগের মতোই চলবে। সেট দিলে ছাত্র শুধু ক্লাসে পড়ানো-হওয়া চ্যাপ্টারের প্রশ্নগুলোই দেখবে।</p>
+        <label class="field-label">কার জন্য</label><select onchange="B_meta('slug', this.value)"><option value="">সব ছাত্র</option>${B.studs.map(s => `<option value="${s.slug}" ${B.meta.slug === s.slug ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
+        <label class="field-label">বিষয়</label><select onchange="sbF('subject', this.value)">${subjOpts(B.f.subject, '— বিষয় বাছো —')}</select>
+        <label class="field-label">সেটের নাম</label><input type="text" value="${esc(B.meta.title)}" placeholder="যেমন: ভেক্টর — সাপ্তাহিক রিভিশন" onchange="B_meta('title', this.value)">
+        <div class="row"><div style="flex:1"><label class="field-label">তারিখ (কবে থেকে)</label><input type="date" value="${esc(B.meta.date)}" onchange="B_meta('date', this.value)"></div>
+          <div style="flex:1"><label class="field-label">ডেডলাইন</label><input type="date" value="${esc(B.meta.due)}" onchange="B_meta('due', this.value)"></div></div></div>
+      <div class="card"><h3>প্রশ্ন বাছাইয়ের উপায়</h3>
+        <div style="display:flex;gap:6px;margin-bottom:8px;">${tab('manual', '✋ হাতে বেছে')}${tab('tag', '🏷️ ট্যাগ ফিল্টার')}${tab('batch', '📥 বাল্ক আপলোড')}</div>
+        ${B.f.subject ? filters : `<p class="hint">আগে ওপরে বিষয় বাছো।</p>`}
+        <div id="sbList" style="margin-top:8px;"></div></div>
+      <div class="card"><div id="sbSum"></div><button class="btn btn-primary btn-block" id="sbSave" onclick="sbSave()">✅ সেট সেভ করো</button></div>
+      <div class="card"><h3>বানানো সেট (${B.sets.length})</h3>${sets}</div>
+      <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+    sbList();
+  }
+  window.sbMode = function(m){ B.mode = m; B.f.chapter = ''; B.f.topic = ''; B.f.batch = ''; B.f.q = ''; B.f.kind = ''; sbDraw(); sbFetch(); };
+  window.sbF = function(k, v){
+    B.f[k] = v; if(k === 'subject'){ B.f.chapter = ''; B.f.topic = ''; B.sel = new Set(); } if(k === 'chapter') B.f.topic = '';
+    sbDraw(); sbFetch();
+  };
+  window.B_meta = function(k, v){ B.meta[k] = v; };
+  async function sbFetch(){
+    if(!B.f.subject){ B.rows = []; B.total = 0; sbList(); return; }
+    if(B.mode === 'batch' && !B.f.batch){ B.rows = []; B.total = 0; sbList(); return; }
+    const el = document.getElementById('sbList'); if(el) el.innerHTML = `<p class="hint">লোড হচ্ছে...</p>`;
+    const r = await postToScriptRaw('planBankList', { subject:B.f.subject, chapter:B.f.chapter, topic:B.f.topic, batch:B.f.batch, kind:B.f.kind, q:B.f.q });
+    B.rows = (r && r.data) || []; B.total = (r && r.total) || 0; sbList();
+  }
+  function sbList(){
+    const el = document.getElementById('sbList'); if(!el) return;
+    if(B.f.subject) el.innerHTML = (B.rows.length ? `<div style="display:flex;gap:8px;margin-bottom:6px;"><button class="info-btn" onclick="sbAll(true)">☑️ দেখানো সবগুলো বাছো</button><button class="info-btn" onclick="sbAll(false)">⬜ বাদ দাও</button></div>
+      <p class="hint">${B.total}টা পাওয়া গেছে${B.total > B.rows.length ? ` (প্রথম ${B.rows.length}টা দেখানো হচ্ছে — ফিল্টার ছোট করো)` : ''}</p>` : '') +
+      (B.rows.map(r => `<label style="display:flex;gap:8px;align-items:flex-start;margin:6px 0;font-size:13.5px;"><input type="checkbox" style="width:auto;margin-top:3px;" ${B.sel.has(r.id) ? 'checked' : ''} onchange="sbTog('${r.id}', this.checked)">
+        <span><span class="q-tag">${r.kind.toUpperCase()}</span> <span class="meta">${esc(r.chapter)} › ${esc(r.topic)}</span><br>${r.hasImage ? '🖼️ ' : ''}${esc(r.text) || '(ছবিসহ প্রশ্ন)'}</span></label>`).join('') || `<div class="empty-state">${B.mode === 'batch' && !B.f.batch ? 'ব্যাচ বাছো।' : 'কোনো প্রশ্ন নেই।'}</div>`);
+    sbSum();
+  }
+  function sbSum(){ const el = document.getElementById('sbSum'); if(el) el.innerHTML = `<p class="hint">বাছা হয়েছে: <b>${B.sel.size}</b>টা প্রশ্ন (সর্বোচ্চ ৬০)</p>`; }
+  window.sbTog = function(id, on){ if(on) B.sel.add(id); else B.sel.delete(id); sbSum(); };
+  window.sbAll = function(on){ B.rows.forEach(r => on ? B.sel.add(r.id) : B.sel.delete(r.id)); sbList(); };
+  window.sbSave = async function(){
+    if(!B.f.subject){ toast('বিষয় বাছো'); return; }
+    if(!B.sel.size){ toast('অন্তত একটা প্রশ্ন বাছো'); return; }
+    if(B.sel.size > 60 && !confirm('৬০টার বেশি বাছা হয়েছে — প্রথম ৬০টা নেওয়া হবে। এগোবে?')) return;
+    const b = document.getElementById('sbSave'); b.disabled = true;
+    const r = await postToScriptRaw('planSetSave', { slug:B.meta.slug, subject:B.f.subject, title:B.meta.title, date:B.meta.date, due:B.meta.due, ids:JSON.stringify([...B.sel]) });
+    if(r && r.status === 'success'){ toast(`সেট সেভ হয়েছে ✅ (${r.count}টা প্রশ্ন)`); B.sel = new Set(); B.meta.title = ''; sbRender(); }
+    else { b.disabled = false; toast('সেভ হয়নি, আবার চেষ্টা করো'); }
+  };
+  window.sbDel = async function(id){ if(!confirm('এই সেটটা মুছে ফেলবে? (ছাত্রদের জমা দেওয়া উত্তর থাকবে)')) return; await postToScriptRaw('planSetDelete', { id }); sbRender(); };
+
+  // ---------------- ড্যাশবোর্ডে বাটন (শিক্ষক) ----------------
+  function injectPlan(){
+    const t = document.querySelector('#app button[data-revt]');
+    if(t && t.parentElement && !t.parentElement.querySelector('[data-plan]')){
+      const b = document.createElement('button'); b.className = 'btn btn-outline btn-block'; b.setAttribute('data-plan', '1');
+      b.textContent = '🗂️ রিভিশন সেট বানাও'; b.onclick = revSetBuildOpen; t.parentElement.appendChild(b);
+    }
+  }
+  new MutationObserver(injectPlan).observe(document.getElementById('app'), { childList:true, subtree:true });
+  injectPlan();
+})();
+
 /* ============ NOTES v3 (end) ============ */
 </script>
 </body>
