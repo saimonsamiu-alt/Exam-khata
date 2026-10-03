@@ -8722,8 +8722,30 @@ window.doSmartSearch = async function(){
       <textarea id="roInstr" style="min-height:90px;font-family:var(--font-body);font-size:14px;" placeholder="যেমন: এই নোটগুলো রসায়ন ১ম পত্রের অধ্যায়-০২ গুণগত রসায়নে রাখো। অধ্যায়ের নামে বিষয়ের নাম বা T-নম্বর ঢোকাবে না।"></textarea>
       <label class="bubble-opt" style="padding-left:0;"><input type="checkbox" id="roRemember" checked style="display:inline-block;width:auto;margin:0;"><span>এই নির্দেশ মনে রাখো — পরে নতুন নোট অটো-সাজানোর সময়ও মানবে</span></label>
       <button class="btn btn-primary btn-block" id="roBtn" onclick="reorgNotesUI()">🤖 নির্দেশ মেনে আবার সাজাও</button>
-      <div id="roStatus" style="margin-top:10px;"></div>`;
+      <div id="roStatus" style="margin-top:10px;"></div>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--rule);">
+        <p class="hint">📝 MCQ / পরীক্ষার প্রশ্ন / Daily HW এমনিতেই প্রতি ১০ মিনিটে অটো ট্যাগ হয় (ট্রিগার চালু থাকলে)। এখনই করাতে চাইলে:</p>
+        <button class="btn btn-outline btn-block" id="tagNowBtn" onclick="tagNowUI()">🏷️ এখনই বাকি সব ট্যাগ করো (প্রশ্ন, HW)</button>
+        <div id="tagNowStatus" style="margin-top:8px;"></div>
+      </div>`;
     first.parentNode.insertBefore(d, first.nextSibling);
+  };
+  window.tagNowUI = async function(){
+    const btn = document.getElementById('tagNowBtn'), st = document.getElementById('tagNowStatus');
+    if(btn) btn.disabled = true;
+    let total = 0, remaining = null, guard = 0, err = false, stuck = false;
+    while(guard++ < 40){
+      if(st) st.innerHTML = `<p class="hint">🤖 ট্যাগ হচ্ছে... ${total}টা হয়েছে${remaining !== null ? ', বাকি ' + remaining + 'টা' : ''} — পেজ বন্ধ কোরো না</p>`;
+      const res = await postToScriptRaw('tagPendingNow', {});
+      if(!res || res.status !== 'success'){ err = true; break; }
+      total += res.tagged; remaining = res.remaining;
+      if(res.remaining <= 0) break;
+      if(res.tagged === 0){ stuck = true; break; }
+    }
+    if(st) st.innerHTML = err ? `<p class="hint" style="color:var(--red);">❌ সংযোগ/সার্ভার সমস্যা (Apps Script নতুন version Deploy করা আছে তো?)</p>`
+      : stuck ? `<p class="hint" style="color:#9B6A15;">⚠️ ${total}টা হয়েছে। AI এখন সাড়া দিচ্ছে না (কোটা শেষ?) — বাকি ${remaining}টা পরে আবার চাপো বা ১০ মিনিটের অটো-ট্রিগারে হবে।</p>`
+      : `<p class="hint" style="color:var(--green);">✅ ${total}টা ট্যাগ হয়েছে, বাকি ${remaining || 0}টা।</p>`;
+    if(btn) btn.disabled = false;
   };
   window.reorgNotesUI = async function(){
     const v = id => (document.getElementById(id) || {}).value || '';
