@@ -8246,9 +8246,6 @@ window.doSmartSearch = async function(){
       <div class="card"><h2>🌱 বইয়ের তালিকা এক ক্লিকে লোড করো</h2>
         <p class="hint">পদার্থ, রসায়ন ও উচ্চতর গণিত (১ম-২য় পত্র) — অধ্যায় ও টপিকের তালিকা আগে থেকেই অ্যাপে আছে। চাপলে সব Taxonomy-তে বসে যাবে, AI লাগবে না। আবার চাপলে ডুপ্লিকেট হয় না। জীববিজ্ঞান ও ICT-র তালিকা পেলে যোগ হবে — ততদিন নিচের ছবি দিয়ে ইম্পোর্ট করতে পারো।</p>
         <button class="btn btn-gold btn-block" id="seedBtn" onclick="revSeedTax()">🌱 তালিকা লোড করো</button><div id="seedStatus" style="margin-top:8px;"></div></div>
-      <div class="card"><h2>🏷️ MCQ exam-এর প্রশ্ন ট্যাগ করো</h2>
-        <p class="hint">মিশ্র exam-এ (পদার্থ + রসায়ন + গণিত একসাথে) প্রতিটা প্রশ্ন AI আলাদা করে বিষয়/অধ্যায়/টপিকে ট্যাগ করে — তাহলে ছাত্র শুধু পদার্থ বাছলে গণিতের প্রশ্ন আসে না, আর "খুঁজে দেখো"-ও ঠিক কাজ করে। নতুন exam সেভ করলে নিজেই ট্যাগ হয়; পুরনো exam-গুলোর জন্য একবার চাপো।</p>
-        <button class="btn btn-primary btn-block" id="tagExBtn" onclick="revTagExams()">🏷️ ট্যাগ-না-হওয়া প্রশ্ন ট্যাগ করো</button><div id="tagExStatus" style="margin-top:8px;"></div></div>
       <div class="card"><h2>📖 বইয়ের সূচিপত্রের ছবি দাও</h2>
         <p class="hint">বইয়ের "সূচিপত্র" পাতার ছবি তুললে AI অধ্যায় › টপিক › সাবটপিক আলাদা করে সাজাবে। একসাথে একাধিক ছবিও দিতে পারো (একই অধ্যায়ের পরের পাতা হলে নিচে অধ্যায়ের নাম লিখে দাও)। এরপর HW ট্যাগিং, অ্যাসাইন আর রিভিশন সব এই নামগুলোই ধরবে।</p>
         <label class="field-label">বিষয়</label><select id="tcSubj">${subjOpts('chemistry')}</select>
@@ -8289,22 +8286,6 @@ window.doSmartSearch = async function(){
     b.disabled = false;
     if(res && res.status === 'success'){ s.innerHTML = `<div style="color:var(--green);font-weight:700;">✅ ${res.added}টা নতুন এন্ট্রি যোগ হয়েছে (মোট ${res.total}টা)</div>`; await loadTax(true); revTaxDraw(); }
     else s.innerHTML = `<div style="color:var(--red);">❌ লোড হয়নি, আবার চেষ্টা করো</div>`;
-  };
-  window.revTagExams = async function(){
-    const b = document.getElementById('tagExBtn'), s = document.getElementById('tagExStatus'); b.disabled = true;
-    let done = 0, rem = null, guard = 0, stuck = false, err = false;
-    while(guard++ < 30){
-      s.innerHTML = `<span class="hint">🤖 ট্যাগ হচ্ছে... ${done}টা হয়েছে${rem !== null ? ', বাকি ' + rem + 'টা' : ''} — পেজ বন্ধ কোরো না</span>`;
-      const r = await postToScriptRaw('revisionTagExams', {});
-      if(!r || r.status !== 'success'){ err = true; break; }
-      done += r.tagged; rem = r.remaining;
-      if(r.remaining <= 0) break;
-      if(r.tagged === 0){ stuck = true; break; }
-    }
-    s.innerHTML = err ? `<div style="color:var(--red);">❌ সংযোগ/সার্ভার সমস্যা, আবার চেষ্টা করো</div>`
-      : stuck ? `<div style="color:#9B6A15;">⚠️ ${done}টা হয়েছে, বাকি ${rem}টায় AI এখন ট্যাগ করতে পারছে না (কোটা শেষ?) — পরে আবার চাপো</div>`
-      : `<div style="color:var(--green);font-weight:700;">✅ ${done}টা প্রশ্ন ট্যাগ হয়েছে, বাকি নেই</div>`;
-    b.disabled = false;
   };
   window.revTaxImport = async function(){
     const subject = val('tcSubj'), hint = val('tcHint').trim(), text = val('tcText').trim();
@@ -8592,6 +8573,181 @@ window.doSmartSearch = async function(){
   injectCov();
 })();
 
+
+/* ============ NOTES v3: বিষয় › পত্র › অধ্যায় · PDF অপশন · AI-কে নির্দেশ দিয়ে ঠিক করো (start) ============ */
+(function(){
+  const bn2n = s => Number(String(s||'').replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d))) || 0;
+  const PAPERS = ['১ম পত্র','২য় পত্র','উদ্ভিদবিজ্ঞান','প্রাণিবিজ্ঞান','অন্যান্য (পত্র ঠিক হয়নি)'];
+  const OTHER = PAPERS[4];
+
+  // AI যা-ই লিখুক (পুরনো এলোমেলো নামও), পত্র/অধ্যায়/টপিক আলাদা করে নেয়
+  window.noteNorm = function(n){
+    let ch = String(n.chapter || '').trim(), topic = String(n.topic || '').trim();
+    if(ch.indexOf('|') !== -1){
+      const parts = ch.split('|').map(s => s.trim()).filter(Boolean).filter(p => !NOTES_SUBJECTS[p.toLowerCase()]);
+      const tp = parts.find(p => /^T-?\d+/i.test(p));
+      ch = parts.find(p => p !== tp) || parts[0] || '';
+      if(!topic && tp) topic = tp;
+    }
+    let paper = '', m;
+    if((m = ch.match(/^\s*([১২])[^\s·]{0,3}\s*পত্র\s*[·•:\-–]*\s*(.*)$/))){ paper = m[1] === '১' ? PAPERS[0] : PAPERS[1]; ch = m[2] || ch; }
+    else if((m = ch.match(/^\s*(উদ্ভিদ|প্রাণি)[^·•:\-–]*[·•:\-–]+\s*(.*)$/))){ paper = m[1] === 'উদ্ভিদ' ? PAPERS[2] : PAPERS[3]; ch = m[2] || ch; }
+    const cm = ch.match(/অধ্যায়\s*[-–]?\s*([০-৯0-9]+)/);
+    return { paper: paper || OTHER, chapter: ch || 'অন্যান্য', topic: topic || 'সাধারণ', chNo: cm ? bn2n(cm[1]) : 999 };
+  };
+
+  // ---- ছাত্র: বিষয় › পত্র › অধ্যায় ----
+  renderNotesList = async function(subject){
+    app.innerHTML = `${header('ক্লাস নোট / স্লাইড')}<div class="card center">লোড হচ্ছে...</div>`;
+    const all = await getAllNotes();
+    const mine = all.filter(n => n.subject === subject);
+    mine.forEach(n => { n._x = noteNorm(n); });
+    const papers = PAPERS.filter(p => mine.some(n => n._x.paper === p));
+    let paper = state.paper;
+    if(paper === undefined && papers.length <= 1) paper = papers[0] || OTHER;
+    window.__notesListCtx = { subject, items: mine, paper, papers };
+    window.__lastNotesPaper = paper;
+    if(paper === undefined){
+      const btns = papers.map((p, i) => {
+        const c = mine.filter(n => n._x.paper === p).length;
+        return `<button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="notesPickPaper(${i})">📘 ${escapeHtml(p)} <span class="meta" style="color:#fff;opacity:.8;">(${c}টা নোট)</span></button>`;
+      }).join('');
+      app.innerHTML = `${header('ক্লাস নোট / স্লাইড')}
+        <div class="card"><h2>${NOTES_SUBJECTS[subject].label}</h2>
+          <p class="hint">কোন পত্রের নোট দেখতে চাও?</p>
+          ${btns || '<div class="empty-state">এখনো এই বিষয়ে কোনো নোট/স্লাইড যোগ করা হয়নি।</div>'}</div>
+        <div class="center"><a class="link-back" onclick="go('notesSubject')">← ফিরে যাও</a></div>${creditFooter()}`;
+      return;
+    }
+    const mineHere = mine.filter(n => n._x.paper === paper);
+    app.innerHTML = `${header('ক্লাস নোট / স্লাইড')}
+      <div class="card"><h2>${NOTES_SUBJECTS[subject].label}${papers.length > 1 || paper !== OTHER ? ' · ' + escapeHtml(paper) : ''}</h2>
+        ${mineHere.length > 4 ? `<input type="text" id="notesSearch" placeholder="🔎 অধ্যায়/টপিক/শিরোনাম খোঁজো" oninput="drawNotesGroups()">` : ''}
+        <div id="notesGroups"></div></div>
+      <div class="center"><a class="link-back" onclick="${papers.length > 1 ? `go('notesList',{subject:'${subject}'})` : `go('notesSubject')`}">← ফিরে যাও</a></div>${creditFooter()}`;
+    drawNotesGroups();
+  };
+  window.notesPickPaper = function(i){
+    const c = window.__notesListCtx; if(!c) return;
+    go('notesList', { subject: c.subject, paper: c.papers[i] });
+  };
+  window.drawNotesGroups = function(){
+    const ctx = window.__notesListCtx, el = document.getElementById('notesGroups'); if(!ctx || !el) return;
+    const q = ((document.getElementById('notesSearch') || {}).value || '').trim().toLowerCase();
+    const list = ctx.items.map((n, idx) => ({ n, idx })).filter(x => x.n._x.paper === ctx.paper).filter(x =>
+      !q || (x.n.title + ' ' + x.n._x.chapter + ' ' + x.n._x.topic + ' ' + (x.n.subtopics || []).join(' ')).toLowerCase().indexOf(q) !== -1);
+    if(!list.length){ el.innerHTML = `<div class="empty-state">কিছু পাওয়া যায়নি।</div>`; return; }
+    const chapters = {};
+    list.forEach(x => { const k = x.n._x.chapter; (chapters[k] = chapters[k] || { no: x.n._x.chNo, topics: {} }); (chapters[k].topics[x.n._x.topic] = chapters[k].topics[x.n._x.topic] || []).push(x); });
+    const order = Object.keys(chapters).sort((a, b) => chapters[a].no - chapters[b].no || a.localeCompare(b));
+    const open = (list.length <= 12 || q) ? 'open' : '';
+    el.innerHTML = order.map(ch => {
+      const topics = chapters[ch].topics, count = Object.keys(topics).reduce((a, t) => a + topics[t].length, 0);
+      return `<details ${open} style="margin-bottom:10px;border:1px solid var(--paper-edge);border-radius:10px;padding:8px 12px;background:#FCFDFE;">
+        <summary style="cursor:pointer;font-weight:700;">📖 ${escapeHtml(ch)} <span class="meta">(${count}টা)</span></summary>
+        ${Object.keys(topics).sort().map(tp => `<div style="margin-top:10px;">
+          <div style="font-weight:600;color:var(--pencil);font-size:13.5px;margin-bottom:6px;">▸ ${escapeHtml(tp)}</div>
+          ${topics[tp].map(x => { const n = x.n; return `<div class="exam-item" style="margin-bottom:8px;">
+            <h3 style="margin-bottom:4px;font-size:15px;">${escapeHtml(n.title)}</h3><div>${noteChips(n)}</div>
+            ${n.type === 'html'
+              ? `<div class="row" style="margin-top:6px;"><button class="btn btn-outline" onclick="viewNoteSlide(${x.idx})">📄 স্লাইড দেখো</button><button class="btn btn-outline" onclick="notePdf(${x.idx})">📥 PDF</button></div>`
+              : `<a href="${escapeHtml(n.content)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="text-decoration:none;margin-top:6px;">📄 খোলো</a>`}
+          </div>`; }).join('')}</div>`).join('')}
+      </details>`;
+    }).join('');
+  };
+
+  // ---- PDF: স্লাইডগুলো একসাথে প্রিন্ট-পেজে সাজিয়ে "Save as PDF" ----
+  window.slidesPdf = function(title, slides){
+    const old = document.getElementById('pdfFrame'); if(old) old.remove();
+    const f = document.createElement('iframe');
+    f.id = 'pdfFrame'; f.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0;';
+    document.body.appendChild(f);
+    const doc = f.contentDocument;
+    doc.open();
+    doc.write(`<!DOCTYPE html><html lang="bn"><head><meta charset="UTF-8"><title>${escapeHtml(title || 'নোট')}</title>
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+      <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;600;700&display=swap" rel="stylesheet">
+      <style>@page{size:A4;margin:14mm} body{font-family:'Noto Sans Bengali',sans-serif;color:#1F2A44;line-height:1.7;font-size:14px}
+      h1.t{font-size:22px;border-bottom:2px solid #1F2A44;padding-bottom:6px;margin:0 0 14px 0}
+      section{page-break-after:always;padding-bottom:6px} section:last-child{page-break-after:auto}
+      img{max-width:100%} table{border-collapse:collapse;max-width:100%} td,th{border:1px solid #999;padding:4px 8px}</style></head>
+      <body><h1 class="t">${escapeHtml(title || '')}</h1>${slides.map(s => `<section>${s}</section>`).join('')}</body></html>`);
+    doc.close();
+    toast('PDF তৈরি হচ্ছে... প্রিন্ট স্ক্রিনে "Save as PDF" বাছো');
+    setTimeout(async function(){
+      try{ if(window.renderMathInElement) renderMathInElement(doc.body, { delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}], throwOnError:false }); }catch(e){}
+      try{ await Promise.race([doc.fonts.ready, new Promise(r => setTimeout(r, 2500))]); }catch(e){}
+      f.contentWindow.focus(); f.contentWindow.print();
+    }, 900);
+  };
+  window.notePdf = async function(idx){
+    const c = window.__notesListCtx; if(!c) return;
+    const n = c.items[idx]; let content = n.content;
+    if(String(content).indexOf('DRIVEHTML:') === 0){
+      toast('লোড হচ্ছে...');
+      const r = await postToScriptRaw('getNoteContent', { id: n.id });
+      if(!r || r.status !== 'success'){ toast('নোট লোড হয়নি'); return; }
+      content = r.content;
+    }
+    slidesPdf(n.title, content.split(/\n\s*---\s*\n/));
+  };
+  // স্লাইড দেখার পাতাতেও PDF বাটন + ফেরার লিংক ঠিক পত্রে ফেরে
+  const __sv = renderNotesSlideView;
+  renderNotesSlideView = function(subject, title, slides, slideIndex){
+    __sv(subject, title, slides, slideIndex);
+    const card = document.querySelector('#app .card'); if(!card) return;
+    const b = document.createElement('button');
+    b.className = 'btn btn-gold btn-block'; b.style.marginTop = '12px'; b.textContent = '📥 PDF হিসেবে নামাও (সব স্লাইড)';
+    b.onclick = function(){ slidesPdf(title, slides); };
+    card.appendChild(b);
+    const back = document.querySelector('#app .center a.link-back');
+    if(back) back.onclick = function(){ go('notesList', { subject, paper: window.__lastNotesPaper }); };
+  };
+
+  // ---- শিক্ষক: ভুল সাজানো ঠিক করার বাটন (AI-কে নির্দেশ দাও) ----
+  const __nm = renderNotesManage;
+  renderNotesManage = async function(){
+    await __nm();
+    const first = document.querySelector('#app .card'); if(!first) return;
+    const subs = '<option value="">সব বিষয়</option>' + Object.keys(NOTES_SUBJECTS).map(k => `<option value="${k}">${NOTES_SUBJECTS[k].icon} ${NOTES_SUBJECTS[k].label}</option>`).join('');
+    const d = document.createElement('div');
+    d.className = 'card'; d.style.border = '1.5px solid #2B5797';
+    d.innerHTML = `<h2>🧭 নোটের সাজানো ঠিক করো (AI-কে নির্দেশ দাও)</h2>
+      <p class="hint">নোট ভুল অধ্যায়/পত্রে বসলে বা এলোমেলো দেখালে এখানে বাংলায় লিখে দাও কী ঠিক করতে হবে — AI সেই নির্দেশ মেনে আবার সাজাবে। ছাত্ররা সবসময় <b>বিষয় › পত্র › অধ্যায়</b> ক্রমে দেখবে।</p>
+      <label class="field-label">কোন বিষয়</label><select id="roSubj">${subs}</select>
+      <label class="field-label">কোন নোটগুলো</label>
+      <select id="roScope"><option value="messy">শুধু এলোমেলো/ভুল-নামের নোট (দ্রুত)</option><option value="all">সব নোট আবার সাজাও</option></select>
+      <label class="field-label">নির্দেশ (ঐচ্ছিক)</label>
+      <textarea id="roInstr" style="min-height:90px;font-family:var(--font-body);font-size:14px;" placeholder="যেমন: এই নোটগুলো রসায়ন ১ম পত্রের অধ্যায়-০২ গুণগত রসায়নে রাখো। অধ্যায়ের নামে বিষয়ের নাম বা T-নম্বর ঢোকাবে না।"></textarea>
+      <label class="bubble-opt" style="padding-left:0;"><input type="checkbox" id="roRemember" checked style="display:inline-block;width:auto;margin:0;"><span>এই নির্দেশ মনে রাখো — পরে নতুন নোট অটো-সাজানোর সময়ও মানবে</span></label>
+      <button class="btn btn-primary btn-block" id="roBtn" onclick="reorgNotesUI()">🤖 নির্দেশ মেনে আবার সাজাও</button>
+      <div id="roStatus" style="margin-top:10px;"></div>`;
+    first.parentNode.insertBefore(d, first.nextSibling);
+  };
+  window.reorgNotesUI = async function(){
+    const v = id => (document.getElementById(id) || {}).value || '';
+    const btn = document.getElementById('roBtn'), st = document.getElementById('roStatus');
+    if(btn) btn.disabled = true;
+    const base = { instruction: v('roInstr').trim(), subject: v('roSubj'), scope: v('roScope') };
+    let doneIds = [], ok = 0, failed = 0, remaining = null, guard = 0, err = false, stuck = false;
+    while(guard++ < 80){
+      if(st) st.innerHTML = `<p class="hint">🤖 সাজানো হচ্ছে... ${ok}টা ঠিক হয়েছে${remaining !== null ? ', বাকি ' + remaining + 'টা' : ''} — পেজ বন্ধ কোরো না</p>`;
+      const res = await postToScriptRaw('aiReorganizeNotes', Object.assign({}, base, { doneIds: doneIds.join(','), remember: (guard === 1 && (document.getElementById('roRemember') || {}).checked) ? 'true' : 'false' }));
+      if(!res || res.status !== 'success'){ err = true; break; }
+      doneIds = doneIds.concat(res.processed); ok += res.ok; failed += res.failed; remaining = res.remaining;
+      if(res.processed.length === 0 || res.remaining <= 0) break;
+      if(res.ok === 0 && res.failed >= 2){ stuck = true; break; }
+    }
+    if(st) st.innerHTML = err ? `<p class="hint" style="color:var(--red);">❌ সংযোগ/সার্ভার সমস্যা। (Apps Script নতুন version হিসেবে Deploy করা আছে তো?)</p>`
+      : stuck ? `<p class="hint" style="color:#9B6A15;">⚠️ ${ok}টা হয়েছে। AI এখন সাড়া দিচ্ছে না (কোটা শেষ?) — পরে আবার চাপো।</p>`
+      : ok + failed === 0 ? `<p class="hint">সাজানোর মতো কোনো নোট পাওয়া যায়নি ✅ (সব নোটই ঠিকমতো সাজানো)।</p>`
+      : `<p class="hint" style="color:var(--green);">✅ ${ok}টা নোট আবার সাজানো হয়েছে${failed ? `, ${failed}টা পারেনি (আবার চাপলে চেষ্টা হবে)` : ''}।</p>`;
+    if(btn) btn.disabled = false;
+    if(ok > 0) setTimeout(function(){ go('notesManage'); }, 2200);
+  };
+})();
+/* ============ NOTES v3 (end) ============ */
 </script>
 </body>
 </html>
