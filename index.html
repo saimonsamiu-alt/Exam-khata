@@ -8261,7 +8261,7 @@ window.doSmartSearch = async function(){
     const subjHtml = T.students.map((s, i) => { const have = T.subMap[s.slug] || [];
       return `<div class="exam-item"><b>${escapeHtml(s.name)}</b><div style="margin:8px 0;">${SK.map(k => `<label style="margin-right:12px;white-space:nowrap;"><input type="checkbox" id="rtS_${i}_${k}" ${have.indexOf(k) !== -1 ? 'checked' : ''} style="display:inline-block;width:auto;margin:0;"> ${NOTES_SUBJECTS[k].icon} ${k}</label>`).join('')}</div>
       <button class="btn btn-outline" onclick="revTSaveSubs(${i})">💾 সেভ</button></div>`; }).join('') || `<div class="empty-state">কোনো স্টুডেন্ট নেই</div>`;
-    const bankHtml = T.bank.map(b => `<div class="review-block"><div class="meta"><span class="q-tag">${b.type === 'mcq' ? 'MCQ' : 'CQ'}</span> ${escapeHtml(b.subject)} · ${escapeHtml(b.topic)} · ${b.slug ? escapeHtml(nameOf(b.slug)) : 'সব ছাত্র'}</div>
+    const bankHtml = T.bank.map(b => `<div class="review-block"><div class="meta"><span class="q-tag">${b.type === 'mcq' ? 'MCQ' : 'CQ'}</span>${b.hasImage ? ' 🖼️' : ''} ${escapeHtml(b.subject)} · ${escapeHtml(b.topic)} · ${b.slug ? escapeHtml(nameOf(b.slug)) : 'সব ছাত্র'}</div>
       <div style="font-size:13.5px;">${escapeHtml(String(b.text).slice(0, 140))}</div><a class="link-back" onclick="revTDel('${b.id}')">🗑️ মুছো</a></div>`).join('') || `<div class="empty-state">এখনো নিজের কোনো প্রশ্ন যোগ করোনি</div>`;
     const scopeOpts = `<option value="">সব ছাত্রের জন্য</option>` + T.students.map(s => `<option value="${s.slug}">${escapeHtml(s.name)}</option>`).join('');
     const subOpts = SK.map(k => `<option value="${k}">${NOTES_SUBJECTS[k].label}</option>`).join('');
@@ -8273,22 +8273,172 @@ window.doSmartSearch = async function(){
       <div class="card"><h2>📚 কে কোন বিষয় পড়ে</h2>
         <p class="hint">যা বাছবে শুধু সেগুলোই ওই ছাত্রের রিভিশনে দেখাবে। কিছু না বাছলে সব বিষয় দেখাবে।</p>${subjHtml}</div>
       <div class="card"><h2>➕ রিভিশনের প্রশ্ন যোগ করো</h2>
-        <p class="hint">তোমার দেওয়া প্রশ্ন "দুর্বল" ধরে আগে আসবে; ছাত্র ঠিক করলে ধীরে ধীরে সহজ ধরা হবে।</p>
+        <p class="hint">তোমার দেওয়া প্রশ্ন "দুর্বল" ধরে আগে আসবে; ছাত্র ঠিক করলে ধীরে ধীরে সহজ ধরা হবে। এগুলো যোগ করলেও অটো রিভিশন বন্ধ হয় না — দুটো একসাথে চলে। একসাথে অনেকগুলো প্রশ্ন (ছবিসহ) যোগ করা যায়।</p>
         <label class="field-label">কার জন্য</label><select id="rtScope">${scopeOpts}</select>
         <label class="field-label">বিষয়</label><select id="rtSub">${subOpts}</select>
         <label class="field-label">টপিক</label><input type="text" id="rtTopic" placeholder="যেমন: Kp Kc">
-        <label class="field-label">ধরন</label><select id="rtType" onchange="revTType()"><option value="mcq">MCQ</option><option value="cq">CQ (ছবি আপলোড)</option></select>
-        <label class="field-label">প্রশ্ন</label><textarea id="rtText" style="min-height:70px;"></textarea>
-        <div id="rtMcq">${[0, 1, 2, 3].map(j => `<input type="text" id="rtO${j}" placeholder="অপশন ${['ক', 'খ', 'গ', 'ঘ'][j]}">`).join('')}
-          <label class="field-label">সঠিক উত্তর</label><select id="rtCorrect"><option value="0">ক</option><option value="1">খ</option><option value="2">গ</option><option value="3">ঘ</option></select></div>
-        <div id="rtCq" style="display:none;"><label class="field-label">মডেল উত্তর</label><textarea id="rtModel" style="min-height:90px;"></textarea></div>
-        <button class="btn btn-primary btn-block" onclick="revTSave()">✅ যোগ করো</button>
+        <label class="field-label">ধরন</label><select id="rtType" onchange="revTType()"><option value="mcq">MCQ</option><option value="cq">CQ (লেখা / ছবি)</option></select>
+        ${bqComposerHtml('rt')}
+        <button class="btn btn-primary btn-block" id="rtSaveBtn" style="margin-top:10px;" onclick="revTSave()">✅ সবগুলো যোগ করো</button>
+        <div id="rtSaveSt" class="hint" style="margin-top:6px;"></div>
         <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--rule);">
           <label class="field-label">🤖 অথবা AI দিয়ে উপরের বিষয়/টপিক/ধরন/কার-জন্য অনুযায়ী বানাও (কয়টা?)</label>
           <div class="row"><input type="number" id="rtN" value="5" min="1" max="10" style="margin-bottom:0;"><button class="btn btn-gold" id="rtGenBtn" onclick="revTGen()">AI দিয়ে বানাও</button></div></div></div>
       <div class="card"><h3>তোমার যোগ করা প্রশ্ন (${T.bank.length})</h3>${bankHtml}</div>
       <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+    bqInit('rt'); bqDraw('rt');
   }
+
+
+  // ================= বাল্ক যোগ + ক্লিপবোর্ড পেস্ট (HW অ্যাসাইন ও রিভিশন — দুই জায়গায় একই) =================
+  window.BQ = window.BQ || { as:[], rt:[] };
+  const BQL = { as:'asQList', rt:'rtQList' };
+  const bqBlank = () => ({ text:'', tag:'', model:'', opts:['', '', '', ''], correct:0, file:null, url:'' });
+  const bqAttach = (it, f) => { if(it.url) try{ URL.revokeObjectURL(it.url); }catch(e){} it.file = f; it.url = URL.createObjectURL(f); };
+  window.bqInit = function(k){ if(!BQ[k] || !BQ[k].length) BQ[k] = [bqBlank()]; };
+  window.bqAddBlank = function(k){ BQ[k].push(bqBlank()); bqDraw(k); };
+  window.bqDel = function(k, i){ BQ[k].splice(i, 1); bqInit(k); bqDraw(k); };
+  window.bqNoImg = function(k, i){ const it = BQ[k][i]; if(it.url) try{ URL.revokeObjectURL(it.url); }catch(e){} it.file = null; it.url = ''; bqDraw(k); };
+  window.bqOne = function(k, i, inp){ const f = (inp.files || [])[0]; if(f){ bqAttach(BQ[k][i], f); bqDraw(k); } };
+  window.bqAddImages = function(k, files){
+    files.forEach(f => {
+      const last = BQ[k][BQ[k].length - 1];
+      const slot = (last && !last.file && !String(last.text).trim() && !String(last.model).trim()) ? last : null;   // খালি কার্ড থাকলে সেটাতেই বসে
+      const it = slot || bqBlank(); if(!slot) BQ[k].push(it);
+      bqAttach(it, f);
+    });
+    bqDraw(k);
+  };
+  window.bqFiles = function(k, inp){ const fs = Array.from(inp.files || []); inp.value = ''; if(fs.length) bqAddImages(k, fs); };
+  window.bqDrop = function(k, e){ e.preventDefault(); const fs = Array.from((e.dataTransfer || {}).files || []).filter(f => f.type.indexOf('image/') === 0); if(fs.length) bqAddImages(k, fs); };
+  window.bqPasteBtn = async function(k){
+    try{
+      const items = await navigator.clipboard.read(), files = [];
+      for(const it of items){ const t = it.types.find(x => x.indexOf('image/') === 0); if(t){ const b = await it.getType(t); files.push(new File([b], 'paste.png', { type:t })); } }
+      if(!files.length){ toast('ক্লিপবোর্ডে কোনো ছবি নেই'); return; }
+      bqAddImages(k, files); toast(files.length + 'টা ছবি যোগ হয়েছে ✅');
+    }catch(e){ toast('ব্রাউজার অনুমতি দেয়নি — ঘরটায় ক্লিক করে Ctrl+V (ফোনে: লং-প্রেস → পেস্ট) দাও'); }
+  };
+  document.addEventListener('paste', function(e){
+    const k = document.getElementById('asQList') ? 'as' : (document.getElementById('rtQList') ? 'rt' : null);
+    if(!k) return;
+    const files = Array.from((e.clipboardData || {}).items || []).filter(x => x.kind === 'file' && x.type.indexOf('image/') === 0).map(x => x.getAsFile()).filter(Boolean);
+    if(!files.length) return;                       // শুধু লেখা পেস্ট হলে স্বাভাবিক নিয়মে
+    e.preventDefault();
+    const card = e.target && e.target.closest ? e.target.closest('.bq-item') : null;
+    if(card){ const it = BQ[k][+card.dataset.i]; if(it && !it.file){ bqAttach(it, files.shift()); } }   // যে কার্ডে কার্সর, ছবি সেটাতেই
+    if(files.length) bqAddImages(k, files); else bqDraw(k);
+  });
+
+  // ---- পেস্ট করা MCQ-এর লেখা থেকে কার্ড বানানো ----
+  const bnD = s => String(s).replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d));
+  const LBL = { bn:['ক', 'খ', 'গ', 'ঘ'], en:['a', 'b', 'c', 'd'] };
+  function bqStem(s){
+    let t = String(s).replace(/\s*\n\s*/g, ' ').trim(), tag = '';
+    t = t.replace(/^\s*Q\s*\d*\s*[:.)]\s*/i, '').replace(/^\s*(?:প্রশ্ন\s*)?[\d০-৯]+\s*[.)।:\-]\s*/, '');
+    const tm = t.match(/\[([^\]]+)\]\s*$/); if(tm){ tag = tm[1].trim(); t = t.replace(/\s*\[[^\]]+\]\s*$/, '').trim(); }
+    return { text:t, tag };
+  }
+  function bqParseOne(block){
+    let t = block.replace(/\r/g, '').trim(), correct = -1;
+    const am = t.match(/(?:সঠিক\s*উত্তর|উত্তর|উঃ|ans(?:wer)?|ans)\s*[:：=\-]?\s*\(?\s*([কখগঘ]|[a-dA-D]|[১-৪1-4])\s*\)?\s*\.?\s*$/im);
+    if(am){
+      const v = bnD(am[1]).toLowerCase(), ix = LBL.bn.indexOf(v) !== -1 ? LBL.bn.indexOf(v) : (LBL.en.indexOf(v) !== -1 ? LBL.en.indexOf(v) : (+v - 1));
+      if(ix >= 0 && ix <= 3) correct = ix;
+      t = t.slice(0, am.index).trim();
+    }
+    for(const set of [LBL.bn, LBL.en]){
+      let pos = [], from = 0, ok = true;
+      for(const l of set){
+        const re = new RegExp('(^|\\s)\\(?' + l + '[.)।:]\\s*', 'i'); const m = re.exec(t.slice(from));
+        if(!m){ ok = false; break; }
+        const st = from + m.index + m[1].length, en = from + m.index + m[0].length;
+        pos.push([st, en]); from = en;
+      }
+      if(!ok) continue;
+      const sm = bqStem(t.slice(0, pos[0][0]));
+      const opts = pos.map((p, i) => t.slice(p[1], i < 3 ? pos[i + 1][0] : t.length).replace(/\s+/g, ' ').trim());
+      return { text:sm.text, tag:sm.tag, opts, correct, ok:true };
+    }
+    const fb = bqStem(t); return { text:fb.text, tag:fb.tag, opts:['', '', '', ''], correct, ok:false };
+  }
+  function bqSplitBlocks(raw){
+    let blocks = raw.replace(/\r/g, '').split(/\n\s*\n+/).map(x => x.trim()).filter(Boolean);
+    if(blocks.length <= 1){   // ফাঁকা লাইন নেই — নম্বর দেখে ভাগ (১. ২. ৩. …)
+      blocks = raw.replace(/\r/g, '').split(/\n(?=\s*(?:Q\s*\d*\s*[:.]|(?:প্রশ্ন\s*)?[\d০-৯]+\s*[.)।]\s))/i).map(x => x.trim()).filter(Boolean);
+    }
+    return blocks;
+  }
+  function bqAddParsed(arr){
+    const k = 'rt', last = BQ[k][BQ[k].length - 1];
+    if(last && !last.file && !last.text.trim()) BQ[k].pop();
+    arr.forEach(o => { const it = bqBlank(); it.text = o.text; it.tag = o.tag || ''; it.opts = o.opts.slice(); it.correct = o.correct; BQ[k].push(it); });
+    bqDraw(k);
+  }
+  window.bqMcqSplit = function(){
+    const ta = document.getElementById('rtBulkTxt'), st = document.getElementById('rtBulkSt'), raw = (ta || {}).value || '';
+    if(!raw.trim()){ toast('আগে MCQ-গুলো পেস্ট করো'); return; }
+    const arr = bqSplitBlocks(raw).map(bqParseOne).filter(o => o.text || o.ok);
+    if(!arr.length){ st.textContent = 'কিছু পাওয়া যায়নি'; return; }
+    const noOpt = arr.filter(o => !o.ok).length, noAns = arr.filter(o => o.ok && o.correct < 0).length;
+    bqAddParsed(arr); ta.value = '';
+    st.innerHTML = `✅ ${arr.length}টা প্রশ্ন নিচে কার্ড হয়েছে।` + (noOpt ? ` <span style="color:var(--red)">⚠️ ${noOpt}টায় ৪টা অপশন ধরা যায়নি — হাতে ঠিক করো বা 🤖 AI দিয়ে চেষ্টা করো।</span>` : '') + (noAns ? ` <span style="color:#9B6A15">⚠️ ${noAns}টায় সঠিক উত্তর পাওয়া যায়নি — বেছে দাও।</span>` : '');
+  };
+  window.bqMcqAi = async function(){
+    const ta = document.getElementById('rtBulkTxt'), st = document.getElementById('rtBulkSt'), b = document.getElementById('rtBulkAi'), raw = (ta || {}).value || '';
+    if(!raw.trim()){ toast('আগে MCQ-গুলো পেস্ট করো'); return; }
+    b.disabled = true; st.textContent = '🤖 AI আলাদা করছে...';
+    const res = await postToScriptRaw('revisionBankParse', { text:raw });
+    b.disabled = false;
+    if(res && res.status === 'success'){
+      bqAddParsed(res.data.map(o => ({ text:o.text, opts:o.options, correct:o.correct }))); ta.value = '';
+      const noAns = res.data.filter(o => o.correct < 0).length;
+      st.innerHTML = `✅ AI ${res.data.length}টা প্রশ্ন বের করেছে — নিচে মিলিয়ে দেখো।` + (noAns ? ` <span style="color:#9B6A15">⚠️ ${noAns}টায় সঠিক উত্তর বেছে দাও।</span>` : '');
+    } else st.textContent = '❌ AI এখন পারছে না (কোটা শেষ?) — "কার্ডে ভাগ করো" চাপো বা পরে চেষ্টা করো।';
+  };
+
+  window.bqDraw = function(k){
+    const box = document.getElementById(BQL[k]); if(!box) return;
+    const mcq = k === 'rt' && (document.getElementById('rtType') || {}).value === 'mcq';
+    const bb = document.getElementById('rtMcqBulk'); if(bb) bb.style.display = mcq ? 'block' : 'none';
+    box.innerHTML = BQ[k].map((it, i) => `<div class="bq-item" data-i="${i}" style="border:1px solid var(--rule);border-radius:12px;padding:10px;margin-bottom:10px;background:#fff;">
+      <div style="display:flex;justify-content:space-between;align-items:center;"><b>প্রশ্ন ${i + 1}</b>${BQ[k].length > 1 || it.file || it.text ? `<a class="link-back" onclick="bqDel('${k}',${i})">✕ বাদ দাও</a>` : ''}</div>
+      ${it.url ? `<img src="${it.url}" style="max-width:100%;max-height:220px;border-radius:8px;margin:6px 0;display:block;"><a class="link-back" onclick="bqNoImg('${k}',${i})">🗑️ ছবি সরাও</a>`
+               : `<label class="field-label" style="margin-top:6px;">ছবি (ঐচ্ছিক — অথবা Ctrl+V)</label><input type="file" accept="image/*" onchange="bqOne('${k}',${i},this)" style="margin-bottom:6px;">`}
+      ${k === 'rt' ? `<input type="text" placeholder="এই প্রশ্নের টপিক (ঐচ্ছিক — খালি থাকলে উপরের টপিক)" value="${escapeHtml(it.tag || '')}" oninput="BQ.rt[${i}].tag=this.value" style="margin:6px 0;">` : ''}
+      <textarea placeholder="প্রশ্ন (লেখা) — ছবি দিলে ঐচ্ছিক" style="min-height:56px;" oninput="BQ.${k}[${i}].text=this.value">${escapeHtml(it.text)}</textarea>
+      ${mcq ? it.opts.map((o, j) => `<input type="text" placeholder="অপশন ${['ক', 'খ', 'গ', 'ঘ'][j]}" value="${escapeHtml(o)}" oninput="BQ.${k}[${i}].opts[${j}]=this.value">`).join('')
+              + `<label class="field-label">সঠিক উত্তর</label><select onchange="BQ.${k}[${i}].correct=+this.value">${it.correct < 0 ? '<option value="-1" selected>— বাছো —</option>' : ''}${['ক', 'খ', 'গ', 'ঘ'].map((n, j) => `<option value="${j}" ${it.correct === j ? 'selected' : ''}>${n}</option>`).join('')}</select>`
+            : `<textarea placeholder="মডেল উত্তর (ঐচ্ছিক${k === 'as' ? ' — দিলে AI আরও নির্ভুল মেলাবে' : ''})" style="min-height:48px;" oninput="BQ.${k}[${i}].model=this.value">${escapeHtml(it.model)}</textarea>`}
+    </div>`).join('');
+  };
+  window.bqComposerHtml = function(k){
+    return `<div id="${k}Zone" tabindex="0" ondragover="event.preventDefault()" ondrop="bqDrop('${k}',event)" style="border:2px dashed var(--rule);border-radius:12px;padding:12px;margin:8px 0;text-align:center;background:#fafbfd;">
+        <div style="font-size:13.5px;margin-bottom:8px;">📋 স্ক্রিনশট/ছবি <b>কপি</b> করে এখানে <b>Ctrl+V</b> দাও — একসাথে যতগুলো খুশি, প্রতিটা আলাদা প্রশ্ন হবে।<br>ছবি টেনে এনে ছাড়তেও পারো।</div>
+        <div class="row"><button class="btn btn-gold" onclick="bqPasteBtn('${k}')">📋 ক্লিপবোর্ড থেকে পেস্ট</button>
+        <label class="btn btn-outline" style="margin:0;cursor:pointer;">🖼️ ছবি বাছো (একাধিক)<input type="file" accept="image/*" multiple style="display:none" onchange="bqFiles('${k}',this)"></label></div></div>
+      ${k === 'rt' ? `<div id="rtMcqBulk" style="border:1.5px solid var(--gold);border-radius:12px;padding:10px;margin:8px 0;">
+        <b style="font-size:13.5px;">📥 একসাথে অনেক MCQ পেস্ট করো</b>
+        <p class="hint" style="margin:4px 0 6px;">পরীক্ষার "দ্রুত ইম্পোর্ট"-এর একই ফরম্যাট (প্রশ্নের মাঝে ফাঁকা লাইন):<br><code>Q: প্রশ্ন লেখো [ট্যাগ]<br>A) অপশন ১<br>B) অপশন ২<br>C) অপশন ৩<br>D) অপশন ৪<br>ANS: A</code><br>[ট্যাগ] দিলে সেটাই ওই প্রশ্নের টপিক হবে (না দিলে উপরের টপিক)। <code>ক) খ) গ) ঘ)</code>, ১. ২. ৩. নম্বর, আর এক লাইনে সব অপশনও চলে।</p>
+        <textarea id="rtBulkTxt" style="min-height:110px;" placeholder="Q: প্রশ্ন লেখো [ট্যাগ]&#10;A) অপশন ১&#10;B) অপশন ২&#10;C) অপশন ৩&#10;D) অপশন ৪&#10;ANS: A&#10;&#10;Q: পরের প্রশ্ন..."></textarea>
+        <div class="row"><button class="btn btn-gold" onclick="bqMcqSplit()">✂️ কার্ডে ভাগ করো</button><button class="btn btn-outline" id="rtBulkAi" onclick="bqMcqAi()">🤖 AI দিয়ে ভাগ করো</button></div>
+        <div id="rtBulkSt" class="hint" style="margin-top:6px;"></div></div>` : ''}
+      <div id="${BQL[k]}"></div>
+      <button class="btn btn-outline btn-block" onclick="bqAddBlank('${k}')">➕ আরেকটা প্রশ্ন (লেখা)</button>`;
+  };
+  // বাল্ক সেভ: একটা একটা করে পাঠায়; ব্যর্থ হলে বাকিগুলো তালিকায় থেকে যায়
+  window.bqSendAll = async function(k, mk, onProgress){
+    const list = BQ[k].filter(it => it.file || it.text.trim()), done = [];
+    for(let i = 0; i < list.length; i++){
+      onProgress(i + 1, list.length);
+      const params = mk(list[i], i, list.length);
+      if(list[i].file){ try{ const c = await compressImageFile(list[i].file, 1200, 0.78); params.imageBase64 = c.base64; params.imageMimeType = c.mimeType; }catch(e){ return { ok:done.length, fail:'ছবি পড়া যায়নি', total:list.length }; } }
+      const res = await postToScriptRaw(params.__action, (delete params.__action, params));
+      if(!(res && res.status === 'success')) return { ok:done.length, fail:'সেভ হয়নি', total:list.length };
+      done.push(list[i]); BQ[k] = BQ[k].filter(x => x !== list[i]);
+    }
+    return { ok:done.length, fail:'', total:list.length };
+  };
 
   window.revTTag = async function(){
     const b = document.getElementById('revTagBtn'), st = document.getElementById('revTagSt');
@@ -8308,7 +8458,7 @@ window.doSmartSearch = async function(){
       : `<p class="hint" style="color:var(--green);">✅ ${total}টা প্রশ্নের বিষয় ঠিক হয়েছে। সব প্রশ্ন এখন বিষয় অনুযায়ী আছে।</p>`;
     if(b) b.disabled = false;
   };
-  window.revTType = function(){ const m = document.getElementById('rtType').value === 'mcq'; document.getElementById('rtMcq').style.display = m ? 'block' : 'none'; document.getElementById('rtCq').style.display = m ? 'none' : 'block'; };
+  window.revTType = function(){ bqDraw('rt'); };
   window.revTSaveSubs = async function(i){
     const T = window.__revT, s = T.students[i];
     const list = Object.keys(NOTES_SUBJECTS).filter(k => document.getElementById('rtS_' + i + '_' + k).checked);
@@ -8317,19 +8467,21 @@ window.doSmartSearch = async function(){
   };
   const rtv = id => (document.getElementById(id) || {}).value || '';
   window.revTSave = async function(){
-    const type = rtv('rtType'), topic = rtv('rtTopic').trim(), text = rtv('rtText').trim();
-    if(!topic || !text){ toast('টপিক ও প্রশ্ন লেখো'); return; }
-    let payload;
-    if(type === 'mcq'){
-      const options = [0, 1, 2, 3].map(j => rtv('rtO' + j).trim());
-      if(options.some(o => !o)){ toast('চারটা অপশনই দাও'); return; }
-      payload = { text, options, correct:Number(rtv('rtCorrect')) };
-    } else {
-      if(!rtv('rtModel').trim()){ toast('মডেল উত্তর দাও'); return; }
-      payload = { text, modelAnswerText:rtv('rtModel').trim(), marks:5 };
-    }
-    const res = await postToScriptRaw('revisionBankSave', { slug:rtv('rtScope'), subject:rtv('rtSub'), topic, type, payload:JSON.stringify(payload) });
-    if(res && res.status === 'success'){ toast('যোগ হয়েছে ✅'); revTRender(); } else toast('যোগ হয়নি');
+    const type = rtv('rtType'), topic = rtv('rtTopic').trim(), keep = { scope:rtv('rtScope'), subj:rtv('rtSub'), topic, type };
+    const list = BQ.rt.filter(it => it.file || it.text.trim());
+    if(!topic && list.some(it => !String(it.tag || '').trim())){ toast('টপিক লেখো (অথবা প্রতিটা প্রশ্নে [ট্যাগ] দাও)'); return; }
+    if(!list.length){ toast('অন্তত একটা প্রশ্ন (লেখা বা ছবি) দাও'); return; }
+    if(type === 'mcq' && list.some(it => it.opts.some(o => !o.trim()))){ toast('MCQ-র চারটা অপশনই দাও'); return; }
+    if(type === 'mcq' && list.some(it => it.correct < 0)){ toast('সব MCQ-তে সঠিক উত্তর বেছে দাও'); return; }
+    const b = document.getElementById('rtSaveBtn'), st = document.getElementById('rtSaveSt'); b.disabled = true;
+    const r = await bqSendAll('rt', it => {
+      const payload = type === 'mcq' ? { text:it.text.trim(), options:it.opts.map(o => o.trim()), correct:it.correct } : { text:it.text.trim(), modelAnswerText:it.model.trim(), marks:5 };
+      return { __action:'revisionBankSave', slug:keep.scope, subject:keep.subj, topic:String(it.tag || '').trim() || topic, type, payload:JSON.stringify(payload) };
+    }, (i, n) => { st.textContent = '⏳ ' + i + '/' + n + ' যোগ হচ্ছে... পেজ বন্ধ কোরো না'; });
+    if(r.fail) toast(r.ok + 'টা যোগ হয়েছে, বাকিগুলো ' + r.fail + ' — আবার চাপো'); else toast(r.ok + 'টা যোগ হয়েছে ✅');
+    await revTRender();
+    ['rtScope', 'rtSub', 'rtTopic', 'rtType'].forEach((id, j) => { const el = document.getElementById(id); if(el) el.value = [keep.scope, keep.subj, keep.topic, keep.type][j]; });   // একই টপিকে আরও দিতে সুবিধা
+    bqDraw('rt');
   };
   window.revTGen = async function(){
     const topic = rtv('rtTopic').trim();
@@ -8481,13 +8633,13 @@ window.doSmartSearch = async function(){
         <label class="field-label">অধ্যায়</label><select id="asChap" onchange="revAsgFill('chap')"></select>
         <label class="field-label">টপিক</label><select id="asTopic" onchange="revAsgFill('topic')"></select>
         <label class="field-label">সাবটপিক (ঐচ্ছিক)</label><select id="asSub"></select>
-        <label class="field-label">প্রশ্ন (লেখা)</label><textarea id="asText" style="min-height:70px;"></textarea>
-        <label class="field-label">অথবা প্রশ্নের ছবি</label><input type="file" id="asImg" accept="image/*" style="margin-bottom:10px;">
-        <label class="field-label">মডেল উত্তর (ঐচ্ছিক — দিলে AI আরও নির্ভুল মেলাবে)</label><textarea id="asModel" style="min-height:60px;"></textarea>
-        <button class="btn btn-primary btn-block" id="asBtn" onclick="revAsgSave()">✅ অ্যাসাইন করো</button></div>
+        <label class="field-label">প্রশ্নগুলো (একসাথে অনেকগুলো দেওয়া যায়)</label>
+        ${bqComposerHtml('as')}
+        <label style="display:flex;gap:8px;align-items:flex-start;margin:10px 0;font-size:13.5px;"><input type="checkbox" id="asSeq" checked style="width:auto;margin:3px 0 0;"><span>ক্রমানুসারে: একটা জমা দিলে তবেই পরেরটা ছাত্রের কাছে আসবে <span class="hint">(না টিক দিলে সবগুলো একসাথে দেখাবে; ২টার বেশি হলে কাজে লাগে)</span></span></label>
+        <button class="btn btn-primary btn-block" id="asBtn" onclick="revAsgSave()">✅ সবগুলো অ্যাসাইন করো</button><div id="asSaveSt" class="hint" style="margin-top:6px;"></div></div>
       <div class="card"><h3>অ্যাসাইন করা প্রশ্ন (${window.__revAsgList.length})</h3>${rows}</div>
       <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
-    revAsgFill('subj');
+    revAsgFill('subj'); bqInit('as'); bqDraw('as');
   }
   window.revAsgFill = function(level){
     const tax = window.__revTax || [], s = val('asSubj');
@@ -8501,14 +8653,24 @@ window.doSmartSearch = async function(){
     set('asSub', opts(tax.filter(t => t.subject === s && t.chapter === c2 && t.topic === tp && t.subtopic).map(t => t.subtopic), '— সাবটপিক নির্দিষ্ট নয় —'));
   };
   window.revAsgSave = async function(){
-    const text = val('asText').trim(), f = (document.getElementById('asImg').files || [])[0];
     if(!val('asTopic')){ toast('অধ্যায় ও টপিক বাছো (আগে TOC ইম্পোর্ট করতে হবে)'); return; }
-    if(!text && !f){ toast('প্রশ্ন লেখো অথবা ছবি দাও'); return; }
-    const b = document.getElementById('asBtn'); b.disabled = true;
-    const params = { slug:val('asStud'), date:val('asDate'), dueDate:val('asDue'), subject:val('asSubj'), chapter:val('asChap'), topic:val('asTopic'), subtopic:val('asSub'), text, modelAnswerText:val('asModel') };
-    if(f){ try{ const c = await compressImageFile(f, 1200, 0.78); params.imageBase64 = c.base64; params.imageMimeType = c.mimeType; }catch(e){ toast('ছবি পড়া যায়নি'); b.disabled = false; return; } }
-    const res = await postToScriptRaw('revisionAssignSave', params);
-    if(res && res.status === 'success'){ toast('অ্যাসাইন হয়েছে ✅'); revAsgRender(); } else { b.disabled = false; toast('সেভ হয়নি, আবার চেষ্টা করো'); }
+    const list = BQ.as.filter(it => it.file || it.text.trim());
+    if(!list.length){ toast('প্রশ্ন লেখো অথবা ছবি দাও'); return; }
+    const keep = { stud:val('asStud'), date:val('asDate'), due:val('asDue'), subj:val('asSubj'), chap:val('asChap'), topic:val('asTopic'), sub:val('asSub') };
+    const seq = (list.length > 1 && (document.getElementById('asSeq') || {}).checked) ? 'sq' + Date.now() : '';
+    const b = document.getElementById('asBtn'), st = document.getElementById('asSaveSt'); b.disabled = true;
+    let n = 0;
+    const r = await bqSendAll('as', it => {
+      const p = { __action:'revisionAssignSave', slug:keep.stud, date:keep.date, dueDate:keep.due, subject:keep.subj, chapter:keep.chap, topic:keep.topic, subtopic:keep.sub, text:it.text.trim(), modelAnswerText:it.model.trim() };
+      if(seq){ p.seq = seq; p.seqNo = n++; }
+      return p;
+    }, (i, k) => { st.textContent = '⏳ ' + i + '/' + k + ' অ্যাসাইন হচ্ছে... পেজ বন্ধ কোরো না'; });
+    if(r.fail) toast(r.ok + 'টা হয়েছে, বাকিগুলো ' + r.fail + ' — আবার চাপো'); else toast(r.ok + 'টা অ্যাসাইন হয়েছে ✅');
+    await revAsgRender();
+    const set = (id, v) => { const el = document.getElementById(id); if(el) el.value = v; };
+    set('asStud', keep.stud); set('asDate', keep.date); set('asDue', keep.due); set('asSubj', keep.subj); revAsgFill('subj');
+    set('asChap', keep.chap); revAsgFill('chap'); set('asTopic', keep.topic); revAsgFill('topic'); set('asSub', keep.sub);
+    bqDraw('as');
   };
   window.revAsgDel = async function(id){
     if(!confirm('এই প্রশ্নটা মুছে ফেলবে?')) return;
