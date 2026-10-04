@@ -1827,7 +1827,7 @@ window.submitExam = async function(auto){
   const { exam, slug, name, answers, attemptNumber, viaCode } = state;
   let score = 0;
   exam.questions.forEach((q,i)=>{ if(answers[i] === q.correct) score++; });
-  const resultObj = { id: genId('res'), studentName: name, slug, score, total: exam.questions.length, submittedAt: Date.now(), answers, attemptNumber: attemptNumber||1 };
+  const resultObj = { id: genId('res'), studentName: name, slug, score, total: exam.questions.length, submittedAt: Date.now(), answers, attemptNumber: attemptNumber||1, viaCode: !!viaCode };
 
   app.innerHTML = `${header('জমা হচ্ছে')} <div class="card center">গুগল শিটে আপনার উত্তরপত্র জমা হচ্ছে, দয়া করে অপেক্ষা করুন...</div>`;
 
@@ -3603,6 +3603,7 @@ async function renderMonthlyReward(){
           <div class="meta">${s.lastFinalizedAt ? 'শেষ রিওয়ার্ড: ' + fmtBnDate(s.lastFinalizedAt) : 'এখনো কোনো রিওয়ার্ড পায়নি — সব exam গোনা হচ্ছে'}</div>
           <div class="meta"><b>${s.examCount}টা</b> exam গোনা হয়েছে · মোট <b>${s.scored}/${s.total}</b> (${s.percent}%)</div>
           ${skipped.length ? `<div class="meta" style="color:#9B6A15;">⚠️ ${skipped.join(' · ')}</div>` : ''}
+          ${(s.skippedPublicExams && s.skippedPublicExams.length) ? `<details style="margin:4px 0 0 0;"><summary style="cursor:pointer; font-size:12.5px; color:#9B6A15;">⚠️ বাদ গেছে — কোন কোন exam</summary><div style="margin-top:6px;">${s.skippedPublicExams.map(x=> `<div class="meta">• ${escapeHtml(x.title)} — ${x.score}/${x.total} · ${fmtBnDate(x.ts)}</div>`).join('')}</div></details>` : ''}
         </div>
         <div class="score-big score-pass" style="font-size:19px;" id="rwProj${i}">৳${rewardAmount(s.percent, s.studentMax)}</div>
       </div>
