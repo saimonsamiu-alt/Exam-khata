@@ -4660,86 +4660,15 @@ async function renderStudentDashboard(){
         ${attWidgetHtml}
       </div>
 
-      <!-- 2. Practice Gateway Widget -->
-      <div class="widget" style="background: linear-gradient(135deg, #182238 0%, #202F4F 100%); color:#fff; border-color:#2C3E66;">
-        <div class="widget-header">
-          <h3 class="widget-title" style="color:#fff;">📊 বিষয়ভিত্তিক প্র্যাকটিস</h3>
-          <span class="widget-tag tag-gold">🎮 বড় গেম আসছে</span>
-        </div>
-        <p style="font-size:13.5px; color:rgba(255,255,255,0.8); margin:0 0 10px 0; line-height:1.5;">
-          পদার্থ, রসায়ন, গণিত, জীববিজ্ঞান ও আইসিটির প্রশ্ন সমাধান করে প্রতিটা চ্যাপ্টার, পেপার আর সাবজেক্টের percentage ট্র্যাক করো।
-        </p>
-        <p style="font-size:12px; color:rgba(255,255,255,0.55); margin:0 0 14px 0; line-height:1.5; border-top:1px dashed rgba(255,255,255,0.2); padding-top:8px;">
-          🕹️ পরবর্তীতে এখানে একটা এক্সক্লুসিভ 3D গেম আসছে (PUBG/Free Fire লেভেলের) — শুধু তোমাদের জন্য বানানো হচ্ছে!
-        </p>
-        <button class="btn btn-gold btn-block" style="box-shadow:0 4px 16px rgba(217,164,65,0.35);" onclick="go('battleWorldMap')">📚 প্র্যাকটিস শুরু করো</button>
-      </div>
-
-      <!-- 3. Exams & Quiz Hub -->
-      <div class="widget">
-        <div class="widget-header">
-          <h3 class="widget-title">📝 পরীক্ষা ও মূল্যায়ন</h3>
-          <span class="widget-tag tag-blue">এমসিকিউ</span>
-        </div>
-        <label class="field-label" style="font-size:12.5px;">🔑 শিক্ষকের দেওয়া এক্সাম কোড দিয়ে সরাসরি পরীক্ষা শুরু করো</label>
-        <div style="display:flex; gap:8px; margin-bottom:14px;">
-          <input type="text" id="dashExamCode" placeholder="যেমন: 7K3PQ" style="text-transform:uppercase; margin-bottom:0; font-family:var(--font-mono); font-weight:700;">
-          <button class="btn btn-primary" style="white-space:nowrap;" onclick="dashStartExamByCode()">শুরু করো</button>
-        </div>
-        <button class="btn btn-outline btn-block" style="margin-bottom:8px;" onclick="go('practiceList')">🎯 Practice</button> <!-- [NEW] one button; the full list is on the Practice page -->
-        <div class="row" style="margin-top:6px;">
-          <button class="btn btn-primary btn-block" onclick="go('pastExams')">📜 Past Exams</button>
-          <button class="btn btn-outline btn-block" onclick="openMyMastery()">📊 মাস্টারি প্রোগ্রেস</button>
-        </div>
-      </div>
-
-      <!-- 4. Written CQ Exam Widget -->
-      <div class="widget">
-        <div class="widget-header">
-          <h3 class="widget-title">✍️ লিখিত সৃজনশীল পরীক্ষা</h3>
-          <span class="widget-tag tag-gold">AI চেক</span>
-        </div>
-        <p class="hint" style="margin-bottom:12px;">হাতে লেখা খাতার ছবি তুলে সরাসরি আপলোড করো — এআই তাৎক্ষণিক মূল্যায়ন ও নম্বর প্রদান করবে।</p>
-        <button class="btn btn-outline btn-block" onclick="go('writtenEntry')">📝 লিখিত পরীক্ষায় অংশ নাও ও খাতা আপলোড করো</button>
-      </div>
-
-      <!-- 4.5 Daily Homework Widget -->
-      <div class="widget">
-        <div class="widget-header">
-          <h3 class="widget-title">📚 HW</h3>
-          <span class="widget-tag tag-blue" id="dailyHwStatusTag">চেক হচ্ছে...</span>
-        </div>
-        <div id="dailyHwWidgetBody"><p class="hint">লোড হচ্ছে...</p></div>
-      </div>
-
-      <!-- 5. Treat Wallet & Rewards Shop -->
-      <div class="widget">
-        <div class="widget-header">
-          <h3 class="widget-title">🎁 ট্রিট কুপন ও রিওয়ার্ড ওয়ালেট</h3>
-          <span class="widget-tag tag-green">৳ ${balance} জমানো</span>
-        </div>
-        <p class="hint" style="margin-bottom:12px;">পরীক্ষায় ভালো রেজাল্ট করে টাকা জমাও এবং বিকাশ ক্যাশআউট বা শপ থেকে গিফট নাও!</p>
-        <div class="row">
-          <button class="btn btn-gold btn-block" onclick="openMyCoupons('couponBalance')">💸 বিকাশ ক্যাশআউট</button>
-          <button class="btn btn-outline btn-block" onclick="openMyCoupons('shopList')">🛍️ রিওয়ার্ড শপ</button>
-        </div>
-      </div>
-
-      <!-- 6. AI Doubt Solver & Study Notes -->
-      <div class="widget">
-        <div class="widget-header">
-          <h3 class="widget-title">💡 পড়াশোনার সহায়ক</h3>
-        </div>
-        <div class="row">
-          <button class="btn btn-outline btn-block" onclick="go('doubtEntry')">🤖 AI ডাউট সমাধান</button>
-          <button class="btn btn-outline btn-block" onclick="go('notesGate')">📑 ক্লাস নোট ও স্লাইড</button>
-        </div>
-      </div>
+      <!-- মূল বাটন: ৩টা হাব + ক্যালেন্ডার -->
+      <div class="widget" style="padding:12px;"><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        ${[['📚','স্টাডি','রিভিশন · HW · প্র্যাকটিস · মাস্টারি',"go('studyHub')",'hubStudyBadge'],['📝','পরীক্ষা','কোড · Practice · লিখিত · Past',"go('examHub')",''],['🎁','রিওয়ার্ড','ক্যাশআউট · শপ',"go('rewardHub')",''],['📅','ক্যালেন্ডার','ক্লাস · HW · রিভিশন',"go('myCal')",'']].map(t => `<button class="btn btn-outline" style="padding:16px 10px;text-align:center;border-radius:14px;" onclick="${t[3]}"><div style="font-size:30px;">${t[0]}</div><b>${t[1]}</b>${t[4] ? `<div id="${t[4]}"></div>` : ''}<div class="hint" style="font-size:11px;margin-top:2px;">${t[2]}</div></button>`).join('')}
+      </div></div>
     </div>
 
     ${creditFooter()}
   `;
-  fillDailyHwWidget();
+  fillStudyBadge();
   planMissedPopup();   // মিস করা HW/রিভিশনের উৎসাহমূলক পপআপ (সেশনে একবার)
 }
 
@@ -5111,6 +5040,7 @@ window.dashMarkTodayAttendance = async function(slug){
 };
 
 window.openStudentAttendanceCalendar = async function(slug, name){
+  go('myCal'); return;   // একটাই ক্যালেন্ডার
   toast('ক্যালেন্ডার লোড হচ্ছে...');
   const records = await listAttendanceRemote(slug);
   go('attendanceStudentView', { slug, name, records });
@@ -5874,18 +5804,29 @@ function syncLogoutFab(){
 // (Small edits to existing functions are marked with "// [NEW]" comments.)
 
 // POST that returns the server's JSON even on errors (postToScript() hides the error message)
+const SLOW_AI_ACTIONS = ['revisionGradeCq','revisionAssignAnswer','planSetCq'];
 async function postToScriptRaw(action, params){
+  const ctl = (SLOW_AI_ACTIONS.indexOf(action) !== -1 && window.AbortController) ? new AbortController() : null;
+  const tm = ctl ? setTimeout(() => ctl.abort(), 100000) : null;   // ১০০ সেকেন্ডে সাড়া না এলে থামিয়ে ছাত্রকে জানানো হয়
   try{
     const r = await fetch(SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action, ...params })
+      body: JSON.stringify({ action, ...params }),
+      signal: ctl ? ctl.signal : undefined
     });
     const text = await r.text();
     try{ return JSON.parse(text); }catch(e){ return { status:'error', message:'bad_response' }; }
   }catch(e){
-    return { status:'error', message:'network' };
-  }
+    return { status:'error', message: (e && e.name === 'AbortError') ? 'timeout' : 'network' };
+  }finally{ if(tm) clearTimeout(tm); }
+}
+function gradeErrMsg(res){
+  const m = res && res.message;
+  if(m === 'irrelevant') return '⚠️ ওয়ার্নিং: তোমার ছবি এই প্রশ্নের উত্তরের সাথে মিলছে না। ' + escapeHtml((res && res.feedback) || '') + ' — প্রশ্নের সঠিক উত্তরের ছবি তুলে আবার জমা দাও।';
+  if(m === 'timeout') return '⏳ AI চেক করতে অনেক সময় নিচ্ছে। আবার জমা দাও।';
+  if(m === 'ai_unavailable') return 'AI এখন চেক করতে পারেনি, একটু পরে আবার জমা দাও।';
+  return 'জমা হয়নি, আবার চেষ্টা করো।';
 }
 async function getJson(action, params){
   try{
@@ -7911,16 +7852,6 @@ window.doSmartSearch = async function(){
   const CQ_MIN_SEC = 240;               // ৪ মিনিট বা বেশি বাকি থাকলে CQ/ছবি-প্রশ্ন, নইলে MCQ
   const doneKey = () => 'rev_done_' + todayStr();
   const doneSec = () => Number(localStorage.getItem(doneKey()) || 0);
-  // একবার বিষয়/সময় বেছে সেভ করলে পরেরবার থেকে আর জিজ্ঞেস করে না, সরাসরি শুরু হয়
-  const prefKey = s => 'rev_pref_' + s;
-  const getPref = slug => { try{ const p = JSON.parse(localStorage.getItem(prefKey(slug)) || 'null'); return (p && Array.isArray(p.subs) && p.subs.length) ? p : null; }catch(e){ return null; } };
-  window.revEditPref = function(mid){
-    if(mid && !confirm('চলমান রিভিশন বন্ধ করে বিষয়/সময় বদলাবে?')) return;
-    const r = R(); if(r && r.timer) clearInterval(r.timer);
-    const ov = document.getElementById('revNoteOv'); if(ov) ov.remove();
-    window.__rev = { phase:'setup', edit:true, allowed:(r || {}).allowed };
-    revRender();
-  };
 
   window.revOpen = function(){ window.__rev = { phase: localStorage.getItem('rev_greet_' + todayStr()) ? 'setup' : 'greet' }; go('revision'); };
 
@@ -7941,7 +7872,7 @@ window.doSmartSearch = async function(){
     if(!R()) window.__rev = { phase:'setup' };
     const p = R().phase;
     if(p === 'setup') revSetup();
-    else if(p === 'loading') app.innerHTML = header('রিভিশন') + `<div class="card center">তোমার দুর্বল জায়গা খোঁজা হচ্ছে...<br><a class="link-back" onclick="revEditPref()">⚙️ বিষয়/সময় বদলাও</a></div>`;
+    else if(p === 'loading') app.innerHTML = header('রিভিশন') + `<div class="card center">তোমার দুর্বল জায়গা খোঁজা হচ্ছে...</div>`;
     else if(p === 'greet') revGreet();
     else if(p === 'item') revItem();
     else if(p === 'summary') revSummary();
@@ -7956,10 +7887,6 @@ window.doSmartSearch = async function(){
       if(R() !== r0) return;
       r0.allowed = (res && res.subjects && res.subjects.length) ? res.subjects : Object.keys(NOTES_SUBJECTS);
     }
-    if(!r0.edit){   // সেভ করা সেটিং থাকলে প্রশ্ন না করে সরাসরি শুরু
-      const stud0 = getLoggedStudent(), pf = stud0 ? getPref(stud0.slug) : null;
-      if(pf){ const subs0 = pf.subs.filter(k => r0.allowed.indexOf(k) !== -1 && NOTES_SUBJECTS[k]); if(subs0.length){ revRun(subs0, pf.mins, pf.goal, pf.mode === 'sep', r0.allowed); return; } }
-    }
     revSetupDraw(r0.allowed); revFillCov(r0.allowed);
   }
   async function revFillCov(allowed){
@@ -7971,8 +7898,7 @@ window.doSmartSearch = async function(){
     el.innerHTML = rows ? `<div style="margin:10px 0;padding:10px 12px;background:#F5F9FE;border-radius:10px;"><b style="font-size:13px;">📈 রিভিশন চক্র</b>${rows}<div class="meta" style="margin-top:4px;">🔴দুর্বল (৩ দিনে ফেরে) 🟡মাঝারি (১০) 🟢সহজ (৩০) ⚪নতুন (১৪)</div></div>` : '';
   }
   function revSetupDraw(allowed){
-    const stu0 = getLoggedStudent(), pf = stu0 ? getPref(stu0.slug) : null;
-    const goal = pf ? pf.goal : Number(localStorage.getItem('rev_goal') || 10), mins0 = pf ? pf.mins : goal;
+    const goal = Number(localStorage.getItem('rev_goal') || 10);
     const done = Math.floor(doneSec() / 60);
     app.innerHTML = `
       ${header('রিভিশন')}
@@ -7981,47 +7907,39 @@ window.doSmartSearch = async function(){
         <p class="hint">তোমার এ পর্যন্ত সব HW, MCQ, Written আর স্লাইডের ভুল ও আংশিক-ঠিক জায়গা (শুধু এই সপ্তাহের না) আর শিক্ষকের দেওয়া প্রশ্ন থেকে নিজে নিজে প্রশ্ন আসবে — দুর্বল → সহজ → দুর্বল এভাবে। আজ করেছো: <b>${done}</b> মিনিট / লক্ষ্য <b>${goal}</b> মিনিট।</p>
         <div id="revCov"></div>
         <label class="field-label">বিষয় (একাধিক বাছতে পারো)</label>
-        ${allowed.map(k => `<label class="bubble-opt"><input type="checkbox" id="revS_${k}" ${pf && pf.subs.indexOf(k) !== -1 ? 'checked' : ''} style="display:inline-block;width:auto;margin:0;"><span>${NOTES_SUBJECTS[k].icon} ${NOTES_SUBJECTS[k].label}</span></label>`).join('')}
+        ${allowed.map(k => `<label class="bubble-opt"><input type="checkbox" id="revS_${k}" style="display:inline-block;width:auto;margin:0;"><span>${NOTES_SUBJECTS[k].icon} ${NOTES_SUBJECTS[k].label}</span></label>`).join('')}
         <label class="field-label" style="margin-top:12px;">সময়ের ধরন</label>
         <select id="revMode">
           <option value="unified">সব বিষয় মিলিয়ে মোট একটাই সময়</option>
-          <option value="sep" ${pf && pf.mode === 'sep' ? 'selected' : ''}>প্রতিটা বিষয়ের জন্য আলাদা সময়</option>
+          <option value="sep">প্রতিটা বিষয়ের জন্য আলাদা সময়</option>
         </select>
         <label class="field-label">সময় (মিনিট, সর্বনিম্ন ৫) — "আলাদা" হলে প্রতি বিষয়ে এই সময়</label>
-        <input type="number" id="revMin" min="5" value="${mins0}">
+        <input type="number" id="revMin" min="5" value="${goal}">
         <label class="field-label">প্রতিদিনের লক্ষ্য (মিনিট)</label>
         <input type="number" id="revGoal" min="5" value="${goal}">
-        <p class="hint" style="margin-top:10px;">এই সেটিং সেভ হয়ে থাকবে — পরেরবার থেকে আর জিজ্ঞেস না করে সরাসরি রিভিশন শুরু হবে। বদলাতে চাইলে রিভিশনের ভেতরে ⚙️ বা শেষে "বিষয়/সময় বদলাও" চাপো।</p>
-        <button class="btn btn-primary btn-block" onclick="revStart()">💾 সেভ করে শুরু করো</button>
+        <button class="btn btn-primary btn-block" onclick="revStart()">▶️ শুরু করো</button>
       </div>
       <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>
       ${creditFooter()}`;
   }
 
-  window.revStart = function(){
+  window.revStart = async function(){
     const stud = getLoggedStudent();
     if(!stud){ go('studentAuth'); return; }
     const subs = Object.keys(NOTES_SUBJECTS).filter(k => (document.getElementById('revS_' + k) || {}).checked);
     if(!subs.length){ toast('অন্তত একটা বিষয় বাছো'); return; }
     const mins = Math.max(5, parseInt(document.getElementById('revMin').value, 10) || 10);
     const goal = Math.max(5, parseInt(document.getElementById('revGoal').value, 10) || mins);
-    const sep = document.getElementById('revMode').value === 'sep';
-    try{ localStorage.setItem(prefKey(stud.slug), JSON.stringify({ subs, mode:sep ? 'sep' : 'unified', mins, goal })); }catch(e){}
-    revRun(subs, mins, goal, sep, (R() || {}).allowed);
-  };
-  async function revRun(subs, mins, goal, sep, allowed){
-    const stud = getLoggedStudent();
-    if(!stud){ go('studentAuth'); return; }
     localStorage.setItem('rev_goal', goal);
+    const sep = document.getElementById('revMode').value === 'sep';
     const segs = sep ? subs.map(s => ({ subs:[s], sec:mins * 60 })) : [{ subs:subs, sec:mins * 60 }];
-    const me = window.__rev = { phase:'loading', slug:stud.slug, segs, si:0, tog:0, used:{}, stats:{ m:0, mc:0, cq:[] }, allowed };
+    window.__rev = { phase:'loading', slug:stud.slug, segs, si:0, tog:0, used:{}, stats:{ m:0, mc:0, cq:[] } };
     revRender();
     const res = await postToScriptRaw('revisionBuild', { slug:stud.slug, subjects:subs.join(',') });
-    if(R() !== me) return;                       // মাঝখানে "সেটিং বদলাও" চাপলে থেমে যাও
-    if(!res || res.status !== 'success'){ toast('লোড হয়নি, আবার চেষ্টা করো'); window.__rev = { phase:'setup', edit:true, allowed }; revRender(); return; }
-    me.pool = res;
+    if(!res || res.status !== 'success'){ toast('লোড হয়নি, আবার চেষ্টা করো'); window.__rev = { phase:'setup' }; revRender(); return; }
+    R().pool = res;
     revBeginSeg();
-  }
+  };
 
   function revBeginSeg(){
     const r = R(); r.remaining = r.segs[r.si].sec; r.over = false;
@@ -8072,7 +7990,7 @@ window.doSmartSearch = async function(){
     const sj = it.subject && NOTES_SUBJECTS[it.subject] ? NOTES_SUBJECTS[it.subject].label : '';
     return `<div class="card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
       <div><span class="q-tag">${it.tier === 'weak' ? '🔴 দুর্বল জায়গা' : '🟢 সহজ'}</span> <span class="meta">${escapeHtml(sj)} ${escapeHtml(it.topic || '')}</span></div>
-      <div style="display:flex;align-items:center;gap:8px;"><button class="info-btn" style="background:#FEF6E8;border-color:var(--gold);color:#7B4F06;font-weight:700;" onclick="revPause()">⏸ রিভিশন নোট</button><button class="info-btn" title="সেটিং বদলাও" onclick="revEditPref(true)">⚙️</button><div class="timer-chip" style="position:static;"><span class="timer-dot"></span><span id="revT">${fmtTime(Math.max(0, R().remaining))}</span></div></div></div>`;
+      <div style="display:flex;align-items:center;gap:8px;"><button class="info-btn" style="background:#FEF6E8;border-color:var(--gold);color:#7B4F06;font-weight:700;" onclick="revPause()">⏸ রিভিশন নোট</button><div class="timer-chip" style="position:static;"><span class="timer-dot"></span><span id="revT">${fmtTime(Math.max(0, R().remaining))}</span></div></div></div>`;
   }
 
   function revItem(){
@@ -8162,7 +8080,7 @@ window.doSmartSearch = async function(){
     btn.disabled = true; out.innerHTML = `<p class="hint">চেক হচ্ছে...</p>`;
     const c = await compressImageFile(f, 1200, 0.75);
     const res = await postToScriptRaw('revisionGradeCq', { slug:r.slug, date:todayStr(), itemKey:it.key, tk:(it.subject||'') + '|' + (it.topic||''), question:JSON.stringify(it.q), base64:c.base64, mimeType:c.mimeType });
-    if(!res || res.status !== 'success'){ btn.disabled = false; out.innerHTML = `<p class="hint" style="color:var(--red);">AI এখন চেক করতে পারছে না — আবার চেষ্টা করো বা বাদ দাও।</p>`; return; }
+    if(!res || res.status !== 'success'){ btn.disabled = false; out.innerHTML = `<p class="hint" style="color:var(--red);">${gradeErrMsg(res)}</p>`; return; }
     r.stats.cq.push(res.percent);
     out.innerHTML = `<div class="review-ans ${res.percent >= 90 ? 'right' : 'wrong'}">🤖 ${res.percent}% — ${escapeHtml(res.feedback)}</div>
       ${res.modelAnswerText ? `<div class="meta" style="white-space:pre-wrap;margin-top:8px;"><b>মডেল উত্তর:</b> ${escapeHtml(res.modelAnswerText)}</div>` : ''}
@@ -8181,7 +8099,6 @@ window.doSmartSearch = async function(){
         <div class="meta">MCQ: <b>${s.mc}/${s.m}</b> সঠিক ${avg !== null ? `· CQ গড়: <b>${avg}%</b> (${s.cq.length}টা)` : ''}</div>
         ${s.m + s.cq.length === 0 ? `<p class="hint" style="margin-top:10px;">এই বিষয়ে এখনো রিভিশন করার মতো কিছু জমেনি — আগে MCQ/Written/HW দাও।</p>` : ''}
         <button class="btn btn-primary btn-block" style="margin-top:12px;" onclick="revOpen()">🔁 আবার রিভিশন</button>
-        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="revEditPref()">⚙️ বিষয়/সময় বদলাও</button>
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('studentDashboard')">ড্যাশবোর্ডে যাও</button></div>${creditFooter()}`;
   }
 
@@ -8347,7 +8264,6 @@ window.doSmartSearch = async function(){
   document.addEventListener('paste', function(e){
     const k = document.getElementById('asQList') ? 'as' : (document.getElementById('rtQList') ? 'rt' : null);
     if(!k) return;
-    if(e.target && e.target.closest && e.target.closest('.imq-box')) return;   // ছবি-থেকে-MCQ বক্সের নিজস্ব হ্যান্ডলার আছে
     const files = Array.from((e.clipboardData || {}).items || []).filter(x => x.kind === 'file' && x.type.indexOf('image/') === 0).map(x => x.getAsFile()).filter(Boolean);
     if(!files.length) return;                       // শুধু লেখা পেস্ট হলে স্বাভাবিক নিয়মে
     e.preventDefault();
@@ -8423,84 +8339,39 @@ window.doSmartSearch = async function(){
     } else st.textContent = '❌ AI এখন পারছে না (কোটা শেষ?) — "কার্ডে ভাগ করো" চাপো বা পরে চেষ্টা করো।';
   };
 
-  // ---- ছবি থেকে MCQ: আগে ট্রেতে ছবি জমাও (থাম্বনেইল), তারপর একবার "বের করো" চাপো ----
-  window.IMQ = window.IMQ || {};
+  // ---- ছবি থেকে MCQ বের করে Q:/A)/ANS: ফরম্যাটে টেক্সটবক্সে বসানো (দেখে-ঠিক-করে তারপর ইম্পোর্ট) ----
   const imgMcqFmt = o => 'Q: ' + o.text + (o.tag ? ' [' + o.tag + ']' : '') + '\n' + o.options.map((x, j) => 'ABCD'[j] + ') ' + x).join('\n') + '\nANS: ' + 'ABCD'[o.correct];
-  const imqTile = 'width:78px;height:78px;border-radius:10px;border:1.5px dashed #c9ced6;background:#fafbfd;position:relative;overflow:hidden;flex:0 0 auto;';
-  function imqTrayHtml(id){
-    const S = IMQ[id], plus = `<label style="${imqTile}display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:30px;color:#b3b9c4;margin:0;">+<input type="file" accept="image/*" multiple style="display:none" onchange="imgMcqPick('${id}',this)"></label>`;
-    return S.items.map((it, i) => `<div style="${imqTile}${it.bad ? 'border:2px solid var(--red);' : ''}"><img src="${it.url}" style="width:100%;height:100%;object-fit:cover;">
-      <span onclick="imgMcqDel('${id}',${i})" style="position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;font-size:13px;line-height:22px;text-align:center;cursor:pointer;">✕</span></div>`).join('') + plus;
+  async function imgMcqRun(files, taId, stId){
+    const ta = document.getElementById(taId), st = document.getElementById(stId); if(!ta || !st || !files.length) return;
+    const lines = []; let total = 0, solved = 0;
+    for(let i = 0; i < files.length; i++){
+      st.innerHTML = lines.join('') + `<div>⏳ ছবি ${i + 1}/${files.length} পড়া হচ্ছে... পেজ বন্ধ কোরো না</div>`;
+      let c; try{ c = await compressImageFile(files[i], 1600, 0.85); }catch(e){ lines.push(`<div style="color:var(--red)">❌ ছবি ${i + 1}: পড়া যায়নি</div>`); continue; }
+      const res = await postToScriptRaw('revisionMcqFromImage', { imageBase64:c.base64, imageMimeType:c.mimeType });
+      if(res && res.status === 'success'){
+        const txt = res.data.map(imgMcqFmt).join('\n\n');
+        ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, '') + '\n\n' : '') + txt;
+        total += res.data.length; const sv = res.data.filter(o => !o.marked).length; solved += sv;
+        lines.push(`<div style="color:var(--green)">✅ ছবি ${i + 1}: ${res.data.length}টা প্রশ্ন</div>`);
+      } else lines.push(`<div style="color:var(--red)">❌ ছবি ${i + 1}: ${res && res.message === 'ai_unavailable' ? 'AI এখন পারছে না, পরে চেষ্টা করো' : 'প্রশ্ন বোঝা যায়নি — আরও পরিষ্কার ছবি দাও'}</div>`);
+    }
+    st.innerHTML = lines.join('') + (total ? `<div class="meta">মোট ${total}টা প্রশ্ন উপরের বক্সে বসেছে।${solved ? ` <span style="color:#9B6A15">⚠️ ${solved}টায় ছবিতে উত্তর চিহ্নিত ছিল না, AI নিজে সমাধান করেছে — ANS লাইনগুলো মিলিয়ে নাও।</span>` : ''} ঠিক থাকলে ইম্পোর্ট চাপো।</div>` : '');
   }
-  function imqBtnHtml(id){ const n = IMQ[id].items.length; return n ? `🚀 ${n}টা ছবি থেকে প্রশ্ন বের করো` : '🚀 আগে ছবি যোগ করো'; }
-  function imqRedraw(id){
-    const t = document.getElementById(id + 'Tray'), b = document.getElementById(id + 'Go');
-    if(t) t.innerHTML = imqTrayHtml(id); if(b){ b.textContent = imqBtnHtml(id); b.disabled = IMQ[id].busy || !IMQ[id].items.length; }
-  }
-  window.imgMcqAdd = function(id, files){
-    const S = IMQ[id]; if(!S || S.busy) return;
-    files.filter(f => f && (f.type || '').indexOf('image/') === 0).forEach(f => S.items.push({ file:f, url:URL.createObjectURL(f), bad:false }));
-    imqRedraw(id);
-  };
-  window.imgMcqPick = function(id, inp){ const fs = Array.from(inp.files || []); inp.value = ''; imgMcqAdd(id, fs); };
-  window.imgMcqDel = function(id, i){ const S = IMQ[id]; if(S.busy) return; try{ URL.revokeObjectURL(S.items[i].url); }catch(e){} S.items.splice(i, 1); imqRedraw(id); };
-  window.imgMcqClip = async function(id){
+  window.imgMcqFiles = function(taId, stId, inp){ const fs = Array.from(inp.files || []); inp.value = ''; imgMcqRun(fs, taId, stId); };
+  window.imgMcqClip = async function(taId, stId){
     try{
       const items = await navigator.clipboard.read(), files = [];
       for(const it of items){ const t = it.types.find(x => x.indexOf('image/') === 0); if(t){ const b = await it.getType(t); files.push(new File([b], 'paste.png', { type:t })); } }
       if(!files.length){ toast('ক্লিপবোর্ডে কোনো ছবি নেই'); return; }
-      imgMcqAdd(id, files);
-    }catch(e){ toast('ব্রাউজার অনুমতি দেয়নি — বক্সে ক্লিক করে Ctrl+V দাও বা + চাপো'); }
-  };
-  document.addEventListener('paste', function(e){
-    const files = Array.from((e.clipboardData || {}).items || []).filter(x => x.kind === 'file' && x.type.indexOf('image/') === 0).map(x => x.getAsFile()).filter(Boolean);
-    if(!files.length) return;
-    const box = e.target && e.target.closest ? e.target.closest('.imq-box') : null;
-    let id = box ? box.dataset.id : null;
-    if(!id && !document.getElementById('asQList') && !document.getElementById('rtQList')){ const any = document.querySelector('.imq-box'); if(any) id = any.dataset.id; }   // পরীক্ষার পেজে যেকোনো জায়গায় Ctrl+V
-    if(!id || !IMQ[id]) return;
-    e.preventDefault(); imgMcqAdd(id, files);
-  });
-  window.imgMcqGo = async function(id){
-    const S = IMQ[id]; if(!S || S.busy || !S.items.length) return;
-    const ta = document.getElementById(S.taId), st = document.getElementById(id); if(!ta || !st) return;
-    S.busy = true; imqRedraw(id);
-    const jobs = S.items.slice(), results = new Array(jobs.length), total = jobs.length; let fin = 0, next = 0;
-    const show = () => { st.innerHTML = `<div>⏳ ${fin}/${total} ছবি পড়া হয়েছে... চাইলে অপেক্ষা করার সময় অন্য কিছু করতে পারো, শুধু পেজ বন্ধ কোরো না</div>`; };
-    show();
-    const one = async (i) => {
-      let c; try{ c = await compressImageFile(jobs[i].file, 1600, 0.85); }catch(e){ return { err:'পড়া যায়নি' }; }
-      for(let t = 0; t < 2; t++){
-        const res = await postToScriptRaw('revisionMcqFromImage', { imageBase64:c.base64, imageMimeType:c.mimeType });
-        if(res && res.status === 'success') return { data:res.data };
-        if(res && res.message === 'parse_failed') return { err:'প্রশ্ন বোঝা যায়নি' };
-        await new Promise(r => setTimeout(r, 1500));
-      }
-      return { err:'AI/নেটওয়ার্ক সমস্যা' };
-    };
-    const worker = async () => { while(next < total){ const i = next++; results[i] = await one(i); fin++; show(); } };
-    await Promise.all([worker(), worker(), worker()]);   // একসাথে ৩টা, ফলাফল ছবির ক্রমেই বসে
-    let q = 0, solved = 0; const fails = [], keep = [];
-    jobs.forEach((j, i) => {
-      const r = results[i];
-      if(r && r.data){
-        ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, '') + '\n\n' : '') + r.data.map(imgMcqFmt).join('\n\n');
-        q += r.data.length; solved += r.data.filter(o => !o.marked).length;
-        try{ URL.revokeObjectURL(j.url); }catch(e){}
-      } else { j.bad = true; keep.push(j); fails.push(`ছবি ${i + 1}: ${(r && r.err) || 'ব্যর্থ'}`); }
-    });
-    S.items = keep; S.busy = false; imqRedraw(id);
-    st.innerHTML = (q ? `<div style="color:var(--green)">✅ ${total - keep.length}টা ছবি থেকে মোট ${q}টা প্রশ্ন নিচের বক্সে বসেছে।${solved ? ` <span style="color:#9B6A15">⚠️ ${solved}টায় ছবিতে উত্তর চিহ্নিত ছিল না, AI নিজে সমাধান করেছে — ANS লাইন মিলিয়ে নাও।</span>` : ''} ঠিক থাকলে ইম্পোর্ট চাপো।</div>` : '')
-      + (fails.length ? `<div style="color:var(--red)">❌ ${fails.join(' · ')} — লাল ঘেরা ছবিগুলো ট্রেতে আছে, আবার "বের করো" চাপলে শুধু ওগুলো চেষ্টা হবে।</div>` : '');
+      imgMcqRun(files, taId, stId);
+    }catch(e){ toast('ব্রাউজার অনুমতি দেয়নি — "ছবি বাছো" ব্যবহার করো'); }
   };
   window.imgMcqBox = function(taId, stId){
-    IMQ[stId] = IMQ[stId] || { items:[], busy:false }; IMQ[stId].taId = taId;
-    return `<div class="imq-box" data-id="${stId}" tabindex="0" style="border:1.5px dashed var(--gold);border-radius:12px;padding:10px;margin:8px 0;outline:none;">
+    return `<div style="border:1.5px dashed var(--gold);border-radius:12px;padding:10px;margin:8px 0;">
       <b style="font-size:13.5px;">📷 অথবা MCQ-এর ছবি থেকে সরাসরি বের করো</b>
-      <p class="hint" style="margin:4px 0 8px;">ছবি জমাতে থাকো — <b>+</b> চাপো, "ক্লিপবোর্ড" চাপো, বা এই বক্সে ক্লিক করে <b>Ctrl+V</b> দাও (বারবার)। সব জমা হলে একবার "বের করো" চাপলেই সব প্রশ্ন নিচের বক্সে বসে যাবে। ছবিতে উত্তর চিহ্নিত না থাকলে AI নিজে সমাধান করে, তাই ইম্পোর্টের আগে দেখে নিয়ো।</p>
-      <div id="${stId}Tray" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;">${imqTrayHtml(stId)}</div>
-      <div class="row"><button class="btn btn-gold" id="${stId}Go" onclick="imgMcqGo('${stId}')" ${IMQ[stId].items.length ? '' : 'disabled'}>${imqBtnHtml(stId)}</button>
-      <button class="btn btn-outline" onclick="imgMcqClip('${stId}')">📋 ক্লিপবোর্ড</button></div>
+      <p class="hint" style="margin:4px 0 6px;">ছবি (স্ক্রিনশট/ক্লাসের ফ্রেম, একাধিকও চলে) দিলে AI প্রশ্ন-অপশন-উত্তর বের করে নিচের বক্সে বসিয়ে দেবে। ছবিতে উত্তর চিহ্নিত না থাকলে AI নিজে সমাধান করে — তাই ইম্পোর্টের আগে একবার দেখে নিয়ো।</p>
+      <div class="row"><label class="btn btn-gold" style="margin:0;cursor:pointer;">🖼️ ছবি বাছো<input type="file" accept="image/*" multiple style="display:none" onchange="imgMcqFiles('${taId}','${stId}',this)"></label>
+      <button class="btn btn-outline" onclick="imgMcqClip('${taId}','${stId}')">📋 ক্লিপবোর্ড থেকে</button></div>
       <div id="${stId}" class="hint" style="margin-top:6px;"></div></div>`;
   };
 
@@ -8612,13 +8483,6 @@ window.doSmartSearch = async function(){
       t.className = 'btn btn-outline btn-block'; t.setAttribute('data-revt', '1');
       t.textContent = '🔁 রিভিশন সেটআপ'; t.onclick = revTOpen;
       tb.parentElement.appendChild(t);
-    }
-    const b = document.querySelector('#app button[onclick*="doubtEntry"]');
-    if(b && b.parentElement && !b.parentElement.querySelector('[data-rev]')){
-      const n = document.createElement('button');
-      n.className = 'btn btn-gold btn-block'; n.setAttribute('data-rev', '1');
-      n.textContent = '🔁 আজকের রিভিশন'; n.onclick = revOpen;
-      b.parentElement.appendChild(n);
     }
   }
   new MutationObserver(injectRev).observe(document.getElementById('app'), { childList:true, subtree:true });
@@ -8985,7 +8849,7 @@ window.doSmartSearch = async function(){
       renderAllMath(out);
     } else {
       btn.disabled = false;
-      out.innerHTML = `<p class="hint" style="color:var(--red);">❌ ${res && res.message === 'ai_unavailable' ? 'AI এখন চেক করতে পারেনি, একটু পরে আবার জমা দাও' : 'জমা হয়নি, আবার চেষ্টা করো'}</p>`;
+      out.innerHTML = `<p class="hint" style="color:var(--red);">${gradeErrMsg(res)}</p>`;
     }
   };
   window.revTodayRender2 = function(){ revTodayRender(); };
@@ -9823,7 +9687,7 @@ window.doSmartSearch = async function(){
 (function(){
   const __pl0 = render;
   render = function(){
-    const m = { hwHub:hhRender, hwSubmit2:hsRender, revSets:rsRender, revSetRun:srRender, myCal:mcRender, revSetBuild:sbRender }[state.screen];
+    const m = { hwHub:hhRender, hwSubmit2:hsRender, revSets:rsRender, revSetRun:srRender, myCal:mcRender, dailyHwCalendar:mcRender, revSetBuild:sbRender }[state.screen];
     if(m){ syncLogoutFab(); m(); return; }
     __pl0();
   };
@@ -9949,7 +9813,7 @@ window.doSmartSearch = async function(){
         ${res.modelAnswerText ? `<details style="margin-top:8px;"><summary>✅ মডেল উত্তর দেখো</summary><div style="white-space:pre-wrap;">${esc(res.modelAnswerText)}</div></details>` : ''}
         <button class="btn btn-gold btn-block" style="margin-top:8px;" onclick="hhRender()">🔄 তালিকা নতুন করো</button>`;
       renderAllMath(out);
-    } else { b.disabled = false; out.innerHTML = `<p class="hint" style="color:var(--red);">❌ ${res && res.message === 'ai_unavailable' ? 'AI এখন চেক করতে পারেনি, একটু পরে আবার জমা দাও' : 'জমা হয়নি, আবার চেষ্টা করো'}</p>`; }
+    } else { b.disabled = false; out.innerHTML = `<p class="hint" style="color:var(--red);">${gradeErrMsg(res)}</p>`; }
   };
   window.hhRender = hhRender;
   window.rsRender = rsRender; window.srRender = srRender; window.mcRender = mcRender;
@@ -10071,7 +9935,7 @@ window.doSmartSearch = async function(){
       srDraw(R.items.filter(x => x.answered).length, R.items.length);
       const o2 = document.getElementById('srR_' + itemId);
       if(o2){ o2.innerHTML = `<div class="review-ans ${r.percent >= 50 ? 'right' : 'wrong'}">${esc(r.feedback || '')}</div>${r.modelAnswerText ? `<details style="margin-top:6px;"><summary>✅ মডেল উত্তর দেখো</summary><div style="white-space:pre-wrap;">${esc(r.modelAnswerText)}</div></details>` : ''}`; renderAllMath(o2); }
-    } else { b.disabled = false; out.innerHTML = `<p class="hint" style="color:var(--red);">❌ ${r && r.message === 'ai_unavailable' ? 'AI এখন চেক করতে পারেনি, একটু পরে আবার জমা দাও' : 'জমা হয়নি, আবার চেষ্টা করো'}</p>`; }
+    } else { b.disabled = false; out.innerHTML = `<p class="hint" style="color:var(--red);">${gradeErrMsg(r)}</p>`; }
   };
 
   // =====================================================================================
@@ -10095,27 +9959,40 @@ window.doSmartSearch = async function(){
     for(let d = 1; d <= dim; d++){
       const ds = `${C.y}-${String(C.m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`, ev = by[ds] || [];
       const types = uniq(ev.map(e => e.type)), missed = ev.some(e => e.status === 'missed');
-      cells += `<div onclick="mcPick('${ds}')" style="cursor:pointer;border:${ds === C.sel ? '2px solid var(--ink)' : '1px solid var(--rule)'};${ds === today ? 'outline:2px solid var(--margin-red);' : ''}border-radius:8px;height:46px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:13px;background:${missed ? '#FDEDED' : '#F5F9FE'};">
-        <span>${d}</span><span style="display:flex;gap:3px;margin-top:3px;">${types.map(t => `<span style="width:7px;height:7px;border-radius:50%;background:${COL[t]};display:inline-block;"></span>`).join('')}</span></div>`;
+      const cols = ['class', 'hw', 'rev'].filter(t => types.indexOf(t) !== -1).map(t => COL[t]);
+      const bg = !cols.length ? '#F5F9FE' : cols.length === 1 ? cols[0] : `linear-gradient(135deg,${cols.map((c, i) => `${c} ${Math.round(i * 100 / cols.length)}% ${Math.round((i + 1) * 100 / cols.length)}%`).join(',')})`;
+      cells += `<div onclick="mcPick('${ds}')" style="cursor:pointer;border:${ds === C.sel ? '2px solid var(--ink)' : '1px solid var(--rule)'};${ds === today ? 'outline:2px solid var(--margin-red);' : ''}${missed ? 'box-shadow:inset 0 0 0 2px #7F1D1D;' : ''}border-radius:8px;height:46px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:${cols.length ? 700 : 400};color:${cols.length ? '#fff' : 'var(--ink)'};background:${bg};"><span>${d}</span></div>`;
     }
     const sel = by[C.sel] || [];
     const list = sel.map(e => {
       const st = { done:'✅ হয়েছে', todo:'⏳ বাকি', missed:'⚠️ মিস' }[e.status] || '';
-      const act = e.type === 'hw' ? `go('hwHub')` : e.type === 'rev' ? `srOpen('${e.id}')` : '';
+      const act = e.type === 'hw' ? `go('hwHub')` : e.type === 'rev' ? `srOpen('${e.id}')` : (e.status === 'todo' ? `mcConfirm('${e.date}')` : '');
       return `<div class="exam-item" style="border-left:5px solid ${COL[e.type]};"><div class="row-top"><div><div style="font-weight:700;">${TYPE_LABEL[e.type]}${e.subject ? ' · ' + esc(NOTES_SUBJECTS[e.subject] ? NOTES_SUBJECTS[e.subject].label : e.subject) : ''}</div>
-        <div class="meta">${esc(e.title)} · ${st}</div></div>${act ? `<button class="info-btn" onclick="${act}">খুলো</button>` : ''}</div></div>`;
+        <div class="meta">${esc(e.title)} · ${st}</div></div>${act ? `<button class="info-btn" onclick="${act}">${e.type === 'class' ? '✅ নিশ্চিত করো' : 'খুলো'}</button>` : ''}</div></div>`;
     }).join('') || `<div class="empty-state">এই দিনে কিছু নেই।</div>`;
     app.innerHTML = `${header('আমার ক্যালেন্ডার')}
       <div class="card" style="padding:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><a class="link-back" onclick="mcNav(-1)">‹</a><b style="font-family:var(--font-display);font-size:16px;">${BN_MONTHS[C.m]} ${C.y}</b><a class="link-back" onclick="mcNav(1)">›</a></div>
         <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px;">${BN_WEEKDAYS.map(w => `<div style="text-align:center;font-size:11px;color:var(--pencil);font-weight:600;">${w}</div>`).join('')}</div>
         <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">${cells}</div>
-        <div style="margin-top:12px;font-size:12px;color:var(--pencil);display:flex;gap:14px;flex-wrap:wrap;"><span>🔴 HW</span><span>🔵 রিভিশন</span><span>🟢 ক্লাস</span><span style="background:#FDEDED;padding:0 6px;border-radius:4px;">মিস হওয়া দিন</span></div></div>
+        <div style="margin-top:12px;font-size:12px;color:var(--pencil);display:flex;gap:14px;flex-wrap:wrap;"><span>🟥 HW</span><span>🟦 রিভিশন</span><span>🟩 ক্লাস</span><span>একাধিক হলে মিশ্র রঙ</span><span style="box-shadow:inset 0 0 0 2px #7F1D1D;padding:0 6px;border-radius:4px;">⚠️ মিস</span></div></div>
       <div class="card"><h3>${esc(C.sel)} — সেদিনের কাজ</h3>${list}</div>
       <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>${creditFooter()}`;
   }
   window.mcNav = function(d){ C.m += d; if(C.m < 0){ C.m = 11; C.y--; } if(C.m > 11){ C.m = 0; C.y++; } C.sel = ''; mcRender(); };
   window.mcPick = function(ds){ C.sel = ds; mcDraw(); };
+  window.mcConfirm = async function(ds){
+    const stud = needStud(); if(!stud) return;
+    toast('নিশ্চিত করা হচ্ছে...'); await approveAttendanceRemote(stud.slug, ds);
+    window.__studentDashCache = null; toast('ধন্যবাদ, নিশ্চিত করা হলো ✅'); mcRender();
+  };
+  window.fillStudyBadge = async function(){
+    const stud = getLoggedStudent(); if(!stud) return;
+    const [h1, s1] = await Promise.all([postToScriptRaw('planHub', { slug:stud.slug, today:todayStr() }), postToScriptRaw('planSetToday', { slug:stud.slug, today:todayStr() })]);
+    const el = document.getElementById('hubStudyBadge'); if(!el) return;
+    const n = ((h1 && h1.assigned) ? h1.assigned.filter(a => a.status === 'pending').length : 0) + ((s1 && s1.pending) || 0);
+    el.innerHTML = n ? `<span class="widget-tag tag-red">${n}টা বাকি</span>` : `<span class="widget-tag tag-green">✅ সব ঠিক</span>`;
+  };
 
   // =====================================================================================
   // ধাপ ৫খ: মিস করলে উৎসাহমূলক পপআপ (অ্যাপ খোলার সময়, একবার)
@@ -10371,6 +10248,34 @@ window.doSmartSearch = async function(){
   }
   new MutationObserver(injectPw).observe(document.getElementById('app'), { childList:true, subtree:true });
   injectPw();
+})();
+
+// ===== ড্যাশবোর্ডের হাব স্ক্রিন: স্টাডি · পরীক্ষা · রিওয়ার্ড =====
+(function(){
+  const __hb = render;
+  render = function(){
+    const m = { studyHub:shRender, examHub:ehRender, rewardHub:rhRender }[state.screen];
+    if(m){ syncLogoutFab(); m(); return; }
+    __hb();
+  };
+  const big = (ic, label, sub, on, cls) => `<button class="btn ${cls || 'btn-outline'} btn-block" style="text-align:left;padding:14px 16px;margin-bottom:8px;" onclick="${on}"><span style="font-size:20px;margin-right:8px;">${ic}</span><b>${label}</b><div class="hint" style="margin:2px 0 0 30px;">${sub}</div></button>`;
+  const page = (title, inner) => { app.innerHTML = `${header(title)}<div class="card">${inner}</div><div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>${creditFooter()}`; };
+  function shRender(){ page('স্টাডি',
+    big('🔁','রিভিশন','শিক্ষকের সেট + অটো রিভিশন — একই জায়গায়',"go('revSets')",'btn-gold') +
+    big('📚','HW','শিক্ষকের HW ও নিজের HW',"hwHubOpen()") +
+    big('🎯','প্র্যাকটিস','বিষয়ভিত্তিক প্র্যাকটিস',"go('battleWorldMap')") +
+    big('📊','মাস্টারি','চ্যাপ্টার অনুযায়ী প্রোগ্রেস',"openMyMastery()") +
+    big('📑','ক্লাস নোট ও স্লাইড','',"go('notesGate')") +
+    big('🤖','AI ডাউট সমাধান','',"go('doubtEntry')")); }
+  function ehRender(){ page('পরীক্ষা',
+    `<label class="field-label" style="font-size:12.5px;">🔑 এক্সাম কোড দিয়ে পরীক্ষা শুরু করো</label>
+     <div style="display:flex;gap:8px;margin-bottom:14px;"><input type="text" id="dashExamCode" placeholder="যেমন: 7K3PQ" style="text-transform:uppercase;margin-bottom:0;font-family:var(--font-mono);font-weight:700;"><button class="btn btn-primary" style="white-space:nowrap;" onclick="dashStartExamByCode()">শুরু করো</button></div>` +
+    big('🎯','Practice','খোলা প্র্যাকটিস পরীক্ষা',"go('practiceList')") +
+    big('✍️','লিখিত পরীক্ষা','খাতার ছবি তুলে জমা — AI চেক',"go('writtenEntry')") +
+    big('📜','Past Exams','আগের পরীক্ষা ও রেজাল্ট',"go('pastExams')")); }
+  function rhRender(){ page('রিওয়ার্ড',
+    big('💸','বিকাশ ক্যাশআউট','ট্রিট কুপনের টাকা তোলো',"openMyCoupons('couponBalance')",'btn-gold') +
+    big('🛍️','রিওয়ার্ড শপ','গিফট নাও',"openMyCoupons('shopList')")); }
 })();
 
 /* ============ NOTES v3 (end) ============ */
