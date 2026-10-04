@@ -3590,6 +3590,7 @@ async function renderMonthlyReward(){
   const rows = (r && r.status === 'success') ? r.data : [];
   const defMax = (r && r.defaultMax) || 0;
   window.__rewardRows = rows;
+  window.__rewardAccounts = (r && r.accounts) || [];
   const cards = rows.map((s, i)=> {
     const skipped = [];
     if(s.skippedRetake) skipped.push(`${s.skippedRetake}টা আবার-দেওয়া (retake) বাদ`);
@@ -3598,6 +3599,7 @@ async function renderMonthlyReward(){
       <div class="row-top">
         <div>
           <h3 style="margin-bottom:2px;">${escapeHtml(s.name)}</h3>
+          ${s.unlinked ? `<div style="background:#FEF8EC;border:1px solid #F8DA9D;border-radius:8px;padding:8px 10px;margin:4px 0;font-size:12.5px;">⚠️ এটা লগইন ছাড়া নাম লিখে দেওয়া পরীক্ষা — কোনো একাউন্টের সাথে মেলেনি। কোন ছাত্রের একাউন্ট হবে বেছে "মেলাও" চাপো, তাহলে এর সব exam ওই ছাত্রের রিওয়ার্ড ও রিভিশনে গোনা হবে।<div style="display:flex;gap:6px;margin-top:6px;"><select id="rwLink${i}" style="margin:0;"><option value="">— একাউন্ট বাছো —</option>${(window.__rewardAccounts||[]).map(a=> `<option value="${escapeHtml(a.slug)}">${escapeHtml(a.name)} (${escapeHtml(a.slug)})</option>`).join('')}</select><button class="btn btn-gold" style="padding:6px 12px;font-size:12.5px;" onclick="rwLinkAlias(${i})">🔗 মেলাও</button></div></div>` : ''}
           <div class="meta">${s.lastFinalizedAt ? 'শেষ রিওয়ার্ড: ' + fmtBnDate(s.lastFinalizedAt) : 'এখনো কোনো রিওয়ার্ড পায়নি — সব exam গোনা হচ্ছে'}</div>
           <div class="meta"><b>${s.examCount}টা</b> exam গোনা হয়েছে · মোট <b>${s.scored}/${s.total}</b> (${s.percent}%)</div>
           ${skipped.length ? `<div class="meta" style="color:#9B6A15;">⚠️ ${skipped.join(' · ')}</div>` : ''}
@@ -3633,6 +3635,16 @@ async function renderMonthlyReward(){
     ${creditFooter()}
   `;
 }
+window.rwLinkAlias = async function(i){
+  const s = (window.__rewardRows || [])[i]; if(!s) return;
+  const target = (document.getElementById('rwLink' + i) || {}).value || '';
+  if(!target){ toast('আগে একাউন্ট বাছো'); return; }
+  if(!confirm(`"${s.name}" নামে দেওয়া সব পরীক্ষা এই একাউন্টের সাথে জোড়া লাগবে। এগোবে?`)) return;
+  toast('মেলানো হচ্ছে...');
+  const res = await postToScriptRaw('setStudentAlias', { alias: s.slug, target });
+  if(res && res.status === 'success'){ toast('মেলানো হয়েছে ✅'); renderMonthlyReward(); }
+  else toast('মেলানো যায়নি, আবার চেষ্টা করো');
+};
 window.rwRecalc = function(i){
   const s = (window.__rewardRows || [])[i]; if(!s) return;
   const el = document.getElementById('rwProj' + i);
@@ -5911,6 +5923,7 @@ function couponState(name, slug, data){
 }
 
 // ---------------- Past Exams (student) ----------------
+function uniqArr(a){ return Array.from(new Set(a)); }
 async function renderPastExams(){
   const stud = getLoggedStudent();
   if(!stud){ go('studentAuth'); return; }
@@ -5928,13 +5941,13 @@ async function renderPastExams(){
   const items = Object.keys(groups).map(code=>{
     const list = groups[code].sort((a,b)=> b.submittedAt - a.submittedAt);
     const best = list.reduce((m,r)=> (r.score/r.total > m.score/m.total ? r : m), list[0]);
-    return { kind:'mcq', code, title:list[0].title, subject:list[0].subject, isTreat:!!list[0].isTreat,
+    return { kind:'mcq', rawSlugs:uniqArr(list.map(r=> r.rawSlug).filter(Boolean)), code, title:list[0].title, subject:list[0].subject, isTreat:!!list[0].isTreat,
              attempts:list.length, score:best.score, total:best.total,
              pct: best.total ? Math.round((best.score/best.total)*100) : 0, when:list[0].submittedAt };
   });
   wr.forEach(w=>{
     const answered = w.answeredCount || 0;
-    items.push({ kind:'written', code:w.examCode, title:w.title, subject:w.subject, isTreat:true,
+    items.push({ kind:'written', rawSlugs:(w.rawSlugs||[]), code:w.examCode, title:w.title, subject:w.subject, isTreat:true,
                  attempts:1, score:w.earnedMarks, total:w.answeredMaxMarks, pct:w.avgPercent, when:w.lastSubmittedAt,
                  answered, totalQ:w.totalQ });
   });
@@ -5984,7 +5997,8 @@ window.openPastExam = async function(idx){
   if(!examRaw){ toast('এই পরীক্ষাটা আর পাওয়া যাচ্ছে না'); return; }
   const exam = JSON.parse(examRaw.value);
   const all = await getRemoteResults(it.code);
-  const mine = all.filter(r=> (r.slug ? r.slug === stud.slug : slugify(r.studentName||'') === stud.slug))
+  const rawOk = [stud.slug].concat(it.rawSlugs || []);
+  const mine = all.filter(r=> { const sl = r.slug || slugify(r.studentName||''); return rawOk.indexOf(sl) !== -1; })
                   .sort((a,b)=> b.submittedAt - a.submittedAt);
   if(!mine.length){ toast('খাতা পাওয়া যায়নি'); return; }
   go('pastExamDetail', { exam, attempts: mine });
@@ -6019,7 +6033,8 @@ window.openPastWritten = async function(idx){
   if(!it || !stud) return;
   toast('লোড হচ্ছে...');
   const [subsAll, examData] = await Promise.all([getWrittenSubmissionsRemote(it.code), getWrittenQuestionByCode(it.code)]);
-  const subs = subsAll.filter(s=> s.slug === stud.slug).sort((a,b)=> a.questionIndex - b.questionIndex);
+  const rawOkW = [stud.slug].concat(it.rawSlugs || []);
+  const subs = subsAll.filter(s=> rawOkW.indexOf(s.slug) !== -1).sort((a,b)=> a.questionIndex - b.questionIndex);
   go('pastWrittenDetail', { title: it.title, subs, examQuestions: (examData && examData.questions) || [] });
 };
 function renderPastWrittenDetail(title, subs, examQuestions){
@@ -8974,7 +8989,7 @@ window.doSmartSearch = async function(){
           <button class="btn ${W.kind === 'cq' ? 'btn-primary' : 'btn-outline'}" style="flex:1" onclick="bkKind('cq')">✍️ CQ (সৃজনশীল)</button>
           <button class="btn ${W.kind === 'mcq' ? 'btn-primary' : 'btn-outline'}" style="flex:1" onclick="bkKind('mcq')">🔘 MCQ</button>
         </div>
-        <p class="hint">${W.kind === 'cq' ? (isText ? 'একাধিক সৃজনশীল প্রশ্ন একসাথে পেস্ট করতে পারো — প্রশ্নগুলোর মাঝে একটা ফাঁকা লাইন বা "প্রশ্ন ১", "১." দিলে AI ভালো আলাদা করে। মডেল উত্তর থাকলে সেটাও ধরবে।' : 'প্রতিটা প্রশ্ন আলাদা কার্ডে আসবে। একই প্রশ্নের আরও পাতা থাকলে ওই প্রশ্নের "+" টাইলে চেপে যোগ করো (একসাথে অনেকগুলোও বাছা যায়)।') : (isText ? 'অনেকগুলো MCQ একসাথে পেস্ট করো (প্রতিটায় ৪টা অপশন)। সঠিক উত্তর লেখায় থাকলে AI ধরবে, না থাকলে প্রিভিউয়ে তুমি বেছে দেবে।' : 'একটা ছবিতে অনেকগুলো MCQ থাকলে AI আলাদা করে নেবে। সঠিক উত্তর ছবিতে না থাকলে প্রিভিউয়ে তুমি বেছে দেবে।')}</p>
+        <p class="hint">${W.kind === 'cq' ? (isText ? 'একাধিক সৃজনশীল প্রশ্ন একসাথে পেস্ট করতে পারো — প্রশ্নগুলোর মাঝে একটা ফাঁকা লাইন বা "প্রশ্ন ১", "১." দিলে AI ভালো আলাদা করে। মডেল উত্তর থাকলে সেটাও ধরবে।' : 'প্রতিটা প্রশ্নের জন্য এক বা একাধিক পাতা — একই প্রশ্নের পরের পাতায় "↳ আগের প্রশ্নের পরের পাতা" টিক দাও।') : (isText ? 'অনেকগুলো MCQ একসাথে পেস্ট করো (প্রতিটায় ৪টা অপশন)। সঠিক উত্তর লেখায় থাকলে AI ধরবে, না থাকলে প্রিভিউয়ে তুমি বেছে দেবে।' : 'একটা ছবিতে অনেকগুলো MCQ থাকলে AI আলাদা করে নেবে। সঠিক উত্তর ছবিতে না থাকলে প্রিভিউয়ে তুমি বেছে দেবে।')}</p>
         <label class="field-label">বিষয় (জানা থাকলে বাছো — ট্যাগ বেশি নির্ভুল হয়)</label>
         <select id="bkSubj" onchange="bkSetSubj(this.value)">${subjOpts(W.subject, '— AI ঠিক করুক (মিশ্র বিষয়) —')}</select>
         <label class="field-label">প্রশ্ন কীভাবে দেবে</label>
@@ -8984,7 +8999,8 @@ window.doSmartSearch = async function(){
         </div>
         ${isText
           ? `<textarea id="bkText" style="min-height:220px;font-size:14px;" placeholder="${W.kind === 'cq' ? 'এখানে এক বা একাধিক সৃজনশীল প্রশ্ন পেস্ট করো...' : 'এখানে MCQ গুলো পেস্ট করো...'}" oninput="bkText(this.value)">${esc(W.text)}</textarea><p class="hint" id="bkTextInfo"></p>`
-          : `<label class="field-label">ছবি (সর্বোচ্চ ${MAX_FILES}টা — "+" চেপে একসাথে অনেকগুলো বাছো, বা এখানে টেনে ছেড়ে দাও)</label>
+          : `<label class="field-label">ছবি (একসাথে অনেকগুলো বাছো, সর্বোচ্চ ${MAX_FILES}টা)</label>
+        <input type="file" id="bkFiles" accept="image/*" multiple style="margin-bottom:10px;" onchange="bkPick(this)">
         <div id="bkFileList"></div>`}
         <button class="btn btn-primary btn-block" id="bkGo" onclick="bkRun()" style="margin-top:10px;">🤖 AI দিয়ে পড়ো ও ট্যাগ করো</button>
         <div id="bkProg" style="margin-top:10px;"></div>
@@ -9005,85 +9021,29 @@ window.doSmartSearch = async function(){
   }
   window.bkKind = function(k){ if(W.busy) return; W.kind = k; if(k === 'mcq' && W.dest.type === 'hw') W.dest.type = 'rev'; W.files.forEach(f => f.join = false); resetRun(); bkRender(); };
   window.bkSetSubj = function(v){ W.subject = v; if(W.items.length){ W.items.forEach(x => { x.tag = null; x.tagTried = false; }); W.known = []; bkPreviewDraw(); toast('বিষয় বদলেছে — "আবার চেষ্টা" চাপলে নতুন বিষয়ে ট্যাগ হবে'); } };
-  // ---------------- টাইল-ভিত্তিক আপলোড: "+" চাপো → একসাথে অনেক ছবি ----------------
-  W.multi = 'sep';   // CQ-তে "নতুন প্রশ্ন" টাইলে একসাথে অনেক ছবি বাছলে: 'sep' = প্রতিটা আলাদা প্রশ্ন | 'pages' = সবগুলো একই প্রশ্নের পাতা
-  const isImgFile = f => /^image\//.test(f.type) || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name || '');
-  // target = -1 → নতুন প্রশ্ন/ছবি (শেষে); target = n → n-নম্বর প্রশ্নের পরের পাতা হিসেবে
-  function bkAddFiles(fl, target){
-    let list = [...fl].filter(isImgFile).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric:true }));
-    if(!list.length){ toast('ছবি পাওয়া যায়নি'); return; }
-    const room = MAX_FILES - W.files.length;
-    if(list.length > room){ toast(`একবারে সর্বোচ্চ ${MAX_FILES}টা ছবি — ${Math.max(0, room)}টা নেওয়া হলো`); list = list.slice(0, Math.max(0, room)); }
-    if(!list.length) return;
-    const cq = W.kind === 'cq', gs = groups();
-    let at = W.files.length, mk;
-    if(cq && target >= 0 && gs[target]){ at = gs[target][gs[target].length - 1] + 1; mk = () => true; }
-    else if(cq && W.multi === 'pages'){ mk = k => k > 0; }
-    else mk = () => false;
-    const items = list.map((f, k) => ({ file:f, url:URL.createObjectURL(f), join:mk(k) }));
-    W.files.splice(at, 0, ...items);
-    if(W.files[0]) W.files[0].join = false;
-    resetRun(); bkFilesDraw();
-  }
-  window.bkOpen = function(target){
-    if(W.busy) return;
-    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true; inp.style.display = 'none';
-    inp.onchange = () => { bkAddFiles(inp.files, target); inp.remove(); };
-    document.body.appendChild(inp); inp.click();
+  window.bkPick = function(inp){
+    const list = [...inp.files].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric:true }));
+    if(list.length + W.files.length > MAX_FILES){ toast(`একবারে সর্বোচ্চ ${MAX_FILES}টা ছবি`); }
+    list.slice(0, MAX_FILES - W.files.length).forEach(f => W.files.push({ file:f, url:URL.createObjectURL(f), join:false }));
+    inp.value = ''; resetRun(); bkFilesDraw();
   };
-  window.bkMulti = function(v){ W.multi = v; bkFilesDraw(); };
-  const TILE = 'width:84px;height:84px;flex:0 0 auto;border-radius:10px;';
-  const plusTile = (target, label, big) => `<div onclick="bkOpen(${target})" style="${big ? 'flex:1;min-width:130px;height:96px;border-radius:12px;' : TILE}border:2px dashed #9AA5B8;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;color:#6B778C;text-align:center;line-height:1.25;">
-      <span style="font-size:${big ? 34 : 28}px;font-weight:300;line-height:1;">+</span><span style="font-size:11.5px;margin-top:2px;padding:0 4px;">${label}</span></div>`;
   function bkFilesDraw(){
     const el = document.getElementById('bkFileList'); if(!el) return;
-    el.ondragover = e => { e.preventDefault(); };
-    el.ondrop = e => { e.preventDefault(); if(!W.busy && e.dataTransfer && e.dataTransfer.files.length) bkAddFiles(e.dataTransfer.files, -1); };
-    const cq = W.kind === 'cq';
-    if(!W.files.length){
-      el.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap;">${plusTile(-1, cq ? 'ছবি যোগ করো<br>(একসাথে অনেকগুলো)' : 'ছবি যোগ করো<br>(একসাথে অনেকগুলো)', true)}</div>`;
-      return;
-    }
-    const gs = groups();
-    const toggle = cq ? `<div style="margin:10px 0 4px;"><div class="meta" style="margin-bottom:4px;">"নতুন প্রশ্ন" টাইলে একসাথে অনেকগুলো ছবি বাছলে:</div>
-      <div style="display:flex;gap:6px;"><button class="btn ${W.multi === 'sep' ? 'btn-primary' : 'btn-outline'}" style="flex:1;font-size:12.5px;padding:8px 4px;" onclick="bkMulti('sep')">প্রতিটা ছবি = আলাদা প্রশ্ন</button>
-      <button class="btn ${W.multi === 'pages' ? 'btn-primary' : 'btn-outline'}" style="flex:1;font-size:12.5px;padding:8px 4px;" onclick="bkMulti('pages')">সবগুলো = একই প্রশ্নের পাতা</button></div></div>` : '';
-    const thumb = (i, k, inGroup) => { const f = W.files[i];
-      return `<div style="${TILE}position:relative;overflow:hidden;border:1px solid var(--rule);background:#fff;"><img src="${f.url}" style="width:100%;height:100%;object-fit:cover;">
-        <span style="position:absolute;left:3px;bottom:3px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;border-radius:6px;padding:0 5px;">${inGroup ? 'পাতা ' + (k + 1) : (k + 1)}</span>
-        <button onclick="bkDel(${i})" style="position:absolute;right:2px;top:2px;border:0;border-radius:50%;width:22px;height:22px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;cursor:pointer;line-height:1;">✕</button>
-        ${inGroup ? `<div style="position:absolute;left:0;right:0;top:0;display:flex;justify-content:flex-start;">${k > 0 ? `<button onclick="bkMove(${i},-1)" style="border:0;background:rgba(255,255,255,.8);font-size:11px;padding:2px 5px;cursor:pointer;">◀</button>` : ''}${W.files[i + 1] && W.files[i + 1].join ? `<button onclick="bkMove(${i},1)" style="border:0;background:rgba(255,255,255,.8);font-size:11px;padding:2px 5px;cursor:pointer;">▶</button>` : ''}</div>` : ''}</div>`; };
-    if(cq){
-      el.innerHTML = `<p class="hint">${W.files.length}টা ছবি → ${gs.length}টা প্রশ্ন</p>` + gs.map((g, gi) => `<div style="border:1px solid var(--rule);border-radius:12px;padding:8px;margin:8px 0;background:#FAFBFD;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><b>প্রশ্ন #${gi + 1} <span class="meta">· ${g.length}টা পাতা</span></b>
-            <span><button class="info-btn" onclick="bkGMove(${gi},-1)" ${gi === 0 ? 'disabled' : ''}>▲</button><button class="info-btn" onclick="bkGMove(${gi},1)" ${gi === gs.length - 1 ? 'disabled' : ''}>▼</button><button class="info-btn" style="color:var(--red)" onclick="bkGDel(${gi})">🗑️</button></span></div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">${g.map((i, k) => thumb(i, k, true)).join('')}${plusTile(gi, 'পাতা<br>যোগ')}</div></div>`).join('')
-        + `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">${plusTile(-1, 'নতুন প্রশ্ন<br>(একসাথে অনেকগুলোও)', true)}</div>${toggle}`;
-    } else {
-      el.innerHTML = `<p class="hint">${W.files.length}টা ছবি</p><div style="display:flex;gap:8px;flex-wrap:wrap;">${W.files.map((f, i) => thumb(i, i, false)).join('')}${plusTile(-1, 'ছবি<br>যোগ')}</div>`;
-    }
+    if(!W.files.length){ el.innerHTML = ''; return; }
+    let q = 0;
+    el.innerHTML = `<p class="hint">${W.files.length}টা ছবি → ${groups().length}টা প্রশ্ন/গ্রুপ</p>` + W.files.map((f, i) => {
+      if(!f.join || i === 0) q++;
+      const head = (!f.join || i === 0) ? `<div style="font-weight:700;margin-top:10px;">${W.kind === 'cq' ? 'প্রশ্ন' : 'পাতা'} #${q}</div>` : '';
+      return `${head}<div style="display:flex;gap:8px;align-items:center;margin:4px 0;padding:6px;border:1px solid var(--rule);border-radius:8px;${f.join ? 'margin-left:18px;' : ''}">
+        <img src="${f.url}" style="width:54px;height:54px;object-fit:cover;border-radius:6px;">
+        <div style="flex:1;min-width:0;"><div class="meta" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(f.file.name)}</div>
+          ${i > 0 ? `<label style="font-size:12.5px;display:flex;gap:4px;align-items:center;"><input type="checkbox" style="width:auto;margin:0;" ${f.join ? 'checked' : ''} onchange="bkJoin(${i}, this.checked)"> ↳ আগের প্রশ্নের পরের পাতা</label>` : ''}</div>
+        <button class="info-btn" onclick="bkMove(${i}, -1)">▲</button><button class="info-btn" onclick="bkMove(${i}, 1)">▼</button><button class="info-btn" style="color:var(--red)" onclick="bkDel(${i})">✕</button></div>`;
+    }).join('');
   }
-  window.bkDel = function(i){
-    const f = W.files[i]; URL.revokeObjectURL(f.url); W.files.splice(i, 1);
-    if(!f.join && W.files[i] && W.files[i].join) W.files[i].join = false;   // প্রথম পাতা গেলে পরেরটা নতুন প্রশ্নের শুরু হবে
-    if(W.files[0]) W.files[0].join = false; resetRun(); bkFilesDraw();
-  };
-  window.bkGDel = function(gi){
-    const g = groups()[gi]; if(!g) return;
-    if(g.length > 1 && !confirm(`এই প্রশ্নের ${g.length}টা পাতাই মুছবে?`)) return;
-    g.forEach(i => URL.revokeObjectURL(W.files[i].url));
-    W.files.splice(g[0], g.length); if(W.files[0]) W.files[0].join = false; resetRun(); bkFilesDraw();
-  };
-  window.bkGMove = function(gi, d){
-    const gs = groups(), j = gi + d; if(j < 0 || j >= gs.length) return;
-    const arr = gs.map(g => g.map(i => W.files[i])); [arr[gi], arr[j]] = [arr[j], arr[gi]];
-    W.files = [].concat(...arr.map(g => g.map((f, k) => { f.join = k > 0; return f; }))); resetRun(); bkFilesDraw();
-  };
-  // একই প্রশ্নের ভেতরে পাতার ক্রম বদল (শুধু ছবি অদলবদল, গ্রুপ একই থাকে)
-  window.bkMove = function(i, d){
-    const j = i + d; if(j < 0 || j >= W.files.length || !W.files[Math.max(i, j)].join) return;
-    const a = W.files[i], b = W.files[j]; [a.file, b.file] = [b.file, a.file]; [a.url, b.url] = [b.url, a.url]; resetRun(); bkFilesDraw();
-  };
+  window.bkJoin = function(i, v){ W.files[i].join = v; resetRun(); bkFilesDraw(); };
+  window.bkDel = function(i){ URL.revokeObjectURL(W.files[i].url); W.files.splice(i, 1); if(W.files[0]) W.files[0].join = false; resetRun(); bkFilesDraw(); };
+  window.bkMove = function(i, d){ const j = i + d; if(j < 0 || j >= W.files.length) return; [W.files[i], W.files[j]] = [W.files[j], W.files[i]]; W.files[0].join = false; resetRun(); bkFilesDraw(); };
 
   // ---------------- পাইপলাইন: (ক) প্রতি গ্রুপ থেকে প্রশ্ন বের করা, (খ) ১২টা করে ট্যাগ ----------------
   // আবার চাপলে যেগুলো আগেই হয়ে গেছে সেগুলো বাদ দিয়ে শুধু বাকিগুলো চলে (ব্যর্থ হলে থেমে থাকে না, পরে আবার চেষ্টা করা যায়)
