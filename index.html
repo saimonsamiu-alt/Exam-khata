@@ -2226,7 +2226,7 @@ function labelForCouponExamCode(examCode){
 const BN_WEEKDAYS = ['রবি','সোম','মঙ্গল','বুধ','বৃহ','শুক্র','শনি'];
 
 // ---- Mini calendar builder ----
-function buildMiniCalendar(year, month, records, onDayClickFn, navTargetScreen, navCtx){
+function buildMiniCalendar(year, month, records, onDayClickFn, navTargetScreen, navCtx, hwMap){
   window.__calNavCtx = navCtx; // stash instead of inlining (names/records could contain quotes)
   const recByDate = {};
   records.forEach(r=> recByDate[r.date] = r);
@@ -2248,7 +2248,9 @@ function buildMiniCalendar(year, month, records, onDayClickFn, navTargetScreen, 
     }
     const isToday = dateStr === todayS;
     const clickable = onDayClickFn ? `onclick="${onDayClickFn}('${dateStr}')" style="cursor:pointer;` : `style="cursor:default;`;
-    cells += `<div ${clickable} background:${bg}; color:${color}; border:${border}; ${isToday?'outline:2px solid var(--margin-red);':''} border-radius:7px; display:flex; align-items:center; justify-content:center; height:34px; font-size:13px; font-family:var(--font-mono);">${d}</div>`;
+    const hw = hwMap && hwMap[dateStr];   // শিক্ষকের ক্যালেন্ডারে HW (সবার জন্য + ব্যক্তিগত): গোলাপি ফোঁটা, মিস হলে গাঢ় লাল দাগ
+    const hwDot = hw ? `<span style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:#EC4899;border:1px solid #fff;"></span>` : '';
+    cells += `<div ${clickable} position:relative; background:${bg}; color:${color}; border:${border}; ${isToday?'outline:2px solid var(--margin-red);':''}${hw === 'missed' ? 'box-shadow:inset 0 0 0 2px #7F1D1D;' : ''} border-radius:7px; display:flex; align-items:center; justify-content:center; height:34px; font-size:13px; font-family:var(--font-mono);">${d}${hwDot}</div>`;
   }
 
   const prevM = month===0 ? 11 : month-1;
@@ -2270,7 +2272,7 @@ function buildMiniCalendar(year, month, records, onDayClickFn, navTargetScreen, 
         ${cells}
       </div>
       <div style="margin-top:12px; font-size:12px; color:var(--pencil); display:flex; gap:14px; flex-wrap:wrap;">
-        <span>🟦 exam দিয়ে confirm</span><span>🟩 নিজে confirm করেছে</span><span>🟨 confirm করার অপেক্ষায়</span>
+        <span>🟦 exam দিয়ে confirm</span><span>🟩 নিজে confirm করেছে</span><span>🟨 confirm করার অপেক্ষায়</span>${hwMap ? '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#EC4899;vertical-align:1px;"></i> HW</span><span style="box-shadow:inset 0 0 0 2px #7F1D1D;border-radius:4px;padding:0 4px;">⚠️ HW মিস</span>' : ''}
       </div>
     </div>
   `;
@@ -2346,7 +2348,17 @@ async function renderAttendanceMark(slug, studentName, records){
   const curMonthKey = todayStr().slice(0,7);
   const approvedThisMonth = records.filter(r=> (r.status==='approved' || r.source==='exam') && monthKeyOf(r.date)===curMonthKey).length;
 
-  const calHtml = buildMiniCalendar(year, month, records, 'teacherToggleDay', 'attendanceMark', { slug, studentName });
+  // সবার জন্য দেওয়া HW + ছাত্রের নিজের HW — শিক্ষকের ক্যালেন্ডারেও দেখাও (planCalendar একই ডেটা দেয়)
+  let hwEv = [];
+  try{
+    const pc = await postToScriptRaw('planCalendar', { slug, month:`${year}-${String(month+1).padStart(2,'0')}`, today:todayStr() });
+    if(pc && pc.status === 'success') hwEv = (pc.events || []).filter(e => e.type === 'hw').sort((a,b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
+  }catch(err){}
+  const hwMap = {};
+  hwEv.forEach(e => { const cur = hwMap[e.date]; hwMap[e.date] = (cur === 'missed' || e.status === 'missed') ? 'missed' : 'ok'; });
+  const hwSt = { done:'✅ জমা হয়েছে', todo:'⏳ বাকি', missed:'⚠️ মিস' };
+  const hwListHtml = `<div class="card"><h3>📚 এই মাসের HW</h3>${hwEv.length ? hwEv.map(e => `<div class="exam-item" style="border-left:5px solid #EC4899;"><div class="row-top"><div><div style="font-weight:700;">${escapeHtml(e.title)}${e.all ? ' <span style="font-size:11px;background:#FCE7F3;color:#9D174D;padding:1px 7px;border-radius:10px;font-weight:600;">সবার জন্য</span>' : ''}</div><div class="meta">${e.date} · ${hwSt[e.status] || ''}</div></div></div></div>`).join('') : '<div class="empty-state">এই মাসে কোনো HW নেই।</div>'}</div>`;
+  const calHtml = buildMiniCalendar(year, month, records, 'teacherToggleDay', 'attendanceMark', { slug, studentName }, hwMap);
   state.records = records; // stash so teacherToggleDay can inspect the clicked day's current state
   const planCardHtml = !FEATURE_CLASS_PLAN ? '' : await buildClassPlanCard(slug, `${year}-${String(month+1).padStart(2,'0')}`, year, month); // [NEW]
 
@@ -2358,6 +2370,7 @@ async function renderAttendanceMark(slug, studentName, records){
     </div>
     ${planCardHtml}
     ${calHtml}
+    ${hwListHtml}
     <div class="center"><a class="link-back" onclick="go('attendanceDashboard')">← স্টুডেন্ট তালিকায় ফিরে যাও</a></div>
     ${creditFooter()}
   `;
