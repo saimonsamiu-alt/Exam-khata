@@ -4635,16 +4635,16 @@ async function renderStudentDashboard(){
 
       <div class="hero-stats-row">
         <div class="stat-badge">
-          <div class="stat-val"><span class="streak-fire">🔥</span> ৩ দিন</div>
+          <div class="stat-val"><span class="streak-fire">🔥</span> <span id="stkHeroVal">…</span></div>
           <div class="stat-lbl">স্টাডি স্ট্রিক</div>
         </div>
         <div class="stat-badge" onclick="openMyCoupons('couponBalance')" style="cursor:pointer;">
           <div class="stat-val" style="color:var(--gold);">🪙 ৳ ${balance}</div>
           <div class="stat-lbl">ট্রিট ব্যালেন্স</div>
         </div>
-        <div class="stat-badge" onclick="go('battleWorldMap')" style="cursor:pointer;">
-          <div class="stat-val">📊 প্র্যাকটিস</div>
-          <div class="stat-lbl">আমার প্রোগ্রেস</div>
+        <div class="stat-badge" onclick="go('vorkuta')" style="cursor:pointer;">
+          <div class="stat-val" id="vkHeroVal">📈 …</div>
+          <div class="stat-lbl">Project Vorkuta</div>
         </div>
       </div>
     </div>
@@ -4662,13 +4662,14 @@ async function renderStudentDashboard(){
 
       <!-- মূল বাটন: ৩টা হাব + ক্যালেন্ডার -->
       <div class="widget" style="padding:12px;"><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        ${[['📚','স্টাডি','রিভিশন · HW · প্র্যাকটিস · মাস্টারি',"go('studyHub')",'hubStudyBadge'],['📝','পরীক্ষা','কোড · Practice · লিখিত · Past',"go('examHub')",''],['🎁','রিওয়ার্ড','ক্যাশআউট · শপ',"go('rewardHub')",''],['📅','ক্যালেন্ডার','ক্লাস · HW · রিভিশন',"go('myCal')",'']].map(t => `<button class="btn btn-outline" style="padding:16px 10px;text-align:center;border-radius:14px;" onclick="${t[3]}"><div style="font-size:30px;">${t[0]}</div><b>${t[1]}</b>${t[4] ? `<div id="${t[4]}"></div>` : ''}<div class="hint" style="font-size:11px;margin-top:2px;">${t[2]}</div></button>`).join('')}
+        ${[['📚','স্টাডি','রিভিশন · HW · প্র্যাকটিস · মাস্টারি',"go('studyHub')",'hubStudyBadge'],['📝','পরীক্ষা','কোড · Practice · লিখিত · Past',"go('examHub')",''],['🎁','রিওয়ার্ড','Vorkuta শেয়ার · ক্যাশআউট · শপ',"go('rewardHub')",''],['📅','ক্যালেন্ডার','ক্লাস · HW · রিভিশন',"go('myCal')",'']].map(t => `<button class="btn btn-outline" style="padding:16px 10px;text-align:center;border-radius:14px;" onclick="${t[3]}"><div style="font-size:30px;">${t[0]}</div><b>${t[1]}</b>${t[4] ? `<div id="${t[4]}"></div>` : ''}<div class="hint" style="font-size:11px;margin-top:2px;">${t[2]}</div></button>`).join('')}
       </div></div>
     </div>
 
     ${creditFooter()}
   `;
   fillStudyBadge();
+  fillVkHero();
   planMissedPopup();   // মিস করা HW/রিভিশনের উৎসাহমূলক পপআপ (সেশনে একবার)
 }
 
@@ -5816,7 +5817,7 @@ async function postToScriptRaw(action, params){
       signal: ctl ? ctl.signal : undefined
     });
     const text = await r.text();
-    try{ return JSON.parse(text); }catch(e){ return { status:'error', message:'bad_response' }; }
+    try{ const o = JSON.parse(text); if(o && o.vkEarned > 0) setTimeout(() => { try{ toast('📈 Vorkuta: +' + o.vkEarned + ' শেয়ার'); }catch(x){} }, 400); return o; }catch(e){ return { status:'error', message:'bad_response' }; }
   }catch(e){
     return { status:'error', message: (e && e.name === 'AbortError') ? 'timeout' : 'network' };
   }finally{ if(tm) clearTimeout(tm); }
@@ -9941,7 +9942,9 @@ window.doSmartSearch = async function(){
   // =====================================================================================
   // ধাপ ৫ক: একটাই ক্যালেন্ডার — HW (লাল), রিভিশন (নীল), ক্লাস (সবুজ)
   // =====================================================================================
-  const COL = { hw:'#D64545', rev:'#3B82F6', class:'#2E9E5B' };
+  const COL = { hw:'#EC4899', rev:'#7C3AED', class:'#2E9E5B' };   // HW গোলাপি · রিভিশন বেগুনি · ক্লাস: নিজে confirm সবুজ / exam-এ নীল / অপেক্ষায় হলুদ
+  const YEL = '#F2B705', BLU = '#3B82F6';
+  const colorOf = e => e.type === 'class' ? (e.src === 'exam' ? BLU : e.src === 'pending' ? YEL : COL.class) : COL[e.type];
   const TYPE_LABEL = { hw:'HW', rev:'রিভিশন', class:'ক্লাস' };
   const C = { y:null, m:null, events:[], sel:'' };
   async function mcRender(){
@@ -9959,15 +9962,15 @@ window.doSmartSearch = async function(){
     for(let d = 1; d <= dim; d++){
       const ds = `${C.y}-${String(C.m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`, ev = by[ds] || [];
       const types = uniq(ev.map(e => e.type)), missed = ev.some(e => e.status === 'missed');
-      const cols = ['class', 'hw', 'rev'].filter(t => types.indexOf(t) !== -1).map(t => COL[t]);
+      const cols = uniq(['class', 'hw', 'rev'].map(t => ev.filter(e => e.type === t)[0]).filter(Boolean).map(colorOf));
       const bg = !cols.length ? '#F5F9FE' : cols.length === 1 ? cols[0] : `linear-gradient(135deg,${cols.map((c, i) => `${c} ${Math.round(i * 100 / cols.length)}% ${Math.round((i + 1) * 100 / cols.length)}%`).join(',')})`;
-      cells += `<div onclick="mcPick('${ds}')" style="cursor:pointer;border:${ds === C.sel ? '2px solid var(--ink)' : '1px solid var(--rule)'};${ds === today ? 'outline:2px solid var(--margin-red);' : ''}${missed ? 'box-shadow:inset 0 0 0 2px #7F1D1D;' : ''}border-radius:8px;height:46px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:${cols.length ? 700 : 400};color:${cols.length ? '#fff' : 'var(--ink)'};background:${bg};"><span>${d}</span></div>`;
+      cells += `<div onclick="mcPick('${ds}')" style="cursor:pointer;border:${ds === C.sel ? '2px solid var(--ink)' : '1px solid var(--rule)'};${ds === today ? 'outline:2px solid var(--margin-red);' : ''}${missed ? 'box-shadow:inset 0 0 0 2px #7F1D1D;' : ''}border-radius:8px;height:46px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:${cols.length ? 700 : 400};color:${cols.length && !(cols.length === 1 && cols[0] === YEL) ? '#fff' : 'var(--ink)'};background:${bg};"><span>${d}</span></div>`;
     }
     const sel = by[C.sel] || [];
     const list = sel.map(e => {
       const st = { done:'✅ হয়েছে', todo:'⏳ বাকি', missed:'⚠️ মিস' }[e.status] || '';
       const act = e.type === 'hw' ? `go('hwHub')` : e.type === 'rev' ? `srOpen('${e.id}')` : (e.status === 'todo' ? `mcConfirm('${e.date}')` : '');
-      return `<div class="exam-item" style="border-left:5px solid ${COL[e.type]};"><div class="row-top"><div><div style="font-weight:700;">${TYPE_LABEL[e.type]}${e.subject ? ' · ' + esc(NOTES_SUBJECTS[e.subject] ? NOTES_SUBJECTS[e.subject].label : e.subject) : ''}</div>
+      return `<div class="exam-item" style="border-left:5px solid ${colorOf(e)};"><div class="row-top"><div><div style="font-weight:700;">${TYPE_LABEL[e.type]}${e.subject ? ' · ' + esc(NOTES_SUBJECTS[e.subject] ? NOTES_SUBJECTS[e.subject].label : e.subject) : ''}</div>
         <div class="meta">${esc(e.title)} · ${st}</div></div>${act ? `<button class="info-btn" onclick="${act}">${e.type === 'class' ? '✅ নিশ্চিত করো' : 'খুলো'}</button>` : ''}</div></div>`;
     }).join('') || `<div class="empty-state">এই দিনে কিছু নেই।</div>`;
     app.innerHTML = `${header('আমার ক্যালেন্ডার')}
@@ -9975,7 +9978,7 @@ window.doSmartSearch = async function(){
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><a class="link-back" onclick="mcNav(-1)">‹</a><b style="font-family:var(--font-display);font-size:16px;">${BN_MONTHS[C.m]} ${C.y}</b><a class="link-back" onclick="mcNav(1)">›</a></div>
         <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px;">${BN_WEEKDAYS.map(w => `<div style="text-align:center;font-size:11px;color:var(--pencil);font-weight:600;">${w}</div>`).join('')}</div>
         <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">${cells}</div>
-        <div style="margin-top:12px;font-size:12px;color:var(--pencil);display:flex;gap:14px;flex-wrap:wrap;"><span>🟥 HW</span><span>🟦 রিভিশন</span><span>🟩 ক্লাস</span><span>একাধিক হলে মিশ্র রঙ</span><span style="box-shadow:inset 0 0 0 2px #7F1D1D;padding:0 6px;border-radius:4px;">⚠️ মিস</span></div></div>
+        <div style="margin-top:12px;font-size:12px;color:var(--pencil);display:flex;gap:14px;flex-wrap:wrap;"><span>🟩 ক্লাস (নিজে confirm)</span><span>🟦 ক্লাস (exam দিয়ে)</span><span>🟨 confirm বাকি</span><span>🟪 রিভিশন</span><span>🩷 HW</span><span>একাধিক হলে মিশ্র রঙ</span><span style="box-shadow:inset 0 0 0 2px #7F1D1D;padding:0 6px;border-radius:4px;">⚠️ মিস</span></div></div>
       <div class="card"><h3>${esc(C.sel)} — সেদিনের কাজ</h3>${list}</div>
       <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>${creditFooter()}`;
   }
@@ -10254,7 +10257,7 @@ window.doSmartSearch = async function(){
 (function(){
   const __hb = render;
   render = function(){
-    const m = { studyHub:shRender, examHub:ehRender, rewardHub:rhRender }[state.screen];
+    const m = { studyHub:shRender, examHub:ehRender, rewardHub:rhRender, vorkuta:vkRender, vorkutaTeacher:vtRender }[state.screen];
     if(m){ syncLogoutFab(); m(); return; }
     __hb();
   };
@@ -10273,8 +10276,98 @@ window.doSmartSearch = async function(){
     big('🎯','Practice','খোলা প্র্যাকটিস পরীক্ষা',"go('practiceList')") +
     big('✍️','লিখিত পরীক্ষা','খাতার ছবি তুলে জমা — AI চেক',"go('writtenEntry')") +
     big('📜','Past Exams','আগের পরীক্ষা ও রেজাল্ট',"go('pastExams')")); }
+
+  // ===== 📈 Project Vorkuta =====
+  const esc = s => escapeHtml(String(s == null ? '' : s));
+  const bn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  const fmtSh = n => bn((Math.round((Number(n) || 0) * 100) / 100).toFixed(2));
+  const SRC = { mcq:'MCQ', rev:'রিভিশন', hw:'HW', game:'প্র্যাকটিস/গেম', mastery:'মাস্টারি', exam:'পরীক্ষা/কোড টেস্ট', written:'লিখিত পরীক্ষা' };
+  window.fillVkHero = async function(){
+    const stud = getLoggedStudent(); if(!stud) return;
+    const r = await postToScriptRaw('vkSummary', { slug:stud.slug, today:todayStr() });
+    const el = document.getElementById('vkHeroVal'); if(!el) return;
+    el.textContent = (r && r.status === 'success') ? '📈 ' + fmtSh(r.balance) : '📈 —';
+    const sk = document.getElementById('stkHeroVal'); if(sk) sk.textContent = (r && r.status === 'success' && r.streak) ? bn(r.streak.days) + ' দিন' : '—';
+  };
+  async function vkRender(){
+    const stud = getLoggedStudent(); if(!stud){ go('studentAuth'); return; }
+    app.innerHTML = `${header('Project Vorkuta')}<div class="card center">লোড হচ্ছে...</div>`;
+    const r = await postToScriptRaw('vkSummary', { slug:stud.slug, today:todayStr() });
+    if(!r || r.status !== 'success'){ app.innerHTML = `${header('Project Vorkuta')}<div class="card"><p class="hint" style="color:var(--red);">❌ লোড করা যায়নি — ইন্টারনেট বা Apps Script-এর নতুন version Deploy চেক করো।</p><button class="btn btn-outline btn-block" onclick="go('vorkuta')">আবার চেষ্টা</button></div>`; return; }
+    const by = Object.keys(r.by).map(k => `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--rule);"><span>${SRC[k] || k}</span><b>+${fmtSh(r.by[k])}</b></div>`).join('') || `<p class="hint">এখনো কোনো শেয়ার জমেনি — একটা MCQ বা CQ দিয়ে শুরু করো।</p>`;
+    const rows = r.items.map(it => {
+      const pen = it.type === 'penalty', ap = it.appeal;
+      const tag = it.voided ? `<span class="widget-tag tag-green">মাফ হয়েছে</span>` : '';
+      let act = '';
+      if(pen && !it.voided){
+        if(!ap) act = `<button class="info-btn" onclick="vkAppealOpen('${it.id}')">📝 আপিল করো</button>`;
+        else if(ap.status === 'pending') act = `<span class="widget-tag tag-blue">আপিল পেন্ডিং</span>`;
+        else if(ap.status === 'rejected') act = `<span class="widget-tag tag-red">আপিল বাতিল</span>${ap.note ? `<div class="meta">শিক্ষক: ${esc(ap.note)}</div>` : ''}`;
+      }
+      return `<div class="exam-item" style="${it.voided ? 'opacity:.55;' : ''}border-left:5px solid ${pen ? '#D64545' : '#2E9E5B'};"><div class="row-top"><div><div style="font-weight:700;">${pen ? '⏰ মিস — ' : '✅ '}${SRC[it.source] || it.source}${it.note ? ' · ' + esc(it.note) : ''}</div><div class="meta">${esc(it.date)} ${tag}</div></div><div style="text-align:right;"><b style="color:${pen ? '#D64545' : '#2E9E5B'};">${pen ? '−' : '+'}${fmtSh(it.shares)}</b><div>${act}</div></div></div></div>`;
+    }).join('') || `<div class="empty-state">এখনো কিছু নেই।</div>`;
+    app.innerHTML = `${header('Project Vorkuta')}
+      <div class="card center" style="background:linear-gradient(135deg,#182238,#202F4F);color:#fff;border-color:#2C3E66;">
+        <div style="font-size:13px;opacity:.8;">তোমার শেয়ার</div>
+        <div style="font-size:42px;font-weight:800;color:var(--gold);line-height:1.2;">📈 ${fmtSh(r.balance)}</div>
+        <div style="font-size:12.5px;opacity:.85;">মোট আয় ${fmtSh(r.earned)} · কাটা গেছে ${fmtSh(r.penalty)}</div></div>
+      <div class="card"><h3>কীভাবে শেয়ার জমে</h3>
+        <div class="meta" style="line-height:1.8;">✅ সঠিক MCQ → <b>+${fmtSh(r.rules.mcq)}</b><br>✍️ CQ → স্কোর অনুযায়ী সর্বোচ্চ <b>+${fmtSh(r.rules.cq)}</b><br>🎯 HW, রিভিশন, গেম/প্র্যাকটিস, মাস্টারি, পরীক্ষা ও কোড টেস্ট — সবখানেই জমে<br>${r.streak ? `🔥 টানা <b>${bn(r.streak.days)}</b> দিন স্ট্রিক${r.streak.bonusPct > 0 ? ` → হারে <b>+${bn(r.streak.bonusPct)}%</b> বোনাস` : ''} — প্রতিদিন কিছু করলে বোনাস বাড়ে, একদিন বাদ গেলে আবার শুরু<br>` : ''}🔝 একটা কাজে আজকের সর্বোচ্চ <b>${fmtSh(r.rules.maxItem)}</b> — এই সীমা আর MCQ/CQ-এর হার প্রতিদিন একটু একটু করে বাড়ছে, তাই নিয়মিত থাকলে আয়ও বাড়বে<br>⏰ HW বা রিভিশন সেটের ডেডলাইন মিস করলে শেয়ার কাটা যায় — যত বেশি মিস, তত বেশি কাটা<br>📝 কাটা শেয়ারের পাশে "আপিল করো" চেপে কারণ জানালে শিক্ষক দেখে মাফ করতে পারেন</div></div>
+      <div class="card"><h3>কোথা থেকে জমেছে</h3>${by}</div>
+      <div class="card"><h3>সাম্প্রতিক হিসাব</h3>${rows}</div>
+      <div class="center"><a class="link-back" onclick="go('rewardHub')">← রিওয়ার্ডে ফিরে যাও</a></div>${creditFooter()}`;
+  }
+  window.vkAppealOpen = function(id){
+    const old = document.getElementById('vkAp'); if(old) old.remove();
+    const ov = document.createElement('div'); ov.id = 'vkAp';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(20,30,50,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    ov.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:420px;width:100%;padding:20px;">
+      <h3 style="margin:0 0 6px;">📝 আপিল</h3><p class="hint">কেন মিস হয়েছে সংক্ষেপে লেখো (কমপক্ষে ১০ অক্ষর)। শিক্ষক দেখে সিদ্ধান্ত নেবেন।</p>
+      <textarea id="vkApText" rows="4" style="width:100%;" placeholder="যেমন: অসুস্থ ছিলাম / বিদ্যুৎ ছিল না"></textarea>
+      <button class="btn btn-gold btn-block" style="margin-top:8px;" id="vkApSend">জমা দাও</button>
+      <button class="btn btn-outline btn-block" style="margin-top:6px;" onclick="document.getElementById('vkAp').remove()">বাতিল</button></div>`;
+    document.body.appendChild(ov);
+    document.getElementById('vkApSend').onclick = async function(){
+      const stud = getLoggedStudent(), t = document.getElementById('vkApText').value.trim();
+      if(t.length < 10){ toast('কারণটা একটু বিস্তারিত লেখো'); return; }
+      this.disabled = true;
+      const r = await postToScriptRaw('vkAppeal', { slug:stud.slug, ledgerId:id, reason:t });
+      ov.remove();
+      if(r && r.status === 'success'){ toast('আপিল জমা হয়েছে ✅'); vkRender(); }
+      else toast(r && r.message === 'already_appealed' ? 'এটার আপিল আগেই করা আছে' : 'জমা হয়নি, আবার চেষ্টা করো');
+    };
+  };
+  // --- শিক্ষক: আপিল দেখা ও সিদ্ধান্ত ---
+  async function vtRender(){
+    app.innerHTML = `${header('Vorkuta আপিল')}<div class="card center">লোড হচ্ছে...</div>`;
+    const r = await postToScriptRaw('vkAppealList', {});
+    if(!r || r.status !== 'success'){ app.innerHTML = `${header('Vorkuta আপিল')}<div class="card"><p class="hint" style="color:var(--red);">❌ লোড করা যায়নি।</p></div>`; return; }
+    const st = { pending:'⏳ পেন্ডিং', approved:'✅ মাফ', rejected:'❌ বাতিল' };
+    const rows = r.data.map(a => `<div class="exam-item"><div style="font-weight:700;">${esc(a.name)} <span class="meta">· ${esc(a.date)} · −${fmtSh(a.shares)} শেয়ার</span></div>
+      <div class="meta">${esc(a.title)}</div><div style="margin:6px 0;white-space:pre-wrap;">💬 ${esc(a.reason)}</div>
+      ${a.status === 'pending' ? `<input type="text" id="vtN_${a.id}" placeholder="শিক্ষকের নোট (ঐচ্ছিক)" style="margin-bottom:6px;"><div class="row"><button class="btn btn-gold btn-block" onclick="vtDecide('${a.id}','approve')">✅ মাফ করো</button><button class="btn btn-outline btn-block" onclick="vtDecide('${a.id}','reject')">❌ বাতিল</button></div>` : `<span class="widget-tag">${st[a.status] || a.status}</span>${a.teacherNote ? `<div class="meta">নোট: ${esc(a.teacherNote)}</div>` : ''}`}</div>`).join('') || `<div class="empty-state">কোনো আপিল নেই।</div>`;
+    app.innerHTML = `${header('Vorkuta আপিল')}<div class="card"><h2>📝 ছাত্রদের আপিল</h2><p class="hint">মাফ করলে কাটা শেয়ার ফেরত যায়।</p>${rows}</div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+  }
+  window.vtDecide = async function(id, decision){
+    const n = (document.getElementById('vtN_' + id) || {}).value || '';
+    const r = await postToScriptRaw('vkAppealDecide', { id, decision, note:n });
+    toast(r && r.status === 'success' ? 'সিদ্ধান্ত সেভ হয়েছে ✅' : 'সেভ হয়নি'); vtRender();
+  };
+  // শিক্ষকের ড্যাশবোর্ডে বাটন (রিভিশন সেটআপ বাটনের মতোই নিজে বসে)
+  function injectVk(){
+    const tb = document.querySelector('#app button[onclick*="dailyHwManage"]');
+    if(tb && tb.parentElement && !tb.parentElement.querySelector('[data-vkt]')){
+      const t = document.createElement('button');
+      t.className = 'btn btn-outline btn-block'; t.setAttribute('data-vkt', '1');
+      t.textContent = '📈 Vorkuta আপিল'; t.onclick = () => go('vorkutaTeacher');
+      tb.parentElement.appendChild(t);
+    }
+  }
+  new MutationObserver(injectVk).observe(document.getElementById('app'), { childList:true, subtree:true });
+  injectVk();
   function rhRender(){ page('রিওয়ার্ড',
-    big('💸','বিকাশ ক্যাশআউট','ট্রিট কুপনের টাকা তোলো',"openMyCoupons('couponBalance')",'btn-gold') +
+    big('📈','Project Vorkuta','তোমার শেয়ার · আয় · কাটা · আপিল',"go('vorkuta')",'btn-gold') +
+    big('💸','বিকাশ ক্যাশআউট','ট্রিট কুপনের টাকা তোলো',"openMyCoupons('couponBalance')") +
     big('🛍️','রিওয়ার্ড শপ','গিফট নাও',"openMyCoupons('shopList')")); }
 })();
 
