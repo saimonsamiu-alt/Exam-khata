@@ -8582,19 +8582,35 @@ window.doSmartSearch = async function(){
       ${T.some(t => t.rank) ? `<div class="center" style="margin-top:8px;"><a class="link-back" onclick="revOvResetOrder()">📌 ঠিক-করা ক্রম মুছে AI-র ক্রমে ফেরো</a></div>` : ''}`
       : `<div class="empty-state">এই ছাত্রের এখনো কোনো টপিক নেই (HW/MCQ/অ্যাসাইন করা প্রশ্ন দিলে আসবে)।</div>`;
   }
-  window.revOvLoad = async function(){
+  window.revOvLoad = async function(subsOverride){
     const slug = val('ovStud'), el = document.getElementById('ovList'); if(!slug){ el.innerHTML = ''; return; }
     el.innerHTML = `<div class="hint" style="margin-top:10px;">লোড হচ্ছে...</div>`;
-    const res = await postToScriptRaw('revisionOverrideList', { slug });
+    const res = await postToScriptRaw('revisionOverrideList', { slug, subjects:Array.isArray(subsOverride) ? subsOverride.join(',') : '' });
     window.__revOvT = (res && res.topics) || [];
+    const used = (res && res.used) || [], saved = (res && res.saved) || [];
+    window.__revOvSaved = saved;
     const dv = localStorage.getItem('rev_ov_daily') || 20, pv = localStorage.getItem('rev_ov_per') || 3;
-    el.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
+    el.innerHTML = `<label class="field-label" style="margin-top:12px;">এই ছাত্র যে বিষয়গুলো রিভিশন করে</label>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">${Object.keys(NOTES_SUBJECTS).map(k => `<label style="display:flex;gap:4px;align-items:center;cursor:pointer;font-size:14px;"><input type="checkbox" data-ovs="${k}" ${used.indexOf(k) !== -1 ? 'checked' : ''} onchange="revOvSubjChange()" style="display:inline-block;width:auto;margin:0;">${NOTES_SUBJECTS[k].icon} ${NOTES_SUBJECTS[k].label}</label>`).join('')}</div>
+      <div class="meta" style="margin-top:4px;">${saved.length ? 'সেভ করা আছে' : '⚠️ এই ছাত্রের বিষয় এখনো সেভ করা নেই, তাই সব বিষয় দেখাচ্ছে'} · <a class="link-back" onclick="revOvSaveSubjects()">💾 এই বিষয়গুলোই এই ছাত্রের জন্য সেভ করো</a></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
         <div style="flex:1;min-width:130px;"><label class="field-label">ছাত্র রোজ গড়ে কত মিনিট পড়ে</label><input type="number" id="ovDaily" value="${dv}" min="5" step="5" oninput="ovDraw()" style="margin-bottom:0;"></div>
         <div style="flex:1;min-width:130px;"><label class="field-label">প্রতি টপিকে গড়ে মিনিট</label><input type="number" id="ovPer" value="${pv}" min="1" step="0.5" oninput="ovDraw()" style="margin-bottom:0;"></div></div>
       <div id="ovSum"></div><div id="ovChart"></div><div id="ovTopics"></div>`;
     ovDraw();
   };
   window.ovDraw = ovDraw;
+  function ovCheckedSubs(){ return Array.from(document.querySelectorAll('#ovList input[data-ovs]')).filter(i => i.checked).map(i => i.getAttribute('data-ovs')); }
+  window.revOvSubjChange = function(){
+    const l = ovCheckedSubs(); if(!l.length){ toast('অন্তত একটা বিষয় রাখো'); revOvLoad(window.__revOvSaved && window.__revOvSaved.length ? window.__revOvSaved : null); return; }
+    revOvLoad(l);
+  };
+  window.revOvSaveSubjects = async function(){
+    const slug = val('ovStud'), l = ovCheckedSubs(); if(!slug || !l.length){ toast('অন্তত একটা বিষয় বাছো'); return; }
+    const r = await postToScriptRaw('revisionSubjectsSet', { slug, subjects:l.join(',') });
+    toast(r && r.status === 'success' ? 'সেভ হয়েছে ✅ — ছাত্রের রিভিশনেও এই বিষয়গুলোই আসবে' : 'সেভ হয়নি, আবার চেষ্টা করো');
+    if(r && r.status === 'success') window.__revOvSaved = l;
+  };
   function ovSaveOrder(){
     const slug = val('ovStud'); if(!slug) return Promise.resolve();
     const tks = (window.__revOvOrd || []).filter(t => !t.skip).map(t => t.tk);
