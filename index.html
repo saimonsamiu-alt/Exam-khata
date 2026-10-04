@@ -1162,6 +1162,7 @@ function renderTeacherNewExam(editingExam){
       <h2>দ্রুত ইম্পোর্ট (ঐচ্ছিক)</h2>
       <p class="hint">একসাথে অনেক প্রশ্ন থাকলে নিচের ফরম্যাটে পেস্ট করে "ইম্পোর্ট করো" চাপো (বিদ্যমান প্রশ্নের সাথে যোগ হবে):<br>
       <code>Q: প্রশ্ন লেখো [ট্যাগ]<br>A) অপশন ১<br>B) অপশন ২<br>C) অপশন ৩<br>D) অপশন ৪<br>ANS: A</code></p>
+      ${window.imgMcqBox ? imgMcqBox('bulkText', 'bulkImgSt') : ''}
       <textarea id="bulkText" placeholder="এখানে পেস্ট করো..."></textarea>
       <button class="btn btn-outline btn-block" onclick="importBulk()">📥 ইম্পোর্ট করো</button>
       <button class="btn btn-gold btn-block" style="margin-top:10px;" onclick="openLibraryPicker()">📚 লাইব্রেরি থেকে বাছো</button>
@@ -8397,6 +8398,42 @@ window.doSmartSearch = async function(){
     } else st.textContent = '❌ AI এখন পারছে না (কোটা শেষ?) — "কার্ডে ভাগ করো" চাপো বা পরে চেষ্টা করো।';
   };
 
+  // ---- ছবি থেকে MCQ বের করে Q:/A)/ANS: ফরম্যাটে টেক্সটবক্সে বসানো (দেখে-ঠিক-করে তারপর ইম্পোর্ট) ----
+  const imgMcqFmt = o => 'Q: ' + o.text + (o.tag ? ' [' + o.tag + ']' : '') + '\n' + o.options.map((x, j) => 'ABCD'[j] + ') ' + x).join('\n') + '\nANS: ' + 'ABCD'[o.correct];
+  async function imgMcqRun(files, taId, stId){
+    const ta = document.getElementById(taId), st = document.getElementById(stId); if(!ta || !st || !files.length) return;
+    const lines = []; let total = 0, solved = 0;
+    for(let i = 0; i < files.length; i++){
+      st.innerHTML = lines.join('') + `<div>⏳ ছবি ${i + 1}/${files.length} পড়া হচ্ছে... পেজ বন্ধ কোরো না</div>`;
+      let c; try{ c = await compressImageFile(files[i], 1600, 0.85); }catch(e){ lines.push(`<div style="color:var(--red)">❌ ছবি ${i + 1}: পড়া যায়নি</div>`); continue; }
+      const res = await postToScriptRaw('revisionMcqFromImage', { imageBase64:c.base64, imageMimeType:c.mimeType });
+      if(res && res.status === 'success'){
+        const txt = res.data.map(imgMcqFmt).join('\n\n');
+        ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, '') + '\n\n' : '') + txt;
+        total += res.data.length; const sv = res.data.filter(o => !o.marked).length; solved += sv;
+        lines.push(`<div style="color:var(--green)">✅ ছবি ${i + 1}: ${res.data.length}টা প্রশ্ন</div>`);
+      } else lines.push(`<div style="color:var(--red)">❌ ছবি ${i + 1}: ${res && res.message === 'ai_unavailable' ? 'AI এখন পারছে না, পরে চেষ্টা করো' : 'প্রশ্ন বোঝা যায়নি — আরও পরিষ্কার ছবি দাও'}</div>`);
+    }
+    st.innerHTML = lines.join('') + (total ? `<div class="meta">মোট ${total}টা প্রশ্ন উপরের বক্সে বসেছে।${solved ? ` <span style="color:#9B6A15">⚠️ ${solved}টায় ছবিতে উত্তর চিহ্নিত ছিল না, AI নিজে সমাধান করেছে — ANS লাইনগুলো মিলিয়ে নাও।</span>` : ''} ঠিক থাকলে ইম্পোর্ট চাপো।</div>` : '');
+  }
+  window.imgMcqFiles = function(taId, stId, inp){ const fs = Array.from(inp.files || []); inp.value = ''; imgMcqRun(fs, taId, stId); };
+  window.imgMcqClip = async function(taId, stId){
+    try{
+      const items = await navigator.clipboard.read(), files = [];
+      for(const it of items){ const t = it.types.find(x => x.indexOf('image/') === 0); if(t){ const b = await it.getType(t); files.push(new File([b], 'paste.png', { type:t })); } }
+      if(!files.length){ toast('ক্লিপবোর্ডে কোনো ছবি নেই'); return; }
+      imgMcqRun(files, taId, stId);
+    }catch(e){ toast('ব্রাউজার অনুমতি দেয়নি — "ছবি বাছো" ব্যবহার করো'); }
+  };
+  window.imgMcqBox = function(taId, stId){
+    return `<div style="border:1.5px dashed var(--gold);border-radius:12px;padding:10px;margin:8px 0;">
+      <b style="font-size:13.5px;">📷 অথবা MCQ-এর ছবি থেকে সরাসরি বের করো</b>
+      <p class="hint" style="margin:4px 0 6px;">ছবি (স্ক্রিনশট/ক্লাসের ফ্রেম, একাধিকও চলে) দিলে AI প্রশ্ন-অপশন-উত্তর বের করে নিচের বক্সে বসিয়ে দেবে। ছবিতে উত্তর চিহ্নিত না থাকলে AI নিজে সমাধান করে — তাই ইম্পোর্টের আগে একবার দেখে নিয়ো।</p>
+      <div class="row"><label class="btn btn-gold" style="margin:0;cursor:pointer;">🖼️ ছবি বাছো<input type="file" accept="image/*" multiple style="display:none" onchange="imgMcqFiles('${taId}','${stId}',this)"></label>
+      <button class="btn btn-outline" onclick="imgMcqClip('${taId}','${stId}')">📋 ক্লিপবোর্ড থেকে</button></div>
+      <div id="${stId}" class="hint" style="margin-top:6px;"></div></div>`;
+  };
+
   window.bqDraw = function(k){
     const box = document.getElementById(BQL[k]); if(!box) return;
     const mcq = k === 'rt' && (document.getElementById('rtType') || {}).value === 'mcq';
@@ -8420,6 +8457,7 @@ window.doSmartSearch = async function(){
       ${k === 'rt' ? `<div id="rtMcqBulk" style="border:1.5px solid var(--gold);border-radius:12px;padding:10px;margin:8px 0;">
         <b style="font-size:13.5px;">📥 একসাথে অনেক MCQ পেস্ট করো</b>
         <p class="hint" style="margin:4px 0 6px;">পরীক্ষার "দ্রুত ইম্পোর্ট"-এর একই ফরম্যাট (প্রশ্নের মাঝে ফাঁকা লাইন):<br><code>Q: প্রশ্ন লেখো [ট্যাগ]<br>A) অপশন ১<br>B) অপশন ২<br>C) অপশন ৩<br>D) অপশন ৪<br>ANS: A</code><br>[ট্যাগ] দিলে সেটাই ওই প্রশ্নের টপিক হবে (না দিলে উপরের টপিক)। <code>ক) খ) গ) ঘ)</code>, ১. ২. ৩. নম্বর, আর এক লাইনে সব অপশনও চলে।</p>
+        ${imgMcqBox('rtBulkTxt', 'rtImgSt')}
         <textarea id="rtBulkTxt" style="min-height:110px;" placeholder="Q: প্রশ্ন লেখো [ট্যাগ]&#10;A) অপশন ১&#10;B) অপশন ২&#10;C) অপশন ৩&#10;D) অপশন ৪&#10;ANS: A&#10;&#10;Q: পরের প্রশ্ন..."></textarea>
         <div class="row"><button class="btn btn-gold" onclick="bqMcqSplit()">✂️ কার্ডে ভাগ করো</button><button class="btn btn-outline" id="rtBulkAi" onclick="bqMcqAi()">🤖 AI দিয়ে ভাগ করো</button></div>
         <div id="rtBulkSt" class="hint" style="margin-top:6px;"></div></div>` : ''}
