@@ -8509,25 +8509,37 @@ window.doSmartSearch = async function(){
     const slug = val('ovStud'), el = document.getElementById('ovList'); if(!slug){ el.innerHTML = ''; return; }
     el.innerHTML = `<div class="hint" style="margin-top:10px;">লোড হচ্ছে...</div>`;
     const res = await postToScriptRaw('revisionOverrideList', { slug });
-    const order = { weak:0, medium:1, easy:2, 'new':3 };
-    const T = ((res && res.topics) || []).sort((a, b) => (order[a.level] - order[b.level]) || a.topic.localeCompare(b.topic));
+    const DAYMS = 86400000, now = Date.now();
+    const T = ((res && res.topics) || []).sort((a, b) => ((a.skip ? 1 : 0) - (b.skip ? 1 : 0)) || (b.prio - a.prio) || a.topic.localeCompare(b.topic));   // AI যে ক্রমে টপিক ফেরাবে সেই ক্রমে
     window.__revOvT = T;
     const ic = { weak:'🔴', medium:'🟡', easy:'🟢', 'new':'⚪' }, lb = { weak:'দুর্বল', medium:'মাঝারি', easy:'সহজ', 'new':'নতুন' };
-    el.innerHTML = T.length ? T.map((t, i) => `<div class="exam-item">
-        <div class="row-top"><div><b>${escapeHtml(t.topic)}</b><div class="meta">${NOTES_SUBJECTS[t.subject] ? NOTES_SUBJECTS[t.subject].label : escapeHtml(t.subject || 'অন্যান্য')} · AI: ${ic[t.autoLevel]} ${lb[t.autoLevel]} · ভুল ${t.bad} / আংশিক ${t.part} / ঠিক ${t.ok}${t.last ? '' : ' · এখনো revise হয়নি'}</div></div></div>
+    const cnt = { weak:0, medium:0, easy:0, 'new':0 }; let dueN = 0;
+    T.forEach(t => { if(t.skip) return; cnt[t.level] = (cnt[t.level] || 0) + 1; if(t.due) dueN++; });
+    const when = t => {
+      if(t.skip) return '⛔ রিভিশনে আসবে না';
+      if(!t.last) return '⏰ এখনো revise হয়নি — এখনই due';
+      const ago = Math.floor((now - t.lastTs) / DAYMS), agoTxt = ago <= 0 ? 'আজ' : ago + ' দিন আগে';
+      if(t.due) return `শেষ revise: ${agoTxt} · ⏰ এখনই due`;
+      const left = Math.max(1, Math.ceil((t.lastTs + t.iv * DAYMS - now) / DAYMS));
+      return `শেষ revise: ${agoTxt} · পরের: ~${left} দিন পরে`;
+    };
+    const summary = T.length ? `<div class="meta" style="margin:12px 0 4px 0;"><b>${T.length}</b>টা টপিক · 🔴${cnt.weak} 🟡${cnt.medium} 🟢${cnt.easy} ⚪${cnt['new']} · এখন due: <b>${dueN}</b>টা · <a class="link-back" onclick="revOvLoad()">🔄 নতুন করে হিসাব দেখো</a></div>` : '';
+    el.innerHTML = summary + (T.length ? T.map((t, i) => `<div class="exam-item">
+        <div class="row-top"><div><b>${escapeHtml(t.topic)}</b><div class="meta">${NOTES_SUBJECTS[t.subject] ? NOTES_SUBJECTS[t.subject].label : escapeHtml(t.subject || 'অন্যান্য')} · AI: ${ic[t.autoLevel]} ${lb[t.autoLevel]} · ভুল ${t.bad} / আংশিক ${t.part} / ঠিক ${t.ok}</div>
+          <div class="meta">${when(t)}${t.skip ? '' : ' · ফেরে প্রতি ' + t.iv + ' দিনে'}</div></div></div>
         <select onchange="revOvSet(${i}, this.value)" style="margin:8px 0 0 0;">
           <option value="" ${!t.ov ? 'selected' : ''}>🤖 AI অটো</option>
           <option value="weak" ${t.ov === 'weak' ? 'selected' : ''}>🔴 দুর্বল (ঘন ঘন)</option>
           <option value="medium" ${t.ov === 'medium' ? 'selected' : ''}>🟡 মাঝারি</option>
           <option value="easy" ${t.ov === 'easy' ? 'selected' : ''}>🟢 সহজ (কম আসবে)</option>
           <option value="skip" ${t.ov === 'skip' ? 'selected' : ''}>⛔ আর লাগবে না</option></select></div>`).join('')
-      : `<div class="empty-state">এই ছাত্রের এখনো কোনো টপিক নেই (HW/MCQ/অ্যাসাইন করা প্রশ্ন দিলে আসবে)।</div>`;
+      : `<div class="empty-state">এই ছাত্রের এখনো কোনো টপিক নেই (HW/MCQ/অ্যাসাইন করা প্রশ্ন দিলে আসবে)।</div>`);
   };
   window.revOvSet = async function(i, level){
     const t = (window.__revOvT || [])[i], slug = val('ovStud'); if(!t || !slug) return;
     const res = await postToScriptRaw('revisionOverrideSet', { slug, tk:t.tk, level });
     toast(res && res.status === 'success' ? (level ? 'সেভ হয়েছে ✅' : 'AI অটোতে ফেরানো হয়েছে') : 'সেভ হয়নি');
-    if(res && res.status === 'success') t.ov = level;
+    if(res && res.status === 'success'){ t.ov = level; revOvLoad(); }
   };
 
   // ---------------- ছাত্র: শিক্ষকের দেওয়া আজকের HW ----------------
@@ -8615,10 +8627,17 @@ window.doSmartSearch = async function(){
         <select id="cvStud" onchange="revCovLoad()"><option value="">— বাছো —</option>${studs.map(s => `<option value="${s.slug}">${escapeHtml(s.name)}</option>`).join('')}</select>
         <label class="field-label">বিষয়</label>
         <select id="cvSubj" onchange="revCovLoad()">${sOpts('chemistry')}</select>
+        <p class="hint" style="margin-top:8px;">🤖 ছাত্র কোনো MCQ exam বা CQ দিলে ওই প্রশ্নের টপিক নিজে থেকে এখানে টিক হয়ে যায় (প্রশ্নে AI-ট্যাগ থাকলে)। ভুল টিক হলে তুলে দিতে পারো। <a class="link-back" onclick="revCovSync()">পুরনো exam থেকে টিক আনো</a></p>
         <div id="cvBody"></div></div>
       <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
   }
 
+  window.revCovSync = async function(){
+    const slug = val('cvStud'); if(!slug){ toast('আগে ছাত্র বাছো'); return; }
+    const res = await postToScriptRaw('revisionCoveredSync', { slug });
+    toast(res && res.status === 'success' ? (res.added ? res.added + 'টা টিক যোগ হয়েছে ✅' : 'নতুন কিছু পাওয়া যায়নি') : 'হয়নি, আবার চেষ্টা করো');
+    revCovLoad();
+  };
   window.revCovLoad = async function(){
     const C = window.__cov, slug = val('cvStud'), subj = val('cvSubj'), body = document.getElementById('cvBody');
     if(!slug){ body.innerHTML = ''; return; }
