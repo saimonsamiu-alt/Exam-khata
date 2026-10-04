@@ -9969,7 +9969,7 @@ window.doSmartSearch = async function(){
     const sel = by[C.sel] || [];
     const list = sel.map(e => {
       const st = { done:'✅ হয়েছে', todo:'⏳ বাকি', missed:'⚠️ মিস' }[e.status] || '';
-      const act = e.type === 'hw' ? `go('hwHub')` : e.type === 'rev' ? `srOpen('${e.id}')` : (e.status === 'todo' ? `mcConfirm('${e.date}')` : '');
+      const act = e.type === 'hw' ? `go('hwHub')` : e.type === 'rev' ? (e.id ? `srOpen('${e.id}')` : '') : (e.status === 'todo' ? `mcConfirm('${e.date}')` : '');
       return `<div class="exam-item" style="border-left:5px solid ${colorOf(e)};"><div class="row-top"><div><div style="font-weight:700;">${TYPE_LABEL[e.type]}${e.subject ? ' · ' + esc(NOTES_SUBJECTS[e.subject] ? NOTES_SUBJECTS[e.subject].label : e.subject) : ''}</div>
         <div class="meta">${esc(e.title)} · ${st}</div></div>${act ? `<button class="info-btn" onclick="${act}">${e.type === 'class' ? '✅ নিশ্চিত করো' : 'খুলো'}</button>` : ''}</div></div>`;
     }).join('') || `<div class="empty-state">এই দিনে কিছু নেই।</div>`;
@@ -9978,7 +9978,7 @@ window.doSmartSearch = async function(){
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><a class="link-back" onclick="mcNav(-1)">‹</a><b style="font-family:var(--font-display);font-size:16px;">${BN_MONTHS[C.m]} ${C.y}</b><a class="link-back" onclick="mcNav(1)">›</a></div>
         <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px;">${BN_WEEKDAYS.map(w => `<div style="text-align:center;font-size:11px;color:var(--pencil);font-weight:600;">${w}</div>`).join('')}</div>
         <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">${cells}</div>
-        <div style="margin-top:12px;font-size:12px;color:var(--pencil);display:flex;gap:14px;flex-wrap:wrap;"><span>🟩 ক্লাস (নিজে confirm)</span><span>🟦 ক্লাস (exam দিয়ে)</span><span>🟨 confirm বাকি</span><span>🟪 রিভিশন</span><span>🩷 HW</span><span>একাধিক হলে মিশ্র রঙ</span><span style="box-shadow:inset 0 0 0 2px #7F1D1D;padding:0 6px;border-radius:4px;">⚠️ মিস</span></div></div>
+        <div style="margin-top:12px;font-size:12px;color:var(--pencil);display:flex;gap:14px;flex-wrap:wrap;"><span>🟩 ক্লাস (নিজে confirm)</span><span>🟦 ক্লাস (exam দিয়ে)</span><span>🟨 confirm বাকি</span><span>🟪 রিভিশন</span><span><i style="display:inline-block;width:13px;height:13px;border-radius:3px;background:#EC4899;vertical-align:-2px;"></i> HW</span><span>একাধিক হলে মিশ্র রঙ</span><span style="box-shadow:inset 0 0 0 2px #7F1D1D;padding:0 6px;border-radius:4px;">⚠️ মিস</span></div></div>
       <div class="card"><h3>${esc(C.sel)} — সেদিনের কাজ</h3>${list}</div>
       <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>${creditFooter()}`;
   }
