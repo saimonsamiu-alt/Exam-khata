@@ -2248,9 +2248,10 @@ function buildMiniCalendar(year, month, records, onDayClickFn, navTargetScreen, 
     }
     const isToday = dateStr === todayS;
     const clickable = onDayClickFn ? `onclick="${onDayClickFn}('${dateStr}')" style="cursor:pointer;` : `style="cursor:default;`;
-    const hw = hwMap && hwMap[dateStr];   // শিক্ষকের ক্যালেন্ডারে HW (সবার জন্য + ব্যক্তিগত): গোলাপি ফোঁটা, মিস হলে গাঢ় লাল দাগ
-    const hwDot = hw ? `<span style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:#EC4899;border:1px solid #fff;"></span>` : '';
-    cells += `<div ${clickable} position:relative; background:${bg}; color:${color}; border:${border}; ${isToday?'outline:2px solid var(--margin-red);':''}${hw === 'missed' ? 'box-shadow:inset 0 0 0 2px #7F1D1D;' : ''} border-radius:7px; display:flex; align-items:center; justify-content:center; height:34px; font-size:13px; font-family:var(--font-mono);">${d}${hwDot}</div>`;
+    const hw = hwMap && hwMap[dateStr];   // শিক্ষকের ক্যালেন্ডারে HW (গোলাপি) ও রিভিশন (বেগুনি) ফোঁটা; কিছু মিস হলে গাঢ় লাল দাগ
+    const dotCss = c => `width:6px;height:6px;border-radius:50%;background:${c};border:1px solid #fff;`;
+    const hwDot = hw ? `<span style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);display:flex;gap:2px;">${hw.hw ? `<i style="${dotCss('#EC4899')}"></i>` : ''}${hw.rev ? `<i style="${dotCss('#7C3AED')}"></i>` : ''}</span>` : '';
+    cells += `<div ${clickable} position:relative; background:${bg}; color:${color}; border:${border}; ${isToday?'outline:2px solid var(--margin-red);':''}${hw && hw.missed ? 'box-shadow:inset 0 0 0 2px #7F1D1D;' : ''} border-radius:7px; display:flex; align-items:center; justify-content:center; height:34px; font-size:13px; font-family:var(--font-mono);">${d}${hwDot}</div>`;
   }
 
   const prevM = month===0 ? 11 : month-1;
@@ -2272,7 +2273,7 @@ function buildMiniCalendar(year, month, records, onDayClickFn, navTargetScreen, 
         ${cells}
       </div>
       <div style="margin-top:12px; font-size:12px; color:var(--pencil); display:flex; gap:14px; flex-wrap:wrap;">
-        <span>🟦 exam দিয়ে confirm</span><span>🟩 নিজে confirm করেছে</span><span>🟨 confirm করার অপেক্ষায়</span>${hwMap ? '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#EC4899;vertical-align:1px;"></i> HW</span><span style="box-shadow:inset 0 0 0 2px #7F1D1D;border-radius:4px;padding:0 4px;">⚠️ HW মিস</span>' : ''}
+        <span>🟦 exam দিয়ে confirm</span><span>🟩 নিজে confirm করেছে</span><span>🟨 confirm করার অপেক্ষায়</span>${hwMap ? '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#EC4899;vertical-align:1px;"></i> HW</span><span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#7C3AED;vertical-align:1px;"></i> রিভিশন</span><span style="box-shadow:inset 0 0 0 2px #7F1D1D;border-radius:4px;padding:0 4px;">⚠️ মিস</span>' : ''}
       </div>
     </div>
   `;
@@ -2352,12 +2353,12 @@ async function renderAttendanceMark(slug, studentName, records){
   let hwEv = [];
   try{
     const pc = await postToScriptRaw('planCalendar', { slug, month:`${year}-${String(month+1).padStart(2,'0')}`, today:todayStr() });
-    if(pc && pc.status === 'success') hwEv = (pc.events || []).filter(e => e.type === 'hw').sort((a,b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
+    if(pc && pc.status === 'success') hwEv = (pc.events || []).filter(e => e.type === 'hw' || e.type === 'rev').sort((a,b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
   }catch(err){}
   const hwMap = {};
-  hwEv.forEach(e => { const cur = hwMap[e.date]; hwMap[e.date] = (cur === 'missed' || e.status === 'missed') ? 'missed' : 'ok'; });
+  hwEv.forEach(e => { const c = hwMap[e.date] = hwMap[e.date] || {}; c[e.type] = true; if(e.status === 'missed') c.missed = true; });
   const hwSt = { done:'✅ জমা হয়েছে', todo:'⏳ বাকি', missed:'⚠️ মিস' };
-  const hwListHtml = `<div class="card"><h3>📚 এই মাসের HW</h3>${hwEv.length ? hwEv.map(e => `<div class="exam-item" style="border-left:5px solid #EC4899;"><div class="row-top"><div><div style="font-weight:700;">${escapeHtml(e.title)}${e.all ? ' <span style="font-size:11px;background:#FCE7F3;color:#9D174D;padding:1px 7px;border-radius:10px;font-weight:600;">সবার জন্য</span>' : ''}</div><div class="meta">${e.date} · ${hwSt[e.status] || ''}</div></div></div></div>`).join('') : '<div class="empty-state">এই মাসে কোনো HW নেই।</div>'}</div>`;
+  const hwListHtml = `<div class="card"><h3>📚 এই মাসের HW ও রিভিশন</h3>${hwEv.length ? hwEv.map(e => `<div class="exam-item" style="border-left:5px solid ${e.type === 'rev' ? '#7C3AED' : '#EC4899'};"><div class="row-top"><div><div style="font-weight:700;">${e.type === 'rev' ? '🟪 রিভিশন · ' : '🩷 HW · '}${escapeHtml(e.title)}${e.all ? ' <span style="font-size:11px;background:#FCE7F3;color:#9D174D;padding:1px 7px;border-radius:10px;font-weight:600;">সবার জন্য</span>' : ''}</div><div class="meta">${e.date} · ${hwSt[e.status] || ''}</div></div></div></div>`).join('') : '<div class="empty-state">এই মাসে কোনো HW বা রিভিশন নেই।</div>'}</div>`;
   const calHtml = buildMiniCalendar(year, month, records, 'teacherToggleDay', 'attendanceMark', { slug, studentName }, hwMap);
   state.records = records; // stash so teacherToggleDay can inspect the clicked day's current state
   const planCardHtml = !FEATURE_CLASS_PLAN ? '' : await buildClassPlanCard(slug, `${year}-${String(month+1).padStart(2,'0')}`, year, month); // [NEW]
