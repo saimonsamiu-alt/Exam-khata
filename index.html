@@ -7620,6 +7620,9 @@ async function renderNotesManageSubject(subject){
   app.innerHTML = `${header('নোট/স্লাইড ম্যানেজ করো')}<div class="card center">লোড হচ্ছে...</div>`;
   const all = await getAllNotes();
   window.__notesAll = all;
+  const [naRes, naStuds] = await Promise.all([postToScriptRaw('revisionNoteAssignAll', {}), listStudentsRemote()]);
+  window.__noteAssign = (naRes && naRes.map) || {}; window.__noteStuds = naStuds || [];
+  const naLabel = id => { const l = window.__noteAssign[id]; if(!l || !l.length) return 'সব ছাত্র'; return l.map(s => { const f = window.__noteStuds.find(x => x.slug === s); return f ? f.name : s; }).join(', '); };
   const mine = all.filter(n=> n.subject === subject);
   window.__notesManageCtx = { subject, items: mine };
   let rows = mine.map((n, idx)=> `
@@ -7627,9 +7630,12 @@ async function renderNotesManageSubject(subject){
       <h3 style="margin-bottom:4px;">${escapeHtml(n.title)} <span class="q-tag">${n.type === 'html' ? 'HTML স্লাইড' : 'লিংক'}</span></h3>
       <div class="meta">${n.chapter && n.topic ? '📖 ' + escapeHtml(n.chapter) + ' › ' + escapeHtml(n.topic) : '⚠️ ট্যাগ হয়নি'}</div>
       <div style="margin-top:4px;">${noteChips(n)}</div>
+      <div class="meta" style="margin-top:4px;">👥 রিভিশনে আসবে: <b>${escapeHtml(naLabel(n.id))}</b></div>
+      <div id="naBox_${n.id}"></div>
       <div class="row" style="margin-top:8px;">
         <button class="btn btn-outline" onclick="editNoteItem(${idx})">✏️ এডিট</button>
         <button class="btn btn-outline" onclick="noteTagEditById('${n.id}')">🏷️ ট্যাগ</button>
+        <button class="btn btn-outline" onclick="noteAssignOpen('${n.id}')">👥 কারা পড়বে</button>
         <button class="btn btn-outline" onclick="retagNoteUI('${n.id}')">🤖 AI ট্যাগ</button>
         <button class="btn btn-danger" onclick="deleteNoteItem('${n.id}','${subject}')">🗑️ মুছো</button>
       </div>
@@ -7649,6 +7655,23 @@ async function renderNotesManageSubject(subject){
     ${creditFooter()}
   `;
 }
+window.noteAssignOpen = function(id){
+  const box = document.getElementById('naBox_' + id); if(!box) return;
+  if(box.innerHTML){ box.innerHTML = ''; return; }
+  const studs = window.__noteStuds || [], cur = new Set((window.__noteAssign || {})[id] || []);
+  box.innerHTML = `<div style="border:1px dashed var(--rule);border-radius:10px;padding:8px 10px;margin-top:6px;">
+    <div class="meta">যাদের রিভিশনে এই নোটের টপিক আসবে তাদের টিক দাও। কাউকে না বাছলে <b>সব ছাত্রের</b> রিভিশনে আসবে।</div>
+    ${studs.map(s => `<label style="display:flex;gap:6px;align-items:center;margin:4px 0;cursor:pointer;font-size:14px;"><input type="checkbox" data-na="${id}" value="${escapeHtml(s.slug)}" ${cur.has(s.slug) ? 'checked' : ''} style="display:inline-block;width:auto;margin:0;">${escapeHtml(s.name)}</label>`).join('') || '<div class="meta">কোনো ছাত্র নেই</div>'}
+    <button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="noteAssignSave('${id}')">💾 সেভ করো</button></div>`;
+};
+window.noteAssignSave = async function(id){
+  const box = document.getElementById('naBox_' + id); if(!box) return;
+  const slugs = Array.from(box.querySelectorAll('input[data-na]')).filter(i => i.checked).map(i => i.value);
+  const r = await postToScriptRaw('revisionNoteAssignSet', { id, slugs:slugs.join(',') });
+  if(!r || r.status !== 'success'){ toast('সেভ হয়নি, আবার চেষ্টা করো'); return; }
+  toast('সেভ হয়েছে ✅'); window.__noteAssign[id] = slugs;
+  renderNotesManageSubject((window.__notesManageCtx || {}).subject);
+};
 // বড় নোট Drive-এ থাকলে এডিটের সময় আনা
 window.editNoteItem = async function(idx){
   const { subject, items } = window.__notesManageCtx;
@@ -8513,23 +8536,28 @@ window.doSmartSearch = async function(){
   // শিক্ষকের জন্য: AI যে নিয়মে টপিক বাছে সেটাই দিন ধরে ধরে চালিয়ে দেখায় (ছাত্র রোজ যতক্ষণ পড়বে ধরে)
   function ovSim(T, daily, per){
     const now = Date.now();
-    const act = T.filter(t => !t.skip).map(t => ({ t, ls:t.lastTs || 0, rank:t.rank || 0, seen:false }));
-    const days = []; let left = act.length, doneDay = 0;
+    const act = T.filter(t => !t.skip).map(t => {
+      const p0 = (t.lastTs ? (now - t.lastTs) / OV_DAY / OV_IV[t.level] : 99) + OV_BN[t.level];
+      return { t, ls:t.lastTs || 0, rank:t.rank || 0, seen:p0 < 1 };     // এখন due না মানে এই চক্রে আগেই ঘোরা হয়ে গেছে
+    });
+    const doneToday = act.filter(a => a.t.today).map(a => a.t).sort((x, y) => y.lastTs - x.lastTs);
+    const days = []; let left = act.filter(a => !a.seen).length, doneDay = 0;
     for(let d = 0; d < 90 && left > 0; d++){
-      const ts = now + d * OV_DAY, picks = []; let budget = daily;
+      const ts = now + d * OV_DAY, picks = []; let budget = daily - (d === 0 ? doneToday.length * per : 0);
       act.forEach(a => { a.p = (a.ls ? (ts - a.ls) / OV_DAY / OV_IV[a.t.level] : 99) + OV_BN[a.t.level]; });
       const bonus = a => (a.p >= 1 && a.rank) ? 1000 - a.rank : 0;
       const order = act.slice().sort((x, y) => (y.p + bonus(y)) - (x.p + bonus(x)));
+      const forced = !(d === 0 && doneToday.length);      // আজ আগেই কিছু করা থাকলে বাকি সময় শেষ হলে আর জোর করে যোগ করি না
       for(const a of order){
         if(a.p < 1) break;
-        if(picks.length && budget < per) break;
+        if(budget < per && (picks.length || !forced)) break;
         picks.push({ t:a.t, again:a.seen }); budget -= per; a.ls = ts;
         if(!a.seen){ a.seen = true; left--; }
       }
-      days.push({ d, ts, picks });
+      days.push({ d, ts, picks, done:d === 0 ? doneToday : [] });
       if(left === 0) doneDay = d + 1;
     }
-    return { days, doneDay, total:act.length };
+    return { days, doneDay, total:act.length, pending:act.filter(a => !a.seen).length, doneToday };
   }
   function ovDraw(){
     const T = window.__revOvT || [], chart = document.getElementById('ovChart'), list = document.getElementById('ovTopics'), sum = document.getElementById('ovSum');
@@ -8543,15 +8571,19 @@ window.doSmartSearch = async function(){
     else {
       const dayName = d => d.d === 0 ? 'আজ' : (d.d === 1 ? 'কাল' : fmtBnDate(d.ts));
       const chip = (p, n) => `<span style="display:inline-block;border:1px solid ${ovCol[p.t.level]};border-left:5px solid ${ovCol[p.t.level]};border-radius:8px;padding:3px 8px;margin:3px 0;font-size:12.5px;background:#fff;">${p.again ? '↻ ' : ''}<span class="meta" style="margin-right:4px;">${ovBn(n)}.</span>${escapeHtml(p.t.topic)}</span>`;
+      const doneChip = t => `<span style="display:inline-block;border:1px solid #BFE3CC;border-radius:8px;padding:3px 8px;margin:3px 0;font-size:12.5px;background:#F1FAF4;color:#2E7D4F;">✓ ${escapeHtml(t.topic)}</span>`;
       const dayCard = d => `<div style="border:1px solid var(--paper-edge);border-radius:10px;padding:8px 10px;background:#FCFDFE;">
-          <div class="meta" style="margin-bottom:4px;"><b>দিন ${ovBn(d.d + 1)}</b> · ${dayName(d)} · ${ovBn(d.picks.length)}টা টপিক (~${ovBn(Math.round(d.picks.length * per))} মিনিট)</div>
-          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;">${d.picks.map((p, i) => (i ? '<span class="meta">→</span>' : '') + chip(p, i + 1)).join('')}</div></div>`;
+          <div class="meta" style="margin-bottom:4px;"><b>দিন ${ovBn(d.d + 1)}</b> · ${dayName(d)} · ${d.done.length ? '✓ ' + ovBn(d.done.length) + 'টা আজ হয়ে গেছে, ' : ''}${ovBn(d.picks.length)}টা ${d.done.length ? 'বাকি' : 'টপিক'} (~${ovBn(Math.round(d.picks.length * per))} মিনিট)</div>
+          ${d.done.length ? `<div style="display:flex;flex-wrap:wrap;gap:2px 6px;margin-bottom:2px;">${d.done.map(doneChip).join('')}</div>` : ''}
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;">${d.picks.map((p, i) => (i ? '<span class="meta">→</span>' : '') + chip(p, i + 1)).join('') || (d.done.length ? '<span class="meta">আজকের সময় শেষ ✅</span>' : '')}</div></div>`;
       const arrow = '<div class="center meta" style="line-height:1;margin:3px 0;">↓</div>';
       const shown = sim.days.slice(0, 7), rest = sim.days.slice(7);
       const verdict = sim.doneDay
-        ? `<div style="background:#F1FAF4;border:1px solid #BFE3CC;border-radius:10px;padding:10px 12px;margin:10px 0;">🏁 রোজ <b>${ovBn(daily)} মিনিট</b> (টপিকপ্রতি ~${ovBn(per)} মিনিট) পড়লে সব <b>${ovBn(sim.total)}টা</b> টপিক একবার ঘুরে আসতে <b>~${ovBn(sim.doneDay)} দিন</b> লাগবে। দুর্বল টপিক এর মধ্যেই আবার আসে (↻), তাই দিন কিছুটা বাড়ে।</div>`
-        : `<div style="background:#FEF8EC;border:1px solid #F8DA9D;border-radius:10px;padding:10px 12px;margin:10px 0;">⚠️ ৯০ দিনেও সব টপিক ঘোরা শেষ হচ্ছে না — রোজের সময় বাড়াও বা কিছু টপিক ⛔ করো।</div>`;
-      chart.innerHTML = `<h3 style="margin:14px 0 4px 0;">🗺️ রিভিশন সাইকেল ম্যাপ</h3>${verdict}
+        ? `<div style="background:#F1FAF4;border:1px solid #BFE3CC;border-radius:10px;padding:10px 12px;margin:10px 0;">🏁 রোজ <b>${ovBn(daily)} মিনিট</b> (টপিকপ্রতি ~${ovBn(per)} মিনিট) পড়লে এখন যা যা due সব ঘুরে আসতে <b>~${ovBn(sim.doneDay)} দিন</b> লাগবে। দুর্বল টপিক এর মধ্যেই আবার আসে (↻), তাই দিন কিছুটা বাড়ে।<div class="meta" style="margin-top:4px;">ম্যাপ প্রতিবার ছাত্রের আসল অগ্রগতি থেকে নতুন করে হিসাব হয় — আজ কম টপিক করলে বাকিগুলো কালও আগে আসবে, "দিন ২ থেকে নতুন করে শুরু" হয় না।</div></div>`
+        : (!sim.pending && !sim.days.length ? `<div style="background:#F1FAF4;border:1px solid #BFE3CC;border-radius:10px;padding:10px 12px;margin:10px 0;">🎉 এই মুহূর্তে কোনো টপিক due নেই — সবই revise-এর মেয়াদের মধ্যে আছে।</div>` : `<div style="background:#FEF8EC;border:1px solid #F8DA9D;border-radius:10px;padding:10px 12px;margin:10px 0;">⚠️ ৯০ দিনেও সব টপিক ঘোরা শেষ হচ্ছে না — রোজের সময় বাড়াও বা কিছু টপিক ⛔ করো।</div>`);
+      const stt = window.__revOvStats || { days:0, avg:0 };
+      const rateHint = stt.days >= 2 && stt.avg > 0 ? `<div class="meta" style="margin:6px 0;">📊 আসলে গত ${ovBn(stt.days)} দিনে ছাত্র রোজ গড়ে <b>~${ovBn(stt.avg)}টা</b> টপিক revise করেছে (${ovBn(daily)} মিনিটে হলে টপিকপ্রতি ~${ovBn(Math.round(daily / stt.avg * 10) / 10)} মিনিট) · <a class="link-back" onclick="revOvUseRate()">এই হারে ম্যাপ দেখো</a></div>` : '';
+      chart.innerHTML = `<h3 style="margin:14px 0 4px 0;">🗺️ রিভিশন সাইকেল ম্যাপ</h3>${rateHint}${verdict}
         ${shown.map(dayCard).join(arrow)}
         ${rest.length ? `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;color:var(--pencil);">বাকি ${ovBn(rest.length)} দিন দেখো</summary><div style="margin-top:6px;">${rest.map(dayCard).join(arrow)}</div></details>` : ''}`;
     }
@@ -8587,6 +8619,7 @@ window.doSmartSearch = async function(){
     el.innerHTML = `<div class="hint" style="margin-top:10px;">লোড হচ্ছে...</div>`;
     const res = await postToScriptRaw('revisionOverrideList', { slug, subjects:Array.isArray(subsOverride) ? subsOverride.join(',') : '' });
     window.__revOvT = (res && res.topics) || [];
+    window.__revOvStats = (res && res.stats) || { days:0, avg:0 };
     const used = (res && res.used) || [], saved = (res && res.saved) || [];
     window.__revOvSaved = saved;
     const dv = localStorage.getItem('rev_ov_daily') || 20, pv = localStorage.getItem('rev_ov_per') || 3;
@@ -8600,6 +8633,10 @@ window.doSmartSearch = async function(){
     ovDraw();
   };
   window.ovDraw = ovDraw;
+  window.revOvUseRate = function(){
+    const st = window.__revOvStats || {}, daily = Math.max(5, parseInt(val('ovDaily'), 10) || 20); if(!st.avg) return;
+    document.getElementById('ovPer').value = Math.round(daily / st.avg * 10) / 10; ovDraw();
+  };
   function ovCheckedSubs(){ return Array.from(document.querySelectorAll('#ovList input[data-ovs]')).filter(i => i.checked).map(i => i.getAttribute('data-ovs')); }
   window.revOvSubjChange = function(){
     const l = ovCheckedSubs(); if(!l.length){ toast('অন্তত একটা বিষয় রাখো'); revOvLoad(window.__revOvSaved && window.__revOvSaved.length ? window.__revOvSaved : null); return; }
