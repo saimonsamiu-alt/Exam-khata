@@ -6530,51 +6530,158 @@ render();
     #imgZoomBar{ display:flex; align-items:center; gap:8px; padding:10px 12px; flex-wrap:wrap; }
     #imgZoomBar button, #imgZoomBar a{ background:rgba(255,255,255,0.15); color:#fff; border:1px solid rgba(255,255,255,0.28);
       border-radius:18px; padding:6px 14px; font-size:14px; font-weight:600; cursor:pointer; text-decoration:none; font-family:inherit; }
-    #imgZoomBox{ flex:1; overflow:auto; touch-action:pan-x pan-y; text-align:center; padding:8px; }
-    #imgZoomBox img{ width:100%; max-width:none; height:auto; background:#fff; border-radius:6px; cursor:default; }
+    #imgZoomBox{ flex:1; overflow:auto; touch-action:pan-x pan-y; text-align:left; padding:8px; cursor:grab; -webkit-overflow-scrolling:touch; }
+    #imgZoomBox.grabbing{ cursor:grabbing; }
+    #imgZoomWrap{ position:relative; margin:0 auto; }
+    #imgZoomBox img{ position:absolute; left:50%; top:50%; max-width:none; background:#fff; border-radius:6px; cursor:inherit; user-select:none; -webkit-user-drag:none; }
+    #imgZoomLoading{ position:absolute; inset:60px 0 0 0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:15px; pointer-events:none; }
+    #imgZoomBar button.on{ background:#F2C14E; color:#1F2A44; border-color:#F2C14E; }
   `;
   document.head.appendChild(st);
 
-  window.__zoomState = { z: 1, pinchDist: 0, pinchStartZ: 1 };
+  window.__zoomState = { z: 1, rot: 0, enh: false, pinchDist: 0, pinchStartZ: 1 };
 
-  window.imgZoomSet = function(z){
-    z = Math.max(1, Math.min(6, z));
+  // ছবির আকার/ঘোরানো/জুম — সব এখান থেকে হিসাব হয়। জুম করলে আঙুল/মাউসের জায়গাটাই স্ক্রিনে থাকে।
+  function zoomLayout(cx, cy, keepFocus){
+    const box = document.getElementById('imgZoomBox'), wrap = document.getElementById('imgZoomWrap'), img = document.getElementById('imgZoomImg');
+    if(!box || !wrap || !img) return;
+    const st = window.__zoomState;
+    const ar = (img.naturalWidth && img.naturalHeight) ? img.naturalWidth / img.naturalHeight : 0.75;
+    const bw = box.clientWidth - 16;
+    if(cx == null) cx = box.clientWidth / 2;
+    if(cy == null) cy = box.clientHeight / 2;
+    const oldW = wrap.offsetWidth || 1, oldH = wrap.offsetHeight || 1;
+    const fx = (box.scrollLeft + cx - 8) / oldW, fy = (box.scrollTop + cy - 8) / oldH;
+    const VW = Math.max(100, bw * st.z);
+    const sideways = (st.rot % 180) !== 0;
+    let W, H, VH;
+    if(sideways){ H = VW; W = H * ar; VH = W; } else { W = VW; H = VW / ar; VH = H; }
+    wrap.style.width = VW + 'px'; wrap.style.height = VH + 'px';
+    img.style.width = W + 'px'; img.style.height = H + 'px';
+    img.style.transform = 'translate(-50%,-50%) rotate(' + st.rot + 'deg)';
+    img.style.filter = st.enh ? 'grayscale(1) contrast(1.8) brightness(1.08)' : '';
+    if(keepFocus){
+      box.scrollLeft = fx * VW + 8 - cx;
+      box.scrollTop = fy * VH + 8 - cy;
+    }
+  }
+  window.imgZoomSet = function(z, cx, cy){
+    z = Math.max(1, Math.min(8, z));
     window.__zoomState.z = z;
-    const img = document.getElementById('imgZoomImg');
-    if(img) img.style.width = (z * 100) + '%';
+    zoomLayout(cx, cy, true);
+    if(z === 1){ const box = document.getElementById('imgZoomBox'); if(box){ box.scrollLeft = 0; } }
   };
   window.imgZoomBy = function(f){ imgZoomSet(window.__zoomState.z * f); };
+  window.imgZoomRotate = function(){
+    window.__zoomState.rot = (window.__zoomState.rot + 90) % 360;
+    zoomLayout(null, null, false);
+    const box = document.getElementById('imgZoomBox'); if(box){ box.scrollLeft = 0; box.scrollTop = 0; }
+  };
+  window.imgZoomEnhance = function(btn){
+    window.__zoomState.enh = !window.__zoomState.enh;
+    if(btn) btn.classList.toggle('on', window.__zoomState.enh);
+    zoomLayout(null, null, false);
+  };
+  window.imgZoomReset = function(){
+    window.__zoomState.z = 1;
+    zoomLayout(null, null, false);
+    const box = document.getElementById('imgZoomBox'); if(box){ box.scrollLeft = 0; box.scrollTop = 0; }
+  };
   window.closeImgZoom = function(){
     const ov = document.getElementById('imgZoomOverlay');
     if(ov) ov.remove();
   };
   window.openImgZoom = function(url, openUrl){
     closeImgZoom();
+    window.__zoomState = { z: 1, rot: 0, enh: false, pinchDist: 0, pinchStartZ: 1 };
     const ov = document.createElement('div');
     ov.id = 'imgZoomOverlay';
     ov.innerHTML = `
       <div id="imgZoomBar">
-        <button onclick="imgZoomBy(0.8)">➖</button>
-        <button onclick="imgZoomBy(1.25)">➕</button>
-        <button onclick="imgZoomSet(1)">↺</button>
+        <button onclick="imgZoomBy(0.8)" title="ছোট">➖</button>
+        <button onclick="imgZoomBy(1.25)" title="বড়">➕</button>
+        <button onclick="imgZoomRotate()" title="ঘোরাও">⟳ ঘোরাও</button>
+        <button onclick="imgZoomEnhance(this)" title="লেখা স্পষ্ট করো">✏️ স্পষ্ট</button>
+        <button onclick="imgZoomReset()" title="রিসেট">↺</button>
         <span style="flex:1;"></span>
         ${openUrl ? `<a href="${escapeHtml(openUrl)}" target="_blank" rel="noopener">↗ নতুন ট্যাবে</a>` : ''}
         <button onclick="closeImgZoom()">✕ বন্ধ</button>
       </div>
-      <div id="imgZoomBox"><img id="imgZoomImg" alt="ছবি"></div>`;
+      <div id="imgZoomBox"><div id="imgZoomWrap" style="width:100%; height:300px;"><img id="imgZoomImg" alt="ছবি"></div></div>
+      <div id="imgZoomLoading">⏳ ছবি লোড হচ্ছে...</div>`;
     document.body.appendChild(ov);
 
     const box = document.getElementById('imgZoomBox');
     const img = document.getElementById('imgZoomImg');
-    img.onerror = function(){
+    const loading = document.getElementById('imgZoomLoading');
+
+    // বেশি রেজোলিউশনের ছবি + ব্যর্থ হলে বিকল্প লিংক
+    const idm = String(url || '').match(/drive\.google\.com\/thumbnail\?id=([-\w]+)/) || String(url || '').match(/[?&]id=([-\w]+)/);
+    const id = (idm && /drive\.google\.com/.test(String(url))) ? idm[1] : null;
+    const cands = id ? [
+      'https://drive.google.com/thumbnail?id=' + id + '&sz=w2400',
+      'https://lh3.googleusercontent.com/d/' + id + '=w2400',
+      'https://drive.google.com/uc?export=view&id=' + id
+    ] : [url];
+    let ci = 0, done = false, timer = null;
+    function fail(){
+      if(done) return;
+      clearTimeout(timer);
       box.innerHTML = '<p style="color:#fff; padding:30px;">ছবিটা এখানে লোড হয়নি।' + (openUrl ? ' উপরের "নতুন ট্যাবে" চাপো।' : '') + '</p>';
+      if(loading) loading.remove();
+    }
+    function tryNext(){
+      if(done) return;
+      clearTimeout(timer);
+      if(ci >= cands.length){ fail(); return; }
+      img.src = cands[ci++];
+      timer = setTimeout(function(){ if(!done && !(img.complete && img.naturalWidth)) tryNext(); }, 12000);
+    }
+    img.onload = function(){ done = true; clearTimeout(timer); if(loading) loading.remove(); zoomLayout(null, null, false); };
+    img.onerror = function(){ tryNext(); };
+    zoomLayout(null, null, false);
+    tryNext();
+
+    ov.addEventListener('click', function(e){ if(e.target === ov) closeImgZoom(); });
+    window.addEventListener('resize', function r(){ if(!document.getElementById('imgZoomOverlay')){ window.removeEventListener('resize', r); return; } zoomLayout(null, null, true); });
+
+    // ডবল-ক্লিক / ডবল-ট্যাপ: জুম ইন/আউট
+    const toggleAt = function(clientX, clientY){
+      const r = box.getBoundingClientRect();
+      imgZoomSet(window.__zoomState.z > 1 ? 1 : 2.5, clientX - r.left, clientY - r.top);
     };
-    img.src = url;
-    imgZoomSet(1);
+    img.addEventListener('dblclick', function(e){ toggleAt(e.clientX, e.clientY); });
+    let lastTap = 0;
+    box.addEventListener('touchend', function(e){
+      if(e.touches.length === 0 && e.changedTouches.length === 1){
+        const now = Date.now();
+        if(now - lastTap < 300){ toggleAt(e.changedTouches[0].clientX, e.changedTouches[0].clientY); lastTap = 0; }
+        else lastTap = now;
+      }
+    }, { passive: true });
 
-    ov.addEventListener('click', function(e){ if(e.target === ov || e.target === box) closeImgZoom(); });
-    img.addEventListener('dblclick', function(){ imgZoomSet(window.__zoomState.z > 1 ? 1 : 2.5); });
+    // ডেস্কটপ: ক্লিক ধরে টেনে সরানো + Ctrl/ট্র্যাকপ্যাড-পিঞ্চ দিয়ে জুম
+    let drag = null;
+    box.addEventListener('mousedown', function(e){
+      if(e.button !== 0) return;
+      drag = { x: e.clientX, y: e.clientY, sl: box.scrollLeft, st: box.scrollTop };
+      box.classList.add('grabbing'); e.preventDefault();
+    });
+    window.addEventListener('mousemove', function mm(e){
+      if(!document.getElementById('imgZoomOverlay')){ window.removeEventListener('mousemove', mm); return; }
+      if(!drag) return;
+      box.scrollLeft = drag.sl - (e.clientX - drag.x);
+      box.scrollTop = drag.st - (e.clientY - drag.y);
+    });
+    window.addEventListener('mouseup', function(){ drag = null; box.classList.remove('grabbing'); });
+    box.addEventListener('wheel', function(e){
+      if(!e.ctrlKey) return;
+      e.preventDefault();
+      const r = box.getBoundingClientRect();
+      imgZoomSet(window.__zoomState.z * (e.deltaY < 0 ? 1.15 : 1/1.15), e.clientX - r.left, e.clientY - r.top);
+    }, { passive: false });
 
+    // মোবাইল: দুই আঙুলে পিঞ্চ জুম (দুই আঙুলের মাঝখানে ফোকাস)
     const dist = (t)=> Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
     box.addEventListener('touchstart', function(e){
       if(e.touches.length === 2){ window.__zoomState.pinchDist = dist(e.touches); window.__zoomState.pinchStartZ = window.__zoomState.z; }
@@ -6582,7 +6689,10 @@ render();
     box.addEventListener('touchmove', function(e){
       if(e.touches.length === 2 && window.__zoomState.pinchDist){
         e.preventDefault();
-        imgZoomSet(window.__zoomState.pinchStartZ * (dist(e.touches) / window.__zoomState.pinchDist));
+        const r = box.getBoundingClientRect();
+        const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
+        const my = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
+        imgZoomSet(window.__zoomState.pinchStartZ * (dist(e.touches) / window.__zoomState.pinchDist), mx, my);
       }
     }, { passive: false });
     box.addEventListener('touchend', function(e){ if(e.touches.length < 2) window.__zoomState.pinchDist = 0; }, { passive: true });
