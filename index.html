@@ -3928,22 +3928,19 @@ function parseWrittenBulk(raw){
   const questions = [];
   for(const block of blocks){
     const lines = block.split('\n').map(l=>l.trim()).filter(Boolean);
-    let text='', imageUrl='', modelAnswerText='', modelAnswerImageUrl='', marks=5, markingScheme='';
+    const q = { text:'', imageUrl:'', modelAnswerText:'', modelAnswerImageUrl:'', marks:5, markingScheme:'' };
+    let cur = null; // কোন ফিল্ডে আছি — কী ছাড়া পরের লাইন হলে সেটাতেই জুড়ে যাবে (একাধিক লাইনের উত্তর/নম্বর বণ্টনের জন্য)
     for(const line of lines){
-      const qm = line.match(/^Q[:.]?\s*(.*)$/i);
-      const qim = line.match(/^QIMG[:.]?\s*(.*)$/i);
-      const mm = line.match(/^MODEL[:.]?\s*(.*)$/i);
-      const mim = line.match(/^MIMG[:.]?\s*(.*)$/i);
-      const markm = line.match(/^MARKS[:.]?\s*(\d+(?:\.\d+)?)/i);
-      const rubm = line.match(/^RUBRIC[:.]?\s*(.*)$/i);
-      if(qm) text = qm[1];
-      else if(qim) imageUrl = qim[1].trim();
-      else if(mm) modelAnswerText = mm[1];
-      else if(mim) modelAnswerImageUrl = mim[1].trim();
-      else if(markm) marks = parseFloat(markm[1]);
-      else if(rubm) markingScheme = rubm[1];
+      let m;
+      if((m = line.match(/^Q[:.]\s*(.*)$/i)) || (m = line.match(/^Q\s+(.*)$/i))){ q.text = m[1]; cur = 'text'; }
+      else if((m = line.match(/^QIMG[:.]?\s*(.*)$/i))){ q.imageUrl = m[1].trim(); cur = null; }
+      else if((m = line.match(/^MODEL[:.]?\s*(.*)$/i))){ q.modelAnswerText = m[1]; cur = 'modelAnswerText'; }
+      else if((m = line.match(/^MIMG[:.]?\s*(.*)$/i))){ q.modelAnswerImageUrl = m[1].trim(); cur = null; }
+      else if((m = line.match(/^MARKS[:.]?\s*(\d+(?:\.\d+)?)/i))){ q.marks = parseFloat(m[1]); cur = null; }
+      else if((m = line.match(/^(?:RUBRIC|SCHEME|নম্বর\s*বণ্টন)[:.]?\s*(.*)$/i))){ q.markingScheme = m[1]; cur = 'markingScheme'; }
+      else if(cur){ q[cur] += '\n' + line; }
     }
-    if(text || imageUrl){ questions.push({ text, imageUrl, modelAnswerText, modelAnswerImageUrl, marks, markingScheme }); }
+    if(q.text || q.imageUrl){ questions.push(q); }
   }
   return questions;
 }
@@ -3999,6 +3996,7 @@ function questionsToBulkText(questions){
     if(q.imageUrl) block += `\nQIMG: ${q.imageUrl}`;
     block += `\nMODEL: ${q.modelAnswerText||''}`;
     if(q.modelAnswerImageUrl) block += `\nMIMG: ${q.modelAnswerImageUrl}`;
+    if(q.markingScheme) block += `\nRUBRIC: ${q.markingScheme}`;
     return block;
   }).join('\n\n');
 }
@@ -4022,8 +4020,9 @@ function renderWrittenEdit(examId, existing){
     <div class="card">
       <h2>📥 দ্রুত ইম্পোর্ট (ঐচ্ছিক)</h2>
       <p class="hint">অনেক প্রশ্ন একসাথে পেস্ট করতে চাইলে (ছবি ছাড়া, শুধু লেখা): দুইটা প্রশ্নের মাঝে ফাঁকা লাইন রাখো —<br>
-      <code>Q: প্রশ্নের লেখা<br>MODEL: সঠিক সমাধানের বর্ণনা</code></p>
-      <textarea id="wqBulkText" style="min-height:140px; font-family:var(--font-mono); font-size:13px;" placeholder="Q: প্রথম প্রশ্ন...&#10;MODEL: সমাধান...&#10;&#10;Q: দ্বিতীয় প্রশ্ন...&#10;MODEL: ..."></textarea>
+      <code>Q: প্রশ্নের লেখা<br>MODEL: সঠিক সমাধানের বর্ণনা<br>RUBRIC: নম্বর বণ্টন (ঐচ্ছিক)</code><br>
+      <b>RUBRIC</b> না দিলে AI ডিফল্ট নিয়মে নম্বর দেবে: কত % সঠিক তার উপর নম্বর · শর্টকাট করলে শুধু সতর্কবার্তা, নম্বর কাটবে না · মডেল উত্তরের মতো হুবহু না হয়ে অন্য সঠিক পদ্ধতিতে করলেও চলবে · শুধু উত্তর লিখলে (ক্যালকুলেটর) নম্বর না কেটে বড় সতর্কবার্তা — আসল পরীক্ষায় পুরো প্রক্রিয়া দেখাতে হবে।</p>
+      <textarea id="wqBulkText" style="min-height:140px; font-family:var(--font-mono); font-size:13px;" placeholder="Q: প্রথম প্রশ্ন...&#10;MODEL: সমাধান...&#10;RUBRIC: ধাপ ১-এ ৩, ধাপ ২-এ ২ নম্বর (না দিলে ডিফল্ট)&#10;&#10;Q: দ্বিতীয় প্রশ্ন...&#10;MODEL: ..."></textarea>
       <button class="btn btn-outline btn-block" onclick="importWrittenBulk()">📥 ইম্পোর্ট করো (নিচে যোগ হবে)</button>
     </div>
     <div class="card">
@@ -4077,7 +4076,7 @@ function renderWrittenQList(){
       <input type="file" accept="image/*" onchange="handleWrittenModelImageUpload(this, ${i})" style="margin-bottom:6px;">
       <div id="wqModelImgPrev${i}">${q.modelAnswerImageUrl ? `<img src="${driveImg(q.modelAnswerImageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="মডেল উত্তরের ছবি">`:''}</div>
       <label class="field-label">নম্বর বণ্টন (ঐচ্ছিক — যেমন: "[HNO₃] ও [H₂SO₄] বের করার জন্য ৪+৪=৮ নম্বর, ppm-এ প্রকাশের জন্য ২ নম্বর")</label>
-      <textarea oninput="writtenDraftQuestions[${i}].markingScheme=this.value" style="min-height:70px;" placeholder="ধাপে ধাপে কোন অংশে কত নম্বর তা লেখো — AI ও তুমি দুজনেই এটা দেখে মূল্যায়ন করতে পারবে...">${escapeHtml(q.markingScheme||'')}</textarea>
+      <textarea oninput="writtenDraftQuestions[${i}].markingScheme=this.value" style="min-height:70px;" placeholder="ফাঁকা রাখলে ডিফল্ট: % সঠিকতা অনুযায়ী নম্বর; শর্টকাটে শুধু সতর্কবার্তা; ভিন্ন সঠিক পদ্ধতিও চলবে; শুধু উত্তর থাকলে বড় সতর্কবার্তা। নিজের বণ্টন দিতে চাইলে ধাপে ধাপে কোন অংশে কত নম্বর লেখো...">${escapeHtml(q.markingScheme||'')}</textarea>
     </div>
   `).join('');
 }
