@@ -339,7 +339,7 @@
 <div class="holes" id="holes"></div>
 <div class="wrap" id="app"></div>
 <div class="toast" id="toast"></div>
-<button id="logoutFab" onclick="currentTeacher=null; go('landing');" style="display:none;">🚪 লগ-আউট</button>
+<button id="logoutFab" onclick="teacherLogout();" style="display:none;">🚪 লগ-আউট</button>
 <script>
 const app = document.getElementById('app');
 const toastEl = document.getElementById('toast');
@@ -543,6 +543,8 @@ window.installPwa = async function(){
   }
 };
 
+try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){} // browser যেন লগইন ডাটা নিজে থেকে মুছে না ফেলে
+
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then(reg => {
@@ -707,25 +709,64 @@ async function postToScript(action, params){
 function formatDate(v){ if(!v) return ''; const d = new Date(v); return isNaN(d.getTime()) ? String(v) : d.toLocaleString('bn-BD'); }
 function fmtTime(totalSec){ const m = Math.floor(totalSec/60), s = totalSec%60; return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'); }
 
+// ===== Persistent login storage (localStorage + cookie backup) =====
+// Browser tab-এ refresh/বন্ধ করে খুললেও যেন লগইন থাকে — localStorage হারিয়ে গেলে cookie থেকে ফেরত আনে।
+function _pGet(key){
+  let v = null;
+  try{ v = localStorage.getItem(key); }catch(e){}
+  if(v) return v;
+  try{
+    const m = document.cookie.match(new RegExp('(?:^|; )' + key + '=([^;]*)'));
+    if(m){
+      v = decodeURIComponent(m[1]);
+      try{ localStorage.setItem(key, v); }catch(e){}
+      return v;
+    }
+  }catch(e){}
+  return null;
+}
+function _pSet(key, val){
+  try{ localStorage.setItem(key, val); }catch(e){}
+  try{ document.cookie = key + '=' + encodeURIComponent(val) + '; max-age=' + (60*60*24*365) + '; path=/; SameSite=Lax'; }catch(e){}
+}
+function _pDel(key){
+  try{ localStorage.removeItem(key); }catch(e){}
+  try{ document.cookie = key + '=; max-age=0; path=/; SameSite=Lax'; }catch(e){}
+}
+
 function getLoggedStudent(){
   try{
-    const raw = localStorage.getItem('tuition_logged_student');
+    const raw = _pGet('tuition_logged_student');
     return raw ? JSON.parse(raw) : null;
   }catch(e){ return null; }
 }
-function setLoggedStudent(stud){
-  try{ localStorage.setItem('tuition_logged_student', JSON.stringify(stud)); }catch(e){}
+function setLoggedStudent(stud){ _pSet('tuition_logged_student', JSON.stringify(stud)); }
+function clearLoggedStudent(){ _pDel('tuition_logged_student'); }
+
+// ----- Teacher session (৩০ দিন মনে রাখে) -----
+const TEACHER_SESSION_DAYS = 30;
+function getLoggedTeacher(){
+  try{
+    const raw = _pGet('tuition_logged_teacher');
+    if(!raw) return null;
+    const t = JSON.parse(raw);
+    if(!t || !t.id || !t.ts || (Date.now() - t.ts) > TEACHER_SESSION_DAYS*86400000){ _pDel('tuition_logged_teacher'); return null; }
+    return { id: t.id, name: t.name };
+  }catch(e){ return null; }
 }
-function clearLoggedStudent(){
-  try{ localStorage.removeItem('tuition_logged_student'); }catch(e){}
-}
+function setLoggedTeacher(t){ _pSet('tuition_logged_teacher', JSON.stringify({ id:t.id, name:t.name, ts:Date.now() })); }
+window.teacherLogout = function(){
+  currentTeacher = null;
+  _pDel('tuition_logged_teacher');
+  go('landing');
+};
 window.studentLogout = function(){
   clearLoggedStudent();
   toast('লগআউট সম্পন্ন হয়েছে');
   go('landing');
 };
 
-let state = { screen: getLoggedStudent() ? 'studentDashboard' : 'landing' };
+let state = { screen: getLoggedTeacher() ? 'teacherDashboard' : (getLoggedStudent() ? 'studentDashboard' : 'landing') };
 let timerInterval = null;
 function go(screen, data={}){
   if(timerInterval){ clearInterval(timerInterval); timerInterval = null; }
@@ -966,7 +1007,7 @@ window.startPracticeFromEntry = async function(){
   runCheckingSequence(exam, slug, name, 1, { practice: true }); // [NEW] practice never marks attendance
 }
 
-let currentTeacher = null; // { id, name } -- persists across teacher screens regardless of state resets
+let currentTeacher = getLoggedTeacher(); // { id, name } -- persists across teacher screens regardless of state resets
 
 function renderTeacherGate(){
   app.innerHTML = `
@@ -986,6 +1027,7 @@ function checkTeacherPin(){
   const v = document.getElementById('enterPin').value.trim();
   if(v === TEACHER_PASSWORD){
     currentTeacher = { id: 'admin', name: CREATOR_NAME };
+    setLoggedTeacher(currentTeacher);
     go('teacherDashboard');
   }
   else toast('পাসওয়ার্ড ভুল হয়েছে');
@@ -1086,7 +1128,7 @@ async function renderTeacherDashboard(){
       <p class="hint">${teacherId==='admin' ? '' : 'এটা শুধু তোমার নিজের আলাদা সেকশন — অন্য শিক্ষকরা তোমার এই পরীক্ষাগুলো দেখতে পাবে না।'} পরীক্ষার কোড আর এই অ্যাপের লিংক স্টুডেন্টদের পাঠিয়ে দাও। স্টুডেন্টদের পাসওয়ার্ড: <b>${STUDENT_PASSWORD}</b></p>
       ${listHtml}
     </div>
-    <div class="center"><a class="link-back" onclick="currentTeacher=null; go('landing')">← মূল পাতায় ফিরে যাও (লগ-আউট)</a></div>
+    <div class="center"><a class="link-back" onclick="teacherLogout()">← মূল পাতায় ফিরে যাও (লগ-আউট)</a></div>
     ${creditFooter()}
   `;
 }
