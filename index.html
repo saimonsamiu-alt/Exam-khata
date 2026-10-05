@@ -5884,7 +5884,7 @@ function syncLogoutFab(){
 // (Small edits to existing functions are marked with "// [NEW]" comments.)
 
 // POST that returns the server's JSON even on errors (postToScript() hides the error message)
-const SLOW_AI_ACTIONS = ['revisionGradeCq','revisionAssignAnswer','planSetCq'];
+const SLOW_AI_ACTIONS = ['revisionGradeCq','revisionAssignAnswer','planSetCq','appealWrittenMarks'];
 async function postToScriptRaw(action, params){
   const ctl = (SLOW_AI_ACTIONS.indexOf(action) !== -1 && window.AbortController) ? new AbortController() : null;
   const tm = ctl ? setTimeout(() => ctl.abort(), 100000) : null;   // ১০০ সেকেন্ডে সাড়া না এলে থামিয়ে ছাত্রকে জানানো হয়
@@ -6591,7 +6591,7 @@ render();
     const ov = document.getElementById('imgZoomOverlay');
     if(ov) ov.remove();
   };
-  window.openImgZoom = function(url, openUrl){
+  window.openImgZoom = function(url, openUrl, extraHtml){
     closeImgZoom();
     window.__zoomState = { z: 1, rot: 0, enh: false, pinchDist: 0, pinchStartZ: 1 };
     const ov = document.createElement('div');
@@ -6603,6 +6603,7 @@ render();
         <button onclick="imgZoomRotate()" title="ঘোরাও">⟳ ঘোরাও</button>
         <button onclick="imgZoomEnhance(this)" title="লেখা স্পষ্ট করো">✏️ স্পষ্ট</button>
         <button onclick="imgZoomReset()" title="রিসেট">↺</button>
+        ${extraHtml || ''}
         <span style="flex:1;"></span>
         ${openUrl ? `<a href="${escapeHtml(openUrl)}" target="_blank" rel="noopener">↗ নতুন ট্যাবে</a>` : ''}
         <button onclick="closeImgZoom()">✕ বন্ধ</button>
@@ -7396,6 +7397,7 @@ async function renderWrittenSubmissions(code){
         <div class="row" style="margin-bottom:8px;">
           <button class="btn btn-outline" onclick="viewWrittenImage(${idx})">🖼️ খাতা দেখো</button>
           <button class="btn btn-gold" onclick="openWrittenAnnotator(${idx})">✏️ চেক / মার্ক করো</button>
+          <button class="btn btn-outline" onclick="openAppealBox('${s.id}','teacher',${idx})">🤖 AI-কে বলো</button>
         ${(s.aiFailed && !s.reviewResolved) ? `<button class="btn btn-outline" onclick="aiRecheckOne(${idx})">🤖 AI দিয়ে আবার চেক</button>` : ''}
         </div>
         ${s.annotatedUrl ? `<div class="meta" style="margin:0 0 4px 0;">আপনার মার্ক করা ছবি (চাপলে বড় হবে):</div>
@@ -7446,7 +7448,9 @@ window.reopenWrittenExam = async function(code, slug){
 };
 window.viewWrittenImage = function(idx){
   const s = (window.__writtenSubsCache || [])[idx]; if(!s) return;
-  openImgZoom(driveImg(s.driveUrl), s.driveUrl);
+  const extra = `<button onclick="closeImgZoom(); openWrittenAnnotator(${idx})">✏️ মার্ক করো</button>` +
+                `<button onclick="openAppealBox('${s.id}','teacher',${idx})">🤖 AI-কে বলো</button>`;
+  openImgZoom(driveImg(s.driveUrl), s.driveUrl, extra);
 };
 window.openWrittenAnnotator = function(idx){
   const s = (window.__writtenSubsCache || [])[idx]; if(!s) return;
@@ -7506,6 +7510,7 @@ window.requestPastReview = async function(subId){
 // ---------- ছাত্র: Past Exams > Written ----------
 function renderPastWrittenDetail(title, subs, examQuestions){
   examQuestions = examQuestions || [];
+  window.__pastWrittenCtx = { title: title, subs: subs, examQuestions: examQuestions };
   const rows = (subs || []).map(s=>{
     const q = examQuestions[s.questionIndex] || {};
     const maxMarks = Number(q.marks) || 5;
@@ -7541,6 +7546,13 @@ function renderPastWrittenDetail(title, subs, examQuestions){
              style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block;">` : ''}
       <div class="review-ans ${s.aiFailed ? '' : (s.percent >= 50 ? 'right' : 'wrong')}" style="margin-top:10px;">🤖 ${escapeHtml(s.aiFeedback || '')}</div>
       ${teacherHtml}
+      ${(function(){
+        if(pendAi) return '';
+        const left = Math.max(0, 2 - (Number(s.appealCount) || 0));
+        if(left > 0 && s.percent < 100) return `<button class="btn btn-gold btn-block" style="margin-top:10px;" onclick="openAppealBox('${s.id}','student')">🤖 AI-কে বলো — এই প্রশ্নে নম্বর কেন বাড়া উচিত <span style="font-weight:400;">(${left} বার বাকি)</span></button>`;
+        if(left === 0) return `<p class="hint" style="margin:10px 0 0 0;">🤖 AI-কে বলার সুযোগ এই প্রশ্নে শেষ। এখনো দ্বিমত থাকলে নিচে শিক্ষকের রিভিউ চাও।</p>`;
+        return '';
+      })()}
       <div id="pastRev_${s.id}" style="margin-top:8px;">${reviewArea}</div>
     </div>`;
   }).join('');
@@ -10689,6 +10701,131 @@ window.doSmartSearch = async function(){
 })();
 
 /* ============ NOTES v3 (end) ============ */
+
+/* ============ NUMBER APPEAL: AI-কে বলো (ছাত্র ও শিক্ষক) ============ */
+(function(){
+  const st = document.createElement('style');
+  st.textContent = `
+    #appealOverlay{ position:fixed; inset:0; z-index:300; background:rgba(10,14,24,0.62); display:flex; align-items:center; justify-content:center; padding:14px; }
+    #appealBox{ background:#fff; border-radius:14px; max-width:480px; width:100%; max-height:92vh; overflow:auto; padding:18px; box-shadow:0 10px 40px rgba(0,0,0,0.35); }
+    #appealBox textarea{ width:100%; min-height:110px; font-family:inherit; font-size:15px; margin:8px 0; box-sizing:border-box; }
+  `;
+  document.head.appendChild(st);
+
+  window.__appeal = null;
+  window.closeAppealBox = function(){ const o = document.getElementById('appealOverlay'); if(o) o.remove(); window.__appeal = null; };
+
+  function findSub(subId, role){
+    if(role === 'teacher'){
+      const subs = window.__writtenSubsCache || [];
+      const sub = subs.find(x => x.id === subId);
+      const q = sub ? ((window.__writtenExamQuestionsCache || [])[sub.questionIndex] || {}) : {};
+      return { sub: sub, max: Number(q.marks) || 5 };
+    }
+    const c = window.__pastWrittenCtx || {};
+    const sub = (c.subs || []).find(x => x.id === subId);
+    const q = sub ? ((c.examQuestions || [])[sub.questionIndex] || {}) : {};
+    return { sub: sub, max: Number(q.marks) || 5 };
+  }
+  function refreshAfter(role){
+    if(role === 'teacher'){
+      closeImgZoom();
+      go('writtenSubmissions', { code: window.__writtenExamCode, onlyPending: !!(state && state.onlyPending) });
+    } else {
+      const c = window.__pastWrittenCtx;
+      if(c) renderPastWrittenDetail(c.title, c.subs, c.examQuestions);
+    }
+  }
+  function errText(res){
+    const m = res && res.message;
+    if(m === 'appeal_limit') return 'এই প্রশ্নে AI-কে বলার সুযোগ শেষ। শিক্ষকের রিভিউ চাও।';
+    if(m === 'argument_short') return 'আরেকটু বিস্তারিত লেখো (কোন অংশে কেন নম্বর পাওয়া উচিত)।';
+    if(m === 'timeout') return '⏳ AI-র উত্তর দিতে অনেক সময় লাগছে, একটু পরে আবার চেষ্টা করো।';
+    if(m === 'ai_unavailable') return 'AI এখন উত্তর দিতে পারছে না, একটু পরে আবার চেষ্টা করো।';
+    if(m === 'image_unavailable') return 'খাতার ছবিটা পাওয়া যায়নি।';
+    if(m === 'not_graded_yet') return 'এই উত্তর এখনো চেক হয়নি।';
+    return 'পাঠানো যায়নি, ইন্টারনেট দেখে আবার চেষ্টা করো।';
+  }
+
+  window.openAppealBox = function(subId, role, idx){
+    closeAppealBox();
+    role = role === 'teacher' ? 'teacher' : 'student';
+    const f = findSub(subId, role);
+    if(!f.sub){ toast('এটা খোলা যাচ্ছে না'); return; }
+    window.__appeal = { subId: subId, role: role, busy: false };
+    const isT = role === 'teacher';
+    const ov = document.createElement('div');
+    ov.id = 'appealOverlay';
+    ov.innerHTML = `
+      <div id="appealBox">
+        <h3 style="margin:0 0 4px 0;">🤖 AI-কে বলো</h3>
+        <p class="hint" style="margin:0;">${isT
+          ? 'কোন অংশে কেন নম্বর পাওয়া উচিত (বা কমানো উচিত) লেখো। AI খাতা আবার পড়ে ' + 'সিদ্ধান্ত নেবে — ছবিতে যা সত্যিই লেখা আছে তার ভিত্তিতে।'
+          : 'এই প্রশ্নে কেন নম্বর বাড়া উচিত লেখো — কোন ধাপ/অংশ ঠিক আছে সেটা বলো। AI খাতা আবার পড়ে দেখবে। শুধু "নম্বর দাও" লিখলে কাজ হবে না, নম্বর কমবেও না।'}</p>
+        <textarea id="appealText" maxlength="600" placeholder="${isT ? 'যেমন: ধাপ ২-এ সঠিক সূত্র বসানো আছে, শুধু শেষ যোগে ভুল' : 'যেমন: আমি ২য় ধাপে সঠিক সূত্র লিখেছি, কিন্তু সেটার নম্বর কাটা হয়েছে'}"></textarea>
+        <div id="appealStatus"></div>
+        <div class="row" style="margin-top:6px;">
+          <button class="btn btn-outline" onclick="closeAppealBox()">বাতিল</button>
+          <button class="btn btn-primary" id="appealSend" onclick="submitAppeal()">🚀 AI-কে পাঠাও</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    setTimeout(() => { const t = document.getElementById('appealText'); if(t) t.focus(); }, 80);
+  };
+
+  window.submitAppeal = async function(){
+    const A = window.__appeal; if(!A || A.busy) return;
+    const txt = ((document.getElementById('appealText') || {}).value || '').trim();
+    const stat = document.getElementById('appealStatus');
+    if(txt.length < 8){ stat.innerHTML = '<p class="hint" style="color:var(--red);">আরেকটু বিস্তারিত লেখো (অন্তত এক লাইন)।</p>'; return; }
+    A.busy = true;
+    const btn = document.getElementById('appealSend'); if(btn) btn.disabled = true;
+    stat.innerHTML = '<p class="hint">⏳ AI খাতা আবার পড়ছে... (১ মিনিট পর্যন্ত লাগতে পারে)</p>';
+    const res = await postToScriptRaw('appealWrittenMarks', { submissionId: A.subId, role: A.role, argument: txt });
+    if(window.__appeal !== A) return;
+    A.busy = false;
+    if(!res || res.status !== 'success'){
+      if(btn) btn.disabled = false;
+      stat.innerHTML = '<p class="hint" style="color:var(--red);">' + escapeHtml(errText(res)) + '</p>';
+      return;
+    }
+    const f = findSub(A.subId, A.role);
+    const oldM = percentToMarks(res.oldPercent, f.max), newM = percentToMarks(res.percent, f.max);
+    if(f.sub){
+      if(res.changed){ f.sub.percent = res.percent; f.sub.aiFeedback = '🔁 পুনর্মূল্যায়ন: ' + res.feedback; }
+      if(A.role === 'student') f.sub.appealCount = (Number(f.sub.appealCount) || 0) + 1;
+    }
+    const box = document.getElementById('appealBox');
+    const headLine = res.changed
+      ? `<div style="background:#E8F6EF; border:1px solid #A3E0B5; border-radius:10px; padding:10px 12px; font-weight:700; color:var(--green);">✅ নম্বর বদলেছে: ${oldM} → ${newM} / ${f.max}</div>`
+      : `<div style="background:#FFF6E0; border:1px solid #F0D58C; border-radius:10px; padding:10px 12px; font-weight:700; color:#8A6410;">ℹ️ AI নম্বর বদলায়নি (${newM} / ${f.max})</div>`;
+    const left = (A.role === 'student' && res.attemptsLeft != null) ? res.attemptsLeft : null;
+    const teacherBtn = (A.role === 'student' && !res.changed)
+      ? `<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="appealToTeacher()">🚩 তবুও শিক্ষককে দেখাও</button>` : '';
+    box.innerHTML = `
+      <h3 style="margin:0 0 8px 0;">🤖 AI-র উত্তর</h3>
+      ${headLine}
+      <div style="margin-top:10px; white-space:pre-wrap; font-size:14.5px;">${escapeHtml(res.feedback || '')}</div>
+      ${left !== null ? `<p class="hint" style="margin-top:10px;">এই প্রশ্নে AI-কে বলার আর ${left} বার বাকি।</p>` : ''}
+      ${teacherBtn}
+      <button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="var r=window.__appeal&&window.__appeal.role; closeAppealBox(); __appealRefresh(r);">ঠিক আছে</button>`;
+    A.argument = txt;
+  };
+  window.__appealRefresh = refreshAfter;
+
+  window.appealToTeacher = async function(){
+    const A = window.__appeal; if(!A) return;
+    toast('শিক্ষকের কাছে পাঠানো হচ্ছে...');
+    const reason = ('AI-কে বলেছিলাম: ' + (A.argument || '')).slice(0, 290);
+    const res = await postToScript('requestWrittenReview', { submissionId: A.subId, reason: reason });
+    if(res){
+      const f = findSub(A.subId, A.role);
+      if(f.sub){ f.sub.reviewRequested = true; f.sub.reviewReason = reason; f.sub.reviewResolved = false; }
+      toast('শিক্ষকের কাছে রিভিউর অনুরোধ গেছে ✅');
+      const r = A.role; closeAppealBox(); refreshAfter(r);
+    }
+  };
+})();
 </script>
 </body>
 </html>
