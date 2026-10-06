@@ -867,7 +867,8 @@ function renderLanding(){
       <div class="feature-grid">
         <div class="feature-card" onclick="go('studentEntry')"><span class="ic">📋</span><span class="lbl">পরীক্ষা দাও<br><small style="font-weight:500; color:var(--pencil);">কোড দিয়ে, লগইন ছাড়া</small></span></div> <!-- [NEW] -->
         <div class="feature-card" onclick="go('practiceList')"><span class="ic">🎯</span><span class="lbl">Practice</span></div>
-        <div class="feature-card" onclick="go('topicsSubject')"><span class="ic">📚</span><span class="lbl">গুরুত্বপূর্ণ Topics</span></div>
+        <div class="feature-card" onclick="go('impSubject')"><span class="ic">⭐</span><span class="lbl">গুরুত্বপূর্ণ টপিক<br><small style="font-weight:500; color:var(--pencil);">সাল অনুযায়ী</small></span></div>
+        <div class="feature-card" onclick="go('topicsSubject')"><span class="ic">📚</span><span class="lbl">জ্ঞানমূলক</span></div>
         <div class="feature-card" onclick="go(getLoggedStudent()?'studentDashboard':'studentAuth')"><span class="ic">📅</span><span class="lbl">উপস্থিতি নিশ্চিত করো</span></div>
         <div class="feature-card" onclick="go('faqList')"><span class="ic">❓</span><span class="lbl">সাধারণ জিজ্ঞাসা</span></div>
         <div class="feature-card" onclick="go('notesGate')"><span class="ic">📝</span><span class="lbl">ক্লাস নোট / স্লাইড</span></div>
@@ -1104,9 +1105,10 @@ async function renderTeacherDashboard(){
         <button class="btn btn-outline btn-block" onclick="go('notesManage')">📝 নোট/স্লাইড যোগ করো</button>
       </div>
       <div class="row" style="margin-top:10px;">
-        <button class="btn btn-outline btn-block" onclick="go('topicsManage')">📚 Topics ম্যানেজ করো</button>
+        <button class="btn btn-outline btn-block" onclick="go('topicsManage')">📚 জ্ঞানমূলক ম্যানেজ করো</button>
         <button class="btn btn-outline btn-block" onclick="go('faqManage')">❓ প্রশ্নোত্তর ম্যানেজ করো</button>
       </div>
+      <button class="btn btn-gold btn-block" style="margin-top:10px;" onclick="go('impManage',{subject:'physics'})">⭐ গুরুত্বপূর্ণ টপিক (সাল-ভিত্তিক) ম্যানেজ করো</button>
       <div class="row" style="margin-top:10px;">
         <button class="btn btn-outline btn-block" onclick="go('masteryManage')">🎯 Mastery কোর্স</button>
         <button class="btn btn-gold btn-block" onclick="go('couponManage')">🎁 Treat Coupon</button>
@@ -2014,7 +2016,7 @@ function renderTopicsManage(){
     return `<button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="go('topicsManageSection',{subject:'${subject}'})">${icon} ${subj.label}</button>`;
   }).join('');
   app.innerHTML = `
-    ${header('Topics ম্যানেজ করো')}
+    ${header('জ্ঞানমূলক ম্যানেজ করো')}
     <div class="card">
       <h2>বিষয় বাছো</h2>
       <p class="hint">Physics/Chemistry/Mathematics-এ ১ম ও ২য় পত্র, Biology-তে Botany ও Zoology, ICT-তে সব অধ্যায় একসাথে। প্রতিটার নাম ও কনটেন্ট তুমি লিখে দিতে পারবে।</p>
@@ -2031,7 +2033,7 @@ function renderTopicsManageSection(subject){
     return `<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('topicsManageChapters',{subject:'${subject}', sectionKey:'${secKey}'})">${sec.label} (${sec.count}টা অধ্যায়)</button>`;
   }).join('');
   app.innerHTML = `
-    ${header('Topics ম্যানেজ করো')}
+    ${header('জ্ঞানমূলক ম্যানেজ করো')}
     <div class="card">
       <h2>${subj.label}</h2>
       ${btns}
@@ -2041,7 +2043,7 @@ function renderTopicsManageSection(subject){
   `;
 }
 async function renderTopicsManageChapters(subject, sectionKey){
-  app.innerHTML = `${header('Topics ম্যানেজ করো')}<div class="card center">লোড হচ্ছে...</div>`;
+  app.innerHTML = `${header('জ্ঞানমূলক ম্যানেজ করো')}<div class="card center">লোড হচ্ছে...</div>`;
   const sec = TOPIC_STRUCTURE[subject].sections[sectionKey];
   const allTopics = await getAllTopics();
   const map = {};
@@ -2059,7 +2061,7 @@ async function renderTopicsManageChapters(subject, sectionKey){
     </div>`;
   }
   app.innerHTML = `
-    ${header('Topics ম্যানেজ করো')}
+    ${header('জ্ঞানমূলক ম্যানেজ করো')}
     <div class="card">
       <h2>${TOPIC_STRUCTURE[subject].label} · ${sec.label}</h2>
       ${rows}
@@ -2111,8 +2113,8 @@ function renderTopicsEdit(subject, sectionKey, chNum, existingName, existingCont
       <h2>অধ্যায় ${chNum}</h2>
       <label class="field-label">অধ্যায়ের নাম</label>
       <input type="text" id="chapName" value="${escapeHtml(existingName)}">
-      <label class="field-label">গুরুত্বপূর্ণ টপিক/কনটেন্ট</label>
-      <textarea id="chapContent" style="min-height:220px;" placeholder="এখানে গুরুত্বপূর্ণ টপিক, সংজ্ঞা, পয়েন্ট লিখো...">${escapeHtml(existingContent)}</textarea>
+      <label class="field-label">জ্ঞানমূলক কনটেন্ট</label>
+      <textarea id="chapContent" style="min-height:220px;" placeholder="এখানে সংজ্ঞা, ব্যাখ্যা, পয়েন্ট লিখো...">${escapeHtml(existingContent)}</textarea>
       <button class="btn btn-primary btn-block" onclick="saveTopicChapter('${subject}','${sectionKey}',${chNum})">✅ সেভ করো</button>
     </div>
     <div class="center"><a class="link-back" onclick="go('topicsManageChapters',{subject:'${subject}', sectionKey:'${sectionKey}'})">← ফিরে যাও</a></div>
@@ -2137,7 +2139,7 @@ function renderTopicsSubject(){
     return `<button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="go('topicsSection',{subject:'${subject}'})">${icon} ${subj.label}</button>`;
   }).join('');
   app.innerHTML = `
-    ${header('গুরুত্বপূর্ণ Topics')}
+    ${header('জ্ঞানমূলক')}
     <div class="card">
       <h2>কোন বিষয়ের topics দেখতে চাও?</h2>
       ${btns}
@@ -2153,7 +2155,7 @@ function renderTopicsSection(subject){
     return `<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('topicsChapterList',{subject:'${subject}', sectionKey:'${secKey}'})">${sec.label}</button>`;
   }).join('');
   app.innerHTML = `
-    ${header('গুরুত্বপূর্ণ Topics')}
+    ${header('জ্ঞানমূলক')}
     <div class="card">
       <h2>${subj.label}</h2>
       ${btns}
@@ -2163,7 +2165,7 @@ function renderTopicsSection(subject){
   `;
 }
 async function renderTopicsChapterList(subject, sectionKey){
-  app.innerHTML = `${header('গুরুত্বপূর্ণ Topics')}<div class="card center">লোড হচ্ছে...</div>`;
+  app.innerHTML = `${header('জ্ঞানমূলক')}<div class="card center">লোড হচ্ছে...</div>`;
   const sec = TOPIC_STRUCTURE[subject].sections[sectionKey];
   const allTopics = await getAllTopics();
   const map = {};
@@ -2185,7 +2187,7 @@ async function renderTopicsChapterList(subject, sectionKey){
     </div>`;
   }
   app.innerHTML = `
-    ${header('গুরুত্বপূর্ণ Topics')}
+    ${header('জ্ঞানমূলক')}
     <div class="card">
       <h2>${TOPIC_STRUCTURE[subject].label} · ${sec.label}</h2>
       ${rows}
@@ -2203,7 +2205,7 @@ window.viewTopicChapter = function(chNum){
 }
 function renderTopicsView(chapName, content, subject, sectionKey){
   app.innerHTML = `
-    ${header('গুরুত্বপূর্ণ Topics')}
+    ${header('জ্ঞানমূলক')}
     <div class="card">
       <h2>${escapeHtml(chapName)}</h2>
       <div style="white-space:pre-wrap; font-size:15px; line-height:1.7;">${linkifyText(content)}</div>
@@ -6441,6 +6443,11 @@ function render(){
   else if(s==='studentAlready') renderStudentAlready(state.exam, state.prev, state.tryNo, state.totalTries);
   else if(s==='studentExam') renderStudentExam();
   else if(s==='studentResult') renderStudentResult();
+  else if(s==='impSubject') renderImpSubject();
+  else if(s==='impSection') renderImpSection(state.subject);
+  else if(s==='impChapters') renderImpChapters(state.subject, state.sectionKey);
+  else if(s==='impChapter') renderImpChapter(state.subject, state.sectionKey, state.chapter, state.tab);
+  else if(s==='impManage') renderImpManage(state.subject);
   else if(s==='topicsManage') renderTopicsManage();
   else if(s==='topicsManageSection') renderTopicsManageSection(state.subject);
   else if(s==='topicsManageChapters') renderTopicsManageChapters(state.subject, state.sectionKey);
@@ -10826,6 +10833,235 @@ window.doSmartSearch = async function(){
     }
   };
 })();
+
+// =====================================================================================
+// গুরুত্বপূর্ণ টপিক (সাল-ভিত্তিক) — ছাত্র: বিষয় → পত্র → অধ্যায় → (টপিক | গুরুত্বপূর্ণ প্রশ্ন)  |  শিক্ষক: ম্যানেজ
+// ব্যাকএন্ড: Imp.gs (impList / impQuestions / impSave / impDelete / impRestore / impBuildNow)
+// =====================================================================================
+const IMP_ICONS = { physics:'⚛️', chemistry:'🧪', mathematics:'📐', biology:'🌿', ict:'💻' };
+const impBn = s => String(s == null ? '' : s).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+const impE = s => escapeHtml(String(s == null ? '' : s));
+window.__imp = window.__imp || { list:{}, qs:{} };
+
+async function impCall(action, params){
+  try{
+    const o = await postToScriptRaw(action, params || {});
+    return (o && o.status === 'success') ? o : null;
+  }catch(e){ return null; }
+}
+async function impLoad(subject, force){
+  if(!force && window.__imp.list[subject]) return window.__imp.list[subject];
+  const o = await impCall('impList', { subject });
+  if(o){ window.__imp.list[subject] = o.chapters || []; return window.__imp.list[subject]; }
+  return null;
+}
+function impSalChips(sals, max){
+  if(!sals || !sals.length) return '';
+  const shown = sals.slice(0, max || 6).map(s => `<span class="q-tag" style="margin:0 4px 4px 0; display:inline-block;">${impE(impBn(s))}</span>`).join('');
+  return shown + (sals.length > (max || 6) ? `<span class="meta">+${impBn(sals.length - (max || 6))}টা আরও</span>` : '');
+}
+
+// ---------- ছাত্র ----------
+function renderImpSubject(){
+  const btns = Object.keys(TOPIC_STRUCTURE).map(sub =>
+    `<button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="go('impSection',{subject:'${sub}'})">${IMP_ICONS[sub] || '📘'} ${TOPIC_STRUCTURE[sub].label}</button>`).join('');
+  app.innerHTML = `
+    ${header('গুরুত্বপূর্ণ টপিক')}
+    <div class="card">
+      <h2>কোন বিষয়ের গুরুত্বপূর্ণ টপিক দেখবে?</h2>
+      <p class="hint">বোর্ড ও ভর্তি পরীক্ষায় যে টপিক থেকে যত বেশি সাল প্রশ্ন এসেছে, সেটা তত বেশি গুরুত্বপূর্ণ।</p>
+      ${btns}
+    </div>
+    <div class="center"><a class="link-back" onclick="go('landing')">← মূল পাতায় ফিরে যাও</a></div>
+    ${creditFooter()}`;
+}
+function renderImpSection(subject){
+  const subj = TOPIC_STRUCTURE[subject];
+  const btns = Object.keys(subj.sections).map(k =>
+    `<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('impChapters',{subject:'${subject}', sectionKey:'${k}'})">${subj.sections[k].label}</button>`).join('');
+  app.innerHTML = `
+    ${header('গুরুত্বপূর্ণ টপিক')}
+    <div class="card"><h2>${subj.label}</h2>${btns}</div>
+    <div class="center"><a class="link-back" onclick="go('impSubject')">← ফিরে যাও</a></div>
+    ${creditFooter()}`;
+}
+async function renderImpChapters(subject, sectionKey){
+  app.innerHTML = `${header('গুরুত্বপূর্ণ টপিক')}<div class="card center">লোড হচ্ছে...</div>`;
+  const list = await impLoad(subject, true);
+  if(state.screen !== 'impChapters') return;
+  const subj = TOPIC_STRUCTURE[subject], sec = subj.sections[sectionKey];
+  const back = `<div class="center"><a class="link-back" onclick="go('impSection',{subject:'${subject}'})">← ফিরে যাও</a></div>${creditFooter()}`;
+  if(!list){ app.innerHTML = `${header('গুরুত্বপূর্ণ টপিক')}<div class="card"><p class="hint" style="color:var(--red);">❌ লোড করা যায়নি — ইন্টারনেট চেক করো।</p></div>${back}`; return; }
+  const row = (c) => {
+    const nt = c.topics.length;
+    return `<div class="exam-item">
+      <div class="row-top"><h3 style="margin-bottom:0;">${impE(c.chapter)}</h3></div>
+      <div class="meta">⭐ ${impBn(nt)}টা গুরুত্বপূর্ণ টপিক · ❓ ${impBn(c.qn)}টা গুরুত্বপূর্ণ প্রশ্ন</div>
+      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="impOpenChapter('${subject}','${sectionKey}',${JSON.stringify(c.chapter).replace(/"/g, '&quot;')})">দেখো</button>
+    </div>`;
+  };
+  const mine = list.filter(c => c.section === sectionKey), other = list.filter(c => c.section === 'other');
+  app.innerHTML = `
+    ${header('গুরুত্বপূর্ণ টপিক')}
+    <div class="card">
+      <h2>${subj.label} · ${sec.label}</h2>
+      ${mine.length ? mine.map(row).join('') : '<p class="hint">এই অংশে এখনো কোনো গুরুত্বপূর্ণ টপিক যোগ হয়নি।</p>'}
+      ${other.length ? `<h3 style="margin-top:14px;">অন্যান্য অধ্যায়</h3>${other.map(row).join('')}` : ''}
+    </div>${back}`;
+}
+window.impOpenChapter = function(subject, sectionKey, chapter){ go('impChapter', { subject, sectionKey, chapter, tab:'topics' }); };
+
+function impStars(score, max){
+  const r = max ? score / max : 0, n = Math.max(1, Math.min(5, Math.ceil(r * 5)));
+  return '🔥'.repeat(n > 3 ? 2 : 1) + '⭐'.repeat(n);
+}
+function impTopicCard(t, max){
+  const pct = max ? Math.max(8, Math.round(t.score / max * 100)) : 0;
+  const hasAi = t.score > 0;
+  return `<div class="exam-item">
+    <div class="row-top"><h3 style="margin-bottom:0;">${impE(t.topic)}</h3>${hasAi ? `<span class="q-tag">${impStars(t.score, max)}</span>` : ''}</div>
+    ${t.note ? `<div style="white-space:pre-wrap; font-size:14.5px; line-height:1.7; margin:6px 0;">${impE(t.note)}</div>` : ''}
+    ${hasAi ? `<div style="background:#EEF3F8; border-radius:6px; height:7px; margin:8px 0 4px;"><div style="width:${pct}%; height:100%; border-radius:6px; background:var(--gold);"></div></div>
+      <div class="meta">মোট ${impBn(t.score)}টা সাল-ট্যাগ · ${impBn(t.qCount)}টা প্রশ্ন থেকে</div>
+      <div style="margin-top:6px;">${impSalChips(t.sals, 6)}</div>` : ''}
+  </div>`;
+}
+async function renderImpChapter(subject, sectionKey, chapter, tab){
+  tab = tab || 'topics';
+  const sec = TOPIC_STRUCTURE[subject].sections[sectionKey];
+  const chJs = JSON.stringify(chapter).replace(/"/g, '&quot;');
+  const tabs = `<div class="row" style="margin:10px 0;">
+      <button class="btn ${tab === 'topics' ? 'btn-primary' : 'btn-outline'} btn-block" onclick="go('impChapter',{subject:'${subject}',sectionKey:'${sectionKey}',chapter:${chJs},tab:'topics'})">⭐ গুরুত্বপূর্ণ টপিক</button>
+      <button class="btn ${tab === 'qs' ? 'btn-primary' : 'btn-outline'} btn-block" onclick="go('impChapter',{subject:'${subject}',sectionKey:'${sectionKey}',chapter:${chJs},tab:'qs'})">❓ গুরুত্বপূর্ণ প্রশ্ন</button>
+    </div>`;
+  const shell = (inner) => `${header('গুরুত্বপূর্ণ টপিক')}
+    <div class="card"><h2>${impE(chapter)}</h2><div class="meta">${TOPIC_STRUCTURE[subject].label} · ${sec ? sec.label : ''}</div>${tabs}${inner}</div>
+    <div class="center"><a class="link-back" onclick="go('impChapters',{subject:'${subject}',sectionKey:'${sectionKey}'})">← অধ্যায় তালিকায় ফিরে যাও</a></div>${creditFooter()}`;
+  app.innerHTML = shell('<div class="center">লোড হচ্ছে...</div>');
+
+  if(tab === 'topics'){
+    const list = await impLoad(subject);
+    if(state.screen !== 'impChapter' || state.tab !== 'topics') return;
+    const c = (list || []).find(x => x.chapter === chapter);
+    if(!c || !c.topics.length){ app.innerHTML = shell('<p class="hint">এই অধ্যায়ে এখনো গুরুত্বপূর্ণ টপিক যোগ হয়নি।</p>'); return; }
+    const max = Math.max.apply(null, c.topics.map(t => t.score || 0));
+    const teacher = c.topics.filter(t => t.teacherId), ai = c.topics.filter(t => !t.teacherId);
+    app.innerHTML = shell(
+      (teacher.length ? `<h3 style="margin-top:6px;">👨‍🏫 স্যারের বাছাই করা</h3>${teacher.map(t => impTopicCard(t, max)).join('')}` : '') +
+      (ai.length ? `<h3 style="margin-top:14px;">🤖 সাল অনুযায়ী গুরুত্বপূর্ণ</h3><p class="hint">যে টপিকের সাথে যত বেশি বোর্ড/ভর্তি সাল জড়িত, সেটা তত উপরে।</p>${ai.map(t => impTopicCard(t, max)).join('')}` : ''));
+    return;
+  }
+  // প্রশ্ন ট্যাব
+  const ck = subject + '|' + chapter;
+  let qs = window.__imp.qs[ck];
+  if(!qs){ const o = await impCall('impQuestions', { subject, chapter }); qs = o ? o.questions : null; if(qs) window.__imp.qs[ck] = qs; }
+  if(state.screen !== 'impChapter' || state.tab !== 'qs') return;
+  if(!qs){ app.innerHTML = shell('<p class="hint" style="color:var(--red);">❌ লোড করা যায়নি।</p>'); return; }
+  if(!qs.length){ app.innerHTML = shell('<p class="hint">এই অধ্যায়ের জন্য এখনো কোনো গুরুত্বপূর্ণ প্রশ্ন বাছাই হয়নি।</p>'); return; }
+  const cards = qs.map((q, i) => {
+    const opts = q.kind === 'mcq' && q.options.length ? `<div style="margin-top:8px;">${q.options.map((o, j) => `<div style="padding:5px 8px; margin-bottom:4px; border-radius:6px; ${j === q.correct ? 'background:#E8F6EF; border:1px solid var(--green);' : 'background:#F5F7FA;'}">${'ক খ গ ঘ'.split(' ')[j] || ''}) ${impE(o)}${j === q.correct ? ' ✅' : ''}</div>`).join('')}</div>` : '';
+    const model = q.kind === 'cq' && q.model ? `<details style="margin-top:8px;"><summary style="cursor:pointer; color:var(--blue,#2B5797); font-weight:600;">উত্তর দেখো</summary><div style="white-space:pre-wrap; margin-top:6px; line-height:1.7;">${impE(q.model)}</div></details>` : '';
+    const img = q.imageUrl ? `<img src="${impE(q.imageUrl)}" loading="lazy" style="max-width:100%; border-radius:8px; margin-top:8px;" onerror="this.style.display='none'">` : '';
+    return `<div class="exam-item">
+      <div class="meta"><b>#${impBn(i + 1)}</b> <span class="q-tag">${q.kind === 'mcq' ? 'MCQ' : 'CQ'}</span> <span class="q-tag">📌 ${impE(q.topic)}</span> <span class="q-tag">${impBn(q.score)}টা সাল</span></div>
+      <div style="white-space:pre-wrap; font-size:15px; line-height:1.7; margin-top:6px;">${impE(q.text)}</div>${img}${opts}${model}
+      <div style="margin-top:8px;">${impSalChips(q.sals, 8)}</div>
+    </div>`;
+  }).join('');
+  app.innerHTML = shell(`<p class="hint">যে প্রশ্ন যত বেশি সাল বোর্ড/ভর্তিতে এসেছে, সেটা তত উপরে।</p>${cards}`);
+}
+
+// ---------- শিক্ষক ----------
+async function renderImpManage(subject){
+  subject = subject || 'physics';
+  const subTabs = Object.keys(TOPIC_STRUCTURE).map(k =>
+    `<button class="btn ${k === subject ? 'btn-primary' : 'btn-outline'}" style="margin:0 6px 6px 0;" onclick="go('impManage',{subject:'${k}'})">${IMP_ICONS[k] || ''} ${TOPIC_STRUCTURE[k].label.split(' (')[0]}</button>`).join('');
+  const top = `${header('গুরুত্বপূর্ণ টপিক ম্যানেজ')}<div class="card"><div>${subTabs}</div></div>`;
+  const back = `<div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক ড্যাশবোর্ডে ফিরে যাও</a></div>${creditFooter()}`;
+  app.innerHTML = top + '<div class="card center">লোড হচ্ছে...</div>' + back;
+  const o = await impCall('impList', { subject, all:'1', tkey:TEACHER_PASSWORD });
+  if(state.screen !== 'impManage') return;
+  if(!o){ app.innerHTML = top + '<div class="card"><p class="hint" style="color:var(--red);">❌ লোড করা যায়নি — Apps Script-এর নতুন version Deploy করেছ কি?</p></div>' + back; return; }
+  const chapters = o.chapters || [];
+  window.__impMgr = { subject, chapters };
+  const chOpts = chapters.map((c, i) => `<option value="${i}">${impE(c.chapter)}</option>`).join('');
+  const listHtml = chapters.filter(c => c.topics.length || c.hiddenTopics.length).map(c => {
+    const rows = c.topics.map(t => {
+      const ids = [t.teacherId, t.aiId].filter(Boolean).join(',');
+      const label = t.teacherId ? '🗑️ মুছো' : '🙈 লুকাও';
+      return `<div style="padding:8px 0; border-top:1px solid #E5EAF0;">
+        <div class="row-top"><b>${impE(t.topic)}</b> ${t.teacherId ? '<span class="q-tag">👨‍🏫 স্যার</span>' : ''} ${t.score ? `<span class="q-tag">🤖 ${impBn(t.score)} সাল-ট্যাগ · ${impBn(t.qCount)} প্রশ্ন</span>` : ''}</div>
+        ${t.note ? `<div class="meta" style="white-space:pre-wrap;">${impE(t.note)}</div>` : ''}
+        <button class="btn btn-outline" style="margin-top:6px; padding:4px 10px; font-size:12.5px;" onclick="impDeleteTopic('${ids}', ${t.teacherId ? 'true' : 'false'})">${label}</button>
+      </div>`;
+    }).join('');
+    const hid = c.hiddenTopics.length ? `<div class="meta" style="margin-top:6px;">🙈 লুকানো: ${c.hiddenTopics.map(h => `${impE(h.topic)} <a class="link-back" style="cursor:pointer;" onclick="impRestoreTopic('${h.id}')">[ফিরিয়ে আনো]</a>`).join(' · ')}</div>` : '';
+    return `<div class="exam-item"><h3 style="margin-bottom:2px;">${impE(c.chapter)}</h3><div class="meta">❓ ${impBn(c.qn)}টা AI-বাছাই প্রশ্ন</div>${rows}${hid}</div>`;
+  }).join('');
+  app.innerHTML = top + `
+    <div class="card">
+      <h2>🤖 AI বাছাই আপডেট করো</h2>
+      <p class="hint">সব MCQ, CQ, HW ও Revision প্রশ্নের বোর্ড/ভর্তি ট্যাগের সাল গুনে গুরুত্বপূর্ণ টপিক ও প্রশ্ন নতুন করে বাছাই হবে। (স্যারের যোগ করা টপিক অক্ষত থাকে।) প্রশ্ন বেশি হলে একটু সময় লাগতে পারে।</p>
+      <button class="btn btn-gold btn-block" id="impBuildBtn" onclick="impBuildNow()">🔄 এখনই আপডেট করো</button>
+    </div>
+    <div class="card">
+      <h2>➕ গুরুত্বপূর্ণ টপিক যোগ করো (${impE(TOPIC_STRUCTURE[subject].label)})</h2>
+      <label class="field-label">অধ্যায়</label>
+      <select id="impCh" onchange="impChapterChanged()">${chOpts || '<option value="">কোনো অধ্যায় নেই</option>'}</select>
+      <label class="field-label">টপিক (তালিকা থেকে বাছো)</label>
+      <select id="impTpSel" onchange="impTopicSelChanged()"></select>
+      <input type="text" id="impTpNew" placeholder="নতুন টপিকের নাম লেখো" style="display:none; margin-top:6px;">
+      <label class="field-label">নোট / কেন গুরুত্বপূর্ণ (ঐচ্ছিক)</label>
+      <textarea id="impNote" style="min-height:90px;" placeholder="যেমন: সংজ্ঞা, সূত্র, বারবার আসা অংশ..."></textarea>
+      <button class="btn btn-primary btn-block" onclick="impSaveTopic()">✅ যোগ করো</button>
+    </div>
+    <div class="card"><h2>📋 এই বিষয়ের তালিকা</h2>${listHtml || '<p class="hint">এখনো কিছু নেই — উপরে টপিক যোগ করো অথবা "এখনই আপডেট করো" চাপো।</p>'}</div>` + back;
+  if(chapters.length) impChapterChanged();
+}
+window.impChapterChanged = function(){
+  const M = window.__impMgr, i = Number((document.getElementById('impCh') || {}).value);
+  const c = M && M.chapters[i], sel = document.getElementById('impTpSel');
+  if(!c || !sel) return;
+  sel.innerHTML = c.taxTopics.map(t => `<option value="${impE(t)}">${impE(t)}</option>`).join('') + '<option value="__new__">✍️ নতুন টপিক লিখব...</option>';
+  impTopicSelChanged();
+};
+window.impTopicSelChanged = function(){
+  const v = (document.getElementById('impTpSel') || {}).value, n = document.getElementById('impTpNew');
+  if(n) n.style.display = v === '__new__' ? 'block' : 'none';
+};
+window.impSaveTopic = async function(){
+  const M = window.__impMgr, c = M.chapters[Number(document.getElementById('impCh').value)];
+  if(!c){ toast('অধ্যায় বাছো'); return; }
+  let topic = document.getElementById('impTpSel').value;
+  if(topic === '__new__') topic = document.getElementById('impTpNew').value.trim();
+  if(!topic){ toast('টপিকের নাম দাও'); return; }
+  toast('সেভ হচ্ছে...');
+  const o = await impCall('impSave', { tkey:TEACHER_PASSWORD, subject:M.subject, chapter:c.chapter, topic, note:document.getElementById('impNote').value });
+  if(!o){ toast('সেভ হয়নি ❌'); return; }
+  window.__imp.list[M.subject] = null;
+  toast(o.updated ? 'আপডেট হয়েছে ✅' : 'যোগ হয়েছে ✅');
+  go('impManage', { subject:M.subject });
+};
+window.impDeleteTopic = async function(ids, isTeacher){
+  if(!confirm(isTeacher ? 'এই টপিক মুছে ফেলবে?' : 'AI-র এই টপিকটা ছাত্রদের কাছ থেকে লুকাবে?')) return;
+  const M = window.__impMgr, o = await impCall('impDelete', { tkey:TEACHER_PASSWORD, id:ids });
+  if(!o){ toast('হয়নি ❌'); return; }
+  window.__imp.list[M.subject] = null; toast('ঠিক আছে ✅'); go('impManage', { subject:M.subject });
+};
+window.impRestoreTopic = async function(id){
+  const M = window.__impMgr, o = await impCall('impRestore', { tkey:TEACHER_PASSWORD, id });
+  if(!o){ toast('হয়নি ❌'); return; }
+  window.__imp.list[M.subject] = null; toast('পরের আপডেটে ফিরে আসবে ✅'); go('impManage', { subject:M.subject });
+};
+window.impBuildNow = async function(){
+  const b = document.getElementById('impBuildBtn'); if(b){ b.disabled = true; b.textContent = '⏳ হিসাব চলছে...'; }
+  const o = await impCall('impBuildNow', { tkey:TEACHER_PASSWORD });
+  window.__imp.list = {}; window.__imp.qs = {};
+  if(!o){ toast('আপডেট হয়নি ❌ (আবার চেষ্টা করো)'); if(b){ b.disabled = false; b.textContent = '🔄 এখনই আপডেট করো'; } return; }
+  toast(`✅ ${impBn(o.topics)}টা টপিক, ${impBn(o.questions)}টা প্রশ্ন বাছাই হয়েছে`);
+  go('impManage', { subject:(window.__impMgr || {}).subject });
+};
+
 </script>
 </body>
 </html>
