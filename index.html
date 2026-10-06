@@ -10915,11 +10915,21 @@ function impStars(score, max){
   const r = max ? score / max : 0, n = Math.max(1, Math.min(5, Math.ceil(r * 5)));
   return '🔥'.repeat(n > 3 ? 2 : 1) + '⭐'.repeat(n);
 }
+function impCountLine(t){
+  if(t.total == null && t.g == null) return '';
+  const parts = [];
+  if(t.g != null && t.gh != null) parts.push(`গ ${impBn(t.g)}টি + ঘ ${impBn(t.gh)}টি`);
+  if(t.total != null) parts.push(`মোট ${impBn(t.total)}টি প্রশ্ন`);
+  return '📝 ' + parts.join(' · ');
+}
 function impTopicCard(t, max){
   const pct = max ? Math.max(8, Math.round(t.score / max * 100)) : 0;
   const hasAi = t.score > 0;
+  const badge = t.stars ? `<span class="q-tag">${'⭐'.repeat(t.stars)}</span>` : (hasAi ? `<span class="q-tag">${impStars(t.score, max)}</span>` : '');
+  const cnt = impCountLine(t);
   return `<div class="exam-item">
-    <div class="row-top"><h3 style="margin-bottom:0;">${impE(t.topic)}</h3>${hasAi ? `<span class="q-tag">${impStars(t.score, max)}</span>` : ''}</div>
+    <div class="row-top"><h3 style="margin-bottom:0;">${impE(t.topic)}</h3>${badge}</div>
+    ${cnt ? `<div class="meta" style="margin-top:4px;">${cnt}</div>` : ''}
     ${t.note ? `<div style="white-space:pre-wrap; font-size:14.5px; line-height:1.7; margin:6px 0;">${impE(t.note)}</div>` : ''}
     ${hasAi ? `<div style="background:#EEF3F8; border-radius:6px; height:7px; margin:8px 0 4px;"><div style="width:${pct}%; height:100%; border-radius:6px; background:var(--gold);"></div></div>
       <div class="meta">মোট ${impBn(t.score)}টা সাল-ট্যাগ · ${impBn(t.qCount)}টা প্রশ্ন থেকে</div>
@@ -10990,7 +11000,8 @@ async function renderImpManage(subject){
       const ids = [t.teacherId, t.aiId].filter(Boolean).join(',');
       const label = t.teacherId ? '🗑️ মুছো' : '🙈 লুকাও';
       return `<div style="padding:8px 0; border-top:1px solid #E5EAF0;">
-        <div class="row-top"><b>${impE(t.topic)}</b> ${t.teacherId ? '<span class="q-tag">👨‍🏫 স্যার</span>' : ''} ${t.score ? `<span class="q-tag">🤖 ${impBn(t.score)} সাল-ট্যাগ · ${impBn(t.qCount)} প্রশ্ন</span>` : ''}</div>
+        <div class="row-top"><b>${impE(t.topic)}</b> ${t.teacherId ? '<span class="q-tag">👨‍🏫 স্যার</span>' : ''} ${t.stars ? `<span class="q-tag">${'⭐'.repeat(t.stars)}</span>` : ''} ${t.score ? `<span class="q-tag">🤖 ${impBn(t.score)} সাল-ট্যাগ · ${impBn(t.qCount)} প্রশ্ন</span>` : ''}</div>
+        ${impCountLine(t) ? `<div class="meta">${impCountLine(t)}</div>` : ''}
         ${t.note ? `<div class="meta" style="white-space:pre-wrap;">${impE(t.note)}</div>` : ''}
         <button class="btn btn-outline" style="margin-top:6px; padding:4px 10px; font-size:12.5px;" onclick="impDeleteTopic('${ids}', ${t.teacherId ? 'true' : 'false'})">${label}</button>
       </div>`;
@@ -11014,6 +11025,15 @@ async function renderImpManage(subject){
       <label class="field-label">নোট / কেন গুরুত্বপূর্ণ (ঐচ্ছিক)</label>
       <textarea id="impNote" style="min-height:90px;" placeholder="যেমন: সংজ্ঞা, সূত্র, বারবার আসা অংশ..."></textarea>
       <button class="btn btn-primary btn-block" onclick="impSaveTopic()">✅ যোগ করো</button>
+    </div>
+    <div class="card">
+      <h2>📥 বাল্ক যোগ (টেক্সট পেস্ট করো)</h2>
+      <p class="hint">ছবি থেকে কনভার্ট করা টেবিলের টেক্সট এখানে পেস্ট করো। প্রতি লাইনে টপিকের নাম, তারপর <b>গ + ঘ</b> সংখ্যা ও মোট প্রশ্ন (যেমন <i>ভেক্টরের ক্রস ও ডট গুণন সম্পর্কিত ⭐⭐⭐⭐ ১০টি + ১১টি ২১টি</i>)। তারা (⭐) থাকলে নিজে ধরবে, না থাকলে প্রিভিউতে বসাতে পারবে। প্রিভিউতে সব ঠিক করে তারপর সেভ হবে।</p>
+      <label class="field-label">অধ্যায় (এই টেবিলটা যে অধ্যায়ের)</label>
+      <select id="impBkCh" onchange="impBkRematch()">${chOpts || '<option value="">কোনো অধ্যায় নেই</option>'}</select>
+      <textarea id="impBkText" style="min-height:140px; margin-top:8px;" placeholder="এখানে পেস্ট করো..."></textarea>
+      <button class="btn btn-outline btn-block" onclick="impBkPreview()">🔍 প্রিভিউ দেখো</button>
+      <div id="impBkOut"></div>
     </div>
     <div class="card"><h2>📋 এই বিষয়ের তালিকা</h2>${listHtml || '<p class="hint">এখনো কিছু নেই — উপরে টপিক যোগ করো অথবা "এখনই আপডেট করো" চাপো।</p>'}</div>` + back;
   if(chapters.length) impChapterChanged();
@@ -11060,6 +11080,130 @@ window.impBuildNow = async function(){
   if(!o){ toast('আপডেট হয়নি ❌ (আবার চেষ্টা করো)'); if(b){ b.disabled = false; b.textContent = '🔄 এখনই আপডেট করো'; } return; }
   toast(`✅ ${impBn(o.topics)}টা টপিক, ${impBn(o.questions)}টা প্রশ্ন বাছাই হয়েছে`);
   go('impManage', { subject:(window.__impMgr || {}).subject });
+};
+
+
+// ---------- বাল্ক: টেক্সট পার্স → প্রিভিউ (এডিট করা যায়) → সেভ ----------
+const IMP_STAR_RE = /[⭐★🌟✭✯]/gu;
+function impBkParse(text){
+  const out = [];
+  String(text || '').split(/\r?\n/).forEach(raw => {
+    let L = raw.replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d));
+    if(!L.trim()) return;
+    const stars = Math.min(5, (L.match(IMP_STAR_RE) || []).length);
+    L = L.replace(IMP_STAR_RE, ' ').replace(/[|│┃\t]+/g, ' ');
+    if(/গ\s*\+\s*ঘ|মোট\s*প্রশ্ন|topic\s*suggestion|^\s*টপিক\s*$/i.test(L)) return;
+    const fi = L.search(/\d/);
+    const topic = (fi === -1 ? L : L.slice(0, fi)).replace(/^[\s\d.\-)•:]+/, '').replace(/[\s:\-–—.]+$/, '').trim();
+    if(!topic || topic.length < 2) return;
+    const rest = fi === -1 ? '' : L.slice(fi);
+    let g = null, gh = null, total = null;
+    const pm = rest.match(/^(\d+)\s*(?:টি)?\s*\+\s*(\d+)\s*(?:টি)?\s*(.*)$/);
+    if(pm){
+      g = +pm[1]; gh = +pm[2];
+      const tn = (pm[3].match(/\d+/g) || []).map(Number);
+      total = !tn.length ? g + gh : (tn.length >= 2 && /\+/.test(pm[3]) ? tn[0] + tn[1] : tn[0]);
+    } else {
+      const nums = (rest.match(/\d+/g) || []).map(Number);
+      if(nums.length >= 3){ g = nums[nums.length - 3]; gh = nums[nums.length - 2]; total = nums[nums.length - 1]; }
+      else if(nums.length === 2){ g = nums[0]; gh = nums[1]; total = g + gh; }
+      else if(nums.length === 1){ total = nums[0]; }
+    }
+    out.push({ topic, orig:topic, custom:true, stars, g, gh, total, keep:true });
+  });
+  return out;
+}
+window.impBkPreview = function(){
+  const items = impBkParse(document.getElementById('impBkText').value);
+  const box = document.getElementById('impBkOut');
+  window.__impBk = items;
+  impBkRematch(true);
+  if(!items.length){ box.innerHTML = '<p class="hint" style="color:var(--red);">কোনো লাইন পার্স করা যায়নি — প্রতি লাইনে টপিকের নাম ও সংখ্যা আছে কিনা দেখো।</p>'; return; }
+  box.innerHTML = impBkRows();
+};
+function impBkTax(){
+  const M = window.__impMgr, el = document.getElementById('impBkCh');
+  const c = M && el ? M.chapters[Number(el.value)] : null;
+  return c ? c.taxTopics : [];
+}
+function impNormT(s){ return String(s || '').replace(/সম্পর্কিত|সংক্রান্ত|বিষয়ক/g, '').replace(/[^A-Za-z0-9\u0980-\u09FF]/g, '').toLowerCase(); }
+function impDice(a, b){
+  if(!a || !b) return 0; if(a === b) return 1;
+  if(a.length > 3 && b.length > 3 && (a.includes(b) || b.includes(a))) return 0.85;   // কাটা/ছোট নামও ধরবে
+  const bg = s => { const r = []; for(let i = 0; i < s.length - 1; i++) r.push(s.slice(i, i + 2)); return r; };
+  const x = bg(a), y = bg(b); if(!x.length || !y.length) return 0;
+  const m = {}; y.forEach(g => m[g] = (m[g] || 0) + 1);
+  let h = 0; x.forEach(g => { if(m[g] > 0){ h++; m[g]--; } });
+  return 2 * h / (x.length + y.length);
+}
+function impBestTax(name, list){
+  let best = null, bs = 0; const n = impNormT(name);
+  list.forEach(t => { const sc = impDice(n, impNormT(t)); if(sc > bs){ bs = sc; best = t; } });
+  return bs >= 0.5 ? best : null;
+}
+window.impBkRematch = function(silent){
+  const tax = impBkTax();
+  (window.__impBk || []).forEach(it => {
+    const m = impBestTax(it.orig, tax);
+    if(m){ it.topic = m; it.custom = false; } else { it.topic = it.orig; it.custom = true; }
+  });
+  const box = document.getElementById('impBkOut');
+  if(!silent && box && (window.__impBk || []).length) box.innerHTML = impBkRows();
+};
+window.impBkPick = function(i, v){
+  const it = (window.__impBk || [])[i]; if(!it) return;
+  if(v === '__custom__'){ it.custom = true; it.topic = it.orig; } else { it.custom = false; it.topic = v; }
+  document.getElementById('impBkOut').innerHTML = impBkRows();
+};
+function impBkRows(){
+  const items = window.__impBk || [], tax = impBkTax();
+  const num = (v) => v == null ? '' : v;
+  const rows = items.map((it, i) => `<div style="padding:8px 0; border-top:1px solid #E5EAF0; ${it.keep ? '' : 'opacity:.45;'}">
+      <div style="display:flex; gap:6px; align-items:center;">
+        <input type="checkbox" ${it.keep ? 'checked' : ''} onchange="impBkSet(${i},'keep',this.checked)" style="width:auto;">
+        <select onchange="impBkPick(${i},this.value)" style="flex:1; min-width:0;">
+          ${tax.map(t => `<option value="${impE(t)}" ${!it.custom && it.topic === t ? 'selected' : ''}>${impE(t)}</option>`).join('')}
+          <option value="__custom__" ${it.custom ? 'selected' : ''}>✍️ নতুন / অন্য নাম লিখব</option>
+        </select>
+      </div>
+      ${it.custom ? `<input type="text" value="${impE(it.topic)}" onchange="impBkSet(${i},'topic',this.value)" style="margin-top:6px;">` : ''}
+      <div class="meta" style="margin-top:4px;">${it.custom ? '🆕 taxonomy-তে মেলেনি — নতুন টপিক হিসেবে যোগ হবে' : '✅ taxonomy-র টপিকের সাথে মিলেছে'} · পেস্ট করা: ${impE(it.orig)}</div>
+      <div style="display:flex; gap:6px; margin-top:6px; align-items:center; flex-wrap:wrap;">
+        <select onchange="impBkSet(${i},'stars',Number(this.value))" style="width:auto;">${[0,1,2,3,4,5].map(n => `<option value="${n}" ${n === it.stars ? 'selected' : ''}>${n ? '⭐'.repeat(n) : 'তারা নেই'}</option>`).join('')}</select>
+        <span class="meta">গ</span><input type="number" min="0" value="${num(it.g)}" onchange="impBkSet(${i},'g',this.value)" style="width:62px;">
+        <span class="meta">ঘ</span><input type="number" min="0" value="${num(it.gh)}" onchange="impBkSet(${i},'gh',this.value)" style="width:62px;">
+        <span class="meta">মোট</span><input type="number" min="0" value="${num(it.total)}" onchange="impBkSet(${i},'total',this.value)" style="width:68px;">
+      </div>
+    </div>`).join('');
+  const kept = items.filter(x => x.keep && x.topic.trim()).length;
+  return `<h3 style="margin-top:12px;">${impBn(items.length)}টা লাইন পাওয়া গেছে</h3>${rows}
+    <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="impBkAutoStars()">⭐ মোট প্রশ্ন অনুযায়ী তারা বসাও (যেগুলোতে তারা নেই)</button>
+    <button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="impBkSave()">✅ ${impBn(kept)}টা টপিক সেভ করো</button>`;
+}
+window.impBkSet = function(i, k, v){
+  const it = (window.__impBk || [])[i]; if(!it) return;
+  if(k === 'g' || k === 'gh' || k === 'total') it[k] = (v === '' ? null : Number(v));
+  else it[k] = v;
+  if((k === 'g' || k === 'gh') && it.g != null && it.gh != null && it.total == null) it.total = it.g + it.gh;
+  if(k === 'keep'){ document.getElementById('impBkOut').innerHTML = impBkRows(); }
+};
+window.impBkAutoStars = function(){
+  const items = window.__impBk || [], max = Math.max.apply(null, items.map(x => x.total || 0).concat([0]));
+  if(!max){ toast('মোট প্রশ্নের সংখ্যা নেই'); return; }
+  items.forEach(it => { if(!it.stars && it.total) it.stars = Math.max(1, Math.min(5, Math.ceil(it.total / max * 5))); });
+  document.getElementById('impBkOut').innerHTML = impBkRows();
+};
+window.impBkSave = async function(){
+  const M = window.__impMgr, c = M.chapters[Number(document.getElementById('impBkCh').value)];
+  if(!c){ toast('অধ্যায় বাছো'); return; }
+  const items = (window.__impBk || []).filter(x => x.keep && String(x.topic).trim()).map(x => ({ topic:x.topic.trim(), stars:x.stars || 0, g:x.g, gh:x.gh, total:x.total }));
+  if(!items.length){ toast('সেভ করার মতো কিছু নেই'); return; }
+  toast('সেভ হচ্ছে...');
+  const o = await impCall('impBulkSave', { tkey:TEACHER_PASSWORD, subject:M.subject, chapter:c.chapter, items:JSON.stringify(items) });
+  if(!o){ toast('সেভ হয়নি ❌'); return; }
+  window.__imp.list[M.subject] = null; window.__impBk = [];
+  toast(`✅ ${impBn(o.created)}টা নতুন, ${impBn(o.updated)}টা আপডেট`);
+  go('impManage', { subject:M.subject });
 };
 
 </script>
