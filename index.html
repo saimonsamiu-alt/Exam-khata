@@ -492,6 +492,26 @@ async function getRemoteResults(code) {
   return [];
 }
 
+// ================= লোডিং ইন্ডিকেটর =================
+(function(){
+  const css = '.ld-box{text-align:center;padding:18px 12px;} .ld-spin{width:36px;height:36px;border:4px solid #E3E8F1;border-top-color:#D9A441;border-radius:50%;margin:4px auto 10px;animation:ldspin .8s linear infinite;} @keyframes ldspin{to{transform:rotate(360deg);}} .ld-bar{height:5px;background:#E3E8F1;border-radius:99px;overflow:hidden;margin:12px auto 6px;max-width:260px;} .ld-bar i{display:block;height:100%;width:35%;background:#D9A441;border-radius:99px;animation:ldbar 1.2s ease-in-out infinite;} @keyframes ldbar{0%{margin-left:-35%;}100%{margin-left:100%;}} .ld-sec{font-size:12.5px;color:#5B6472;min-height:18px;} .ld-slow{font-size:12.5px;color:#9B6A15;margin-top:4px;}';
+  const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+  const bn = n => String(n).replace(/[0-9]/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  let timer = null;
+  function tick(){
+    const boxes = document.querySelectorAll('.ld-box');
+    if(!boxes.length){ clearInterval(timer); timer = null; return; }
+    boxes.forEach(b => {
+      const s = Math.floor((Date.now() - Number(b.dataset.t0)) / 1000), el = b.querySelector('.ld-sec'), sl = b.querySelector('.ld-slow');
+      if(el) el.textContent = '⏱ ' + bn(s) + ' সেকেন্ড';
+      if(sl) sl.textContent = s >= 25 ? 'নেট ধীর বা সার্ভার ব্যস্ত — আরেকটু অপেক্ষা করো, পেজ বন্ধ কোরো না।' : (s >= 8 ? 'একটু বেশি সময় লাগছে, কাজ চলছে...' : '');
+    });
+  }
+  window.ldCard = function(msg){
+    if(!timer) timer = setInterval(tick, 1000);
+    return '<div class="card center ld-box" data-t0="' + Date.now() + '"><div class="ld-spin"></div><div>' + (msg || 'লোড হচ্ছে...') + '</div><div class="ld-bar"><i></i></div><div class="ld-sec">⏱ ০ সেকেন্ড</div><div class="ld-slow"></div></div>';
+  };
+})();
 function renderAllMath(elem){
   const target = elem || document.getElementById('app') || document.body;
   if(window.renderMathInElement && target){
@@ -10044,7 +10064,7 @@ window.doSmartSearch = async function(){
     checked: `<span class="widget-tag tag-green">✅ চেক হয়েছে</span>`
   }[st] || '');
   const needStud = () => { const s = getLoggedStudent(); if(!s){ go('studentAuth'); return null; } return s; };
-  const loading = t => { app.innerHTML = header(t) + `<div class="card center">লোড হচ্ছে...</div>`; };
+  const loading = (t, m) => { app.innerHTML = header(t) + ldCard(m); };
   const failCard = (t, back) => { app.innerHTML = `${header(t)}<div class="card"><p class="hint" style="color:var(--red);">❌ লোড করা যায়নি — ইন্টারনেট বা Apps Script-এর নতুন version Deploy চেক করো।</p><button class="btn btn-outline btn-block" onclick="${back}">🔄 আবার চেষ্টা</button></div><div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>`; };
 
   // ---------- একাধিক পাতা → একটা লম্বা ছবি (কম্প্রেস সহ) ----------
@@ -10731,7 +10751,7 @@ window.doSmartSearch = async function(){
   const subjLabel = k => NOTES_SUBJECTS[k] ? NOTES_SUBJECTS[k].icon + ' ' + NOTES_SUBJECTS[k].label : k;
   const subjOpts = (sel, blank) => (blank ? `<option value="">${blank}</option>` : '') + SUBJ().map(k => `<option value="${k}" ${sel === k ? 'selected' : ''}>${esc(subjLabel(k))}</option>`).join('');
   const needStud = () => { const s = getLoggedStudent(); if(!s){ go('studentAuth'); return null; } return s; };
-  const loading = (t, m) => { app.innerHTML = header(t) + `<div class="card center">${m || 'লোড হচ্ছে...'}</div>`; };
+  const loading = (t, m) => { app.innerHTML = header(t) + ldCard(m); };
   const failCard = (t, retry, back) => { app.innerHTML = `${header(t)}<div class="card"><p class="hint" style="color:var(--red);">❌ লোড করা যায়নি — ইন্টারনেট বা Apps Script-এর নতুন version Deploy চেক করো।</p><button class="btn btn-outline btn-block" onclick="${retry}">🔄 আবার চেষ্টা</button></div><div class="center"><a class="link-back" onclick="${back}">← ফিরে যাও</a></div>`; };
   const tcall = (a, p) => postToScriptRaw(a, Object.assign({ tkey:TEACHER_PASSWORD }, p || {}));
   const L = { key:'', editKey:'', college:'', types:{}, papers:[], entries:[], data:null, focus:'balanced', after:null, mode:null, pages:[], setNo:1 };
@@ -10855,32 +10875,54 @@ window.doSmartSearch = async function(){
       catch(e){ st.innerHTML = `<p class="hint" style="color:var(--red);">ছবি পড়া যায়নি, অন্য ছবি দিয়ে চেষ্টা করো।</p>`; b.disabled = false; return; }
     } else if(L.mode === 'txt' && val('lkSyl').trim()) p.syllabusText = val('lkSyl');
     if(!L.editKey && !p.base64 && !p.syllabusText){ if(!confirm('সিলেবাস দাওনি — তাহলে পুরো বইয়ের অধ্যায় ধরা হবে। পরে সিলেবাস দিয়ে বদলাতে পারবে। এগোবে?')){ b.disabled = false; return; } }
-    st.innerHTML = `<p class="hint">${(p.base64 || p.syllabusText) ? 'AI সিলেবাস পড়ছে — ১০–৩০ সেকেন্ড লাগতে পারে...' : 'সেভ হচ্ছে...'}</p>`;
+    st.innerHTML = ldCard((p.base64 || p.syllabusText) ? 'সিলেবাস দেখা হচ্ছে — ১০–৫০ সেকেন্ড লাগতে পারে' : 'সেভ হচ্ছে...');
     const r = await postToScriptRaw('leakProfileSave', p);
     b.disabled = false;
     if(r && r.status === 'success'){
       L.pages.forEach(x => URL.revokeObjectURL(x.url)); L.pages = []; L.key = r.key;
-      if(r.syllabusGiven || !L.editKey){ L.after = { key:r.key, chapters:r.chapters, master:r.master, parseOk:r.parseOk, given:r.syllabusGiven }; L.editKey = r.key; lsChapters(); }
+      if(r.syllabusGiven || !L.editKey){ L.after = { key:r.key, chapters:r.chapters, master:r.master, more:r.more || [], topics:r.topics || {}, topicMap:r.topicMap || {}, topicsOk:r.topicsOk !== false, parseOk:r.parseOk, given:r.syllabusGiven }; L.editKey = r.key; lsChapters(); }
       else { toast('সেভ হয়েছে ✅'); go('leakAsk', { key:r.key }); }
     } else st.innerHTML = `<p class="hint" style="color:var(--red);">❌ ${r && r.message === 'busy_try_again' ? 'এখন ব্যস্ত, একটু পরে আবার চাপো' : 'সেভ হয়নি, ইন্টারনেট চেক করে আবার চেষ্টা করো'}</p>`;
   };
   // সিলেবাস থেকে AI যে অধ্যায়গুলো পেয়েছে — ছাত্র টিক বদলাতে পারে
   function lsChapters(){
     const a = L.after, chosen = {}; a.chapters.forEach(c => chosen[c] = true);
-    const warn = !a.given ? '' : (a.parseOk ? (a.chapters.length ? '' : `<p class="hint" style="color:#9B6A15;">⚠️ সিলেবাস থেকে কোনো অধ্যায় মেলেনি — নিচ থেকে নিজে বেছে নাও।</p>`) : `<p class="hint" style="color:#9B6A15;">⚠️ AI এখন সিলেবাস পড়তে পারেনি — নিচ থেকে নিজে অধ্যায় বেছে নাও (পরে "বদলাও" থেকে আবার দিতে পারবে)।</p>`);
+    a.more = a.more || []; a.all = a.master.concat(a.more); a.topics = a.topics || {}; a.topicMap = a.topicMap || {};
+    const warn = !a.given ? '' : (a.parseOk ? (a.chapters.length ? '' : `<p class="hint" style="color:#9B6A15;">⚠️ সিলেবাস থেকে কোনো অধ্যায় মেলেনি — নিচ থেকে নিজে বেছে নাও।</p>`) : `<p class="hint" style="color:#9B6A15;">⚠️ সিলেবাস পড়া যায়নি — নিচ থেকে নিজে অধ্যায় বেছে নাও (পরে "বদলাও" থেকে আবার দিতে পারবে)।</p>`)
+      + (a.given && a.topicsOk === false ? `<p class="hint" style="color:#9B6A15;">⚠️ অধ্যায়ের কতটুকু আংশিক সেটা বোঝা যায়নি — পুরো অধ্যায় ধরা হয়েছে। দরকারে নিচে টপিক বেছে নাও।</p>` : '');
+    const row = (c, i) => {
+      const tl = a.topicMap[c] || [], sel = a.topics[c], part = sel && sel.length && sel.length < tl.length;
+      return `<div style="margin:6px 0;"><label style="display:flex;gap:8px;align-items:flex-start;font-size:13.5px;"><input type="checkbox" class="lkChk" value="${i}" ${chosen[c] ? 'checked' : ''} style="width:auto;margin-top:3px;"><span>${esc(c)}${part ? ` <span class="widget-tag tag-gold">আংশিক · ${bn(sel.length)}/${bn(tl.length)} টপিক</span>` : ''}</span></label>
+        ${tl.length > 1 ? `<details style="margin:2px 0 0 26px;" ${part ? 'open' : ''}><summary style="cursor:pointer;font-size:12.5px;color:var(--pencil);">টপিক বাছো (${bn(tl.length)}টা)</summary>${tl.map((t, j) => `<label style="display:flex;gap:6px;align-items:flex-start;margin:3px 0;font-size:12.5px;"><input type="checkbox" class="lkTp" data-c="${i}" value="${j}" ${(!part || sel.indexOf(t) !== -1) ? 'checked' : ''} onchange="lkTpTog(${i})" style="width:auto;margin-top:3px;"><span>${esc(t)}</span></label>`).join('')}</details>` : ''}</div>`;
+    };
     app.innerHTML = `${header('সিলেবাসের অধ্যায়')}
       <div class="card"><h2>📋 সিলেবাসে কোন অধ্যায়গুলো?</h2>${warn}
-        <p class="hint">${a.given && a.parseOk && a.chapters.length ? 'AI সিলেবাস থেকে এগুলো পেয়েছে। ঠিক না হলে টিক বদলাও।' : 'যেগুলো পরীক্ষায় আছে সেগুলোতে টিক দাও।'} কিছুই না বাছলে পুরো বইয়ের অধ্যায় ধরা হবে।</p>
+        <p class="hint">যেগুলো পরীক্ষায় আছে সেগুলোতে টিক দাও। অধ্যায়ের শুধু একটা অংশ থাকলে (CT/কুইজে যেমন হয়) "টপিক বাছো" খুলে ঠিক ততটুকুই টিক দাও — হাফ ইয়ারলি/ফাইনালে সাধারণত পুরো অধ্যায়। কিছুই না বাছলে পুরো বইয়ের অধ্যায় ধরা হবে।</p>
         <div style="display:flex;gap:8px;margin-bottom:6px;"><button class="info-btn" onclick="lkAll(true)">☑️ সব</button><button class="info-btn" onclick="lkAll(false)">⬜ কিছুই না</button></div>
-        ${a.master.map((c, i) => `<label style="display:flex;gap:8px;align-items:flex-start;margin:6px 0;font-size:13.5px;"><input type="checkbox" class="lkChk" value="${i}" ${chosen[c] ? 'checked' : ''} style="width:auto;margin-top:3px;"><span>${esc(c)}</span></label>`).join('') || `<div class="empty-state">এই বিষয়ের অধ্যায়ের তালিকা নেই।</div>`}
+        ${a.master.map((c, i) => row(c, i)).join('') || `<div class="empty-state">এই বিষয়ের অধ্যায়ের তালিকা নেই।</div>`}
+        ${a.more.length ? `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;font-weight:700;">➕ অন্য পত্রের অধ্যায়ও যোগ করো</summary>${a.more.map((c, k) => row(c, a.master.length + k)).join('')}</details>` : ''}
         <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="lkChapDone()">✅ ঠিক আছে, এগোও</button></div>${creditFooter()}`;
   }
-  window.lkAll = function(on){ document.querySelectorAll('.lkChk').forEach(c => c.checked = on); };
+  window.lkTpTog = function(i){ const on = [...document.querySelectorAll('.lkTp[data-c="' + i + '"]')].some(b => b.checked); const c = document.querySelector('.lkChk[value="' + i + '"]'); if(c) c.checked = on; };
+  window.lkAll = function(on){ document.querySelectorAll('.lkChk, .lkTp').forEach(c => c.checked = on); };
   window.lkChapDone = async function(){
-    const stud = needStud(); if(!stud) return; const a = L.after;
-    const picked = [...document.querySelectorAll('.lkChk')].filter(c => c.checked).map(c => a.master[Number(c.value)]);
-    await postToScriptRaw('leakChapSave', { slug:stud.slug, key:a.key, chapters:JSON.stringify(picked) });
+    const stud = needStud(); if(!stud) return; const a = L.after, picked = [], topics = {};
+    document.querySelectorAll('.lkChk').forEach(c => {
+      if(!c.checked) return; const i = Number(c.value), name = a.all[i]; picked.push(name);
+      const boxes = [...document.querySelectorAll('.lkTp[data-c="' + i + '"]')], on = boxes.filter(b => b.checked);
+      if(boxes.length && on.length && on.length < boxes.length) topics[name] = on.map(b => (a.topicMap[name] || [])[Number(b.value)]);
+    });
+    await postToScriptRaw('leakChapSave', { slug:stud.slug, key:a.key, chapters:JSON.stringify(picked), topics:JSON.stringify(topics) });
     L.after = null; go('leakAsk', { key:a.key });
+  };
+  // সেট দেখার পাতা থেকে নিজে অধ্যায়/টপিক বাছা (সিলেবাস আবার না দিয়েই)
+  window.lkChapEdit = async function(){
+    const stud = needStud(); if(!stud) return; loading('অধ্যায় / টপিক');
+    const r = await postToScriptRaw('leakProfileGet', { slug:stud.slug, key:L.key });
+    if(!r || r.status !== 'success' || !r.entry){ toast('লোড হয়নি, আবার চেষ্টা করো'); go('leakView', { key:L.key }); return; }
+    const e = r.entry; L.editKey = e.key; L.pages = []; L.mode = null;
+    L.after = { key:e.key, chapters:e.chapters, master:e.master, more:e.more || [], topics:e.topics || {}, topicMap:e.topicMap || {}, topicsOk:true, parseOk:true, given:false };
+    go('leakSetup');
   };
 
   // =====================================================================================
@@ -10889,7 +10931,7 @@ window.doSmartSearch = async function(){
   async function laRender(){
     const stud = needStud(); if(!stud) return;
     L.key = state.key || L.key;
-    loading('একটু জানতে চাই', 'AI দেখছে আর কিছু জানার আছে কিনা...');
+    loading('Exam Leak', 'লোড হচ্ছে...');
     const r = await postToScriptRaw('leakAsk', { slug:stud.slug, key:L.key });
     if(!r || r.status !== 'success' || !r.questions || !r.questions.length){ go('leakView', { key:L.key }); return; }
     app.innerHTML = `${header('একটু জানতে চাই')}
@@ -10927,14 +10969,13 @@ window.doSmartSearch = async function(){
         <div class="row" style="margin-top:8px;"><button class="btn btn-gold btn-block" onclick="lkOpenSet(${s.no})">📖 পড়ো</button><button class="btn btn-outline btn-block" onclick="lkPrint(${s.no}, false)">📄 PDF</button></div>
         <button class="btn btn-outline btn-block" style="margin-top:6px;" onclick="lkRev(${s.no})">🔁 রিভিশনে নাও</button></div>`).join('');
     const pk = d.picks || { exam:{ cq:[], mcq:[] }, you:{ cq:[], mcq:[] }, youData:0 };
-    const pickCard = (which, icon, title, sub, color) => { const P = pk[which], n = P.cq.length + P.mcq.length; if(!n) return '';
-      return `<div class="card" style="border-left:5px solid ${color};"><h3 style="margin:0;">${icon} ${title}</h3><p class="hint" style="margin:4px 0 8px;">${sub}</p>
-        <div class="meta">CQ ${P.cq.length}টা · MCQ ${P.mcq.length}টা</div>
-        <div style="margin:6px 0;">${P.cq.concat(P.mcq).slice(0, 3).map(q => `<div style="font-size:12.5px;color:var(--pencil);margin:2px 0;">• ${esc(q.why)}</div>`).join('')}</div>
+    const pickCard = (which, icon, title, color) => { const P = pk[which], n = P.cq.length + P.mcq.length; if(!n) return '';
+      return `<div class="card" style="border-left:5px solid ${color};"><h3 style="margin:0;">${icon} ${title}</h3>
+        <div class="meta" style="margin:6px 0 10px;">CQ ${P.cq.length}টা · MCQ ${P.mcq.length}টা</div>
         <div class="row"><button class="btn btn-gold btn-block" onclick="lkOpenPick('${which}')">📖 দেখো</button><button class="btn btn-outline btn-block" onclick="lkPrintPick('${which}', false)">📄 PDF</button></div>
         <button class="btn btn-outline btn-block" style="margin-top:6px;" onclick="lkRevPick('${which}')">🔁 রিভিশনে নাও</button></div>`; };
-    const pickCards = pickCard('exam', '🏆', 'পরীক্ষার জন্য সেরা পিক', 'বোর্ড/ভর্তি-ট্যাগ, গুরুত্বপূর্ণ টপিক আর বারবার আসা প্রশ্ন ধরে — যেকোনো ছাত্রের জন্য সবচেয়ে সম্ভাব্য।', '#D9A21B') +
-      pickCard('you', '💪', 'তোমার জন্য সেরা পিক', pk.youData ? 'তোমার দুর্বল অধ্যায়, আগে ভুল করা আর এখনো না-করা প্রশ্ন আগে; যেগুলো ঠিক করেছো সেগুলো পরে।' : 'এখনো তোমার প্র্যাকটিস ডেটা কম — রিভিশন/পরীক্ষা দিলে এই পিক আরও তোমার মতো হবে।', '#2E9E5B');
+    const pickCards = pickCard('exam', '🏆', 'পরীক্ষার জন্য সেরা পিক', '#D9A21B') +
+      pickCard('you', '💪', 'তোমার জন্য সেরা পিক', '#2E9E5B');
     const chs = d.chapters.map(c => { const l = LVL[c.level] || LVL.unknown;
       return `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px dashed var(--rule);font-size:13px;"><span>${c.important ? '⭐ ' : ''}${esc(c.chapter)}</span><span class="widget-tag ${l[1]}" style="white-space:nowrap;">${l[0]}${c.acc !== null ? ' · ' + c.acc + '%' : ''}</span></div>`; }).join('');
     app.innerHTML = `${header('Exam Leak')}
@@ -10942,7 +10983,8 @@ window.doSmartSearch = async function(){
         <div style="font-size:12.5px;opacity:.8;">🏫 ${esc(d.college)}</div>
         <div style="font-size:19px;font-weight:800;color:var(--gold);">${esc(subjLabel(d.subject))} · ${esc(d.paper)}</div>
         <div style="font-size:13px;opacity:.9;">${esc(d.examLabel || '')}${d.examNote ? ' — ' + esc(d.examNote) : ''}</div>
-        <div style="margin-top:8px;"><a class="link-back" style="color:#fff;font-size:12.5px;" onclick="lkEdit('${esc(d.key)}')">✏️ কলেজ / সিলেবাস / পরীক্ষার ধরন / টপিক বদলাও</a></div></div>
+        <div style="margin-top:8px;"><a class="link-back" style="color:#fff;font-size:12.5px;" onclick="lkEdit('${esc(d.key)}')">✏️ কলেজ / সিলেবাস / পরীক্ষার ধরন / টপিক বদলাও</a></div>
+        <div style="margin-top:6px;"><a class="link-back" style="color:#fff;font-size:12.5px;" onclick="lkChapEdit()">📚 অধ্যায় / টপিক নিজে বাছো</a></div></div>
       <div class="card"><h3>🎛️ কীভাবে বানাবো?</h3>
         <label class="field-label">ফোকাস</label>
         <div style="display:flex;gap:6px;">${chip('balanced', '⚖️ ব্যালান্স')}${chip('weak', '💪 দুর্বল টপিক')}${chip('strong', '🏆 শক্তিশালী টপিক')}</div>
@@ -10962,7 +11004,7 @@ window.doSmartSearch = async function(){
   window.lkGen = async function(force){
     const stud = needStud(); if(!stud) return;
     const b = document.getElementById('lkGen'), st = document.getElementById('lkGenSt'); b.disabled = true;
-    st.innerHTML = `<p class="hint">⏳ AI আর তোমার প্রশ্নভান্ডার ঘেঁটে সেট বানাচ্ছে — ১ মিনিট পর্যন্ত লাগতে পারে, পেজ বন্ধ কোরো না...</p>`;
+    st.innerHTML = ldCard('সেট বানানো হচ্ছে — ১ মিনিট পর্যন্ত লাগতে পারে, পেজ বন্ধ কোরো না');
     const r = await postToScriptRaw('leakGen', { slug:stud.slug, key:L.key, focus:L.focus, cq:val('lkCq'), mcq:val('lkMcq'), sets:val('lkSets'), force:force === true ? '1' : '' });
     if(r && r.message === 'teacher_edited'){
       b.disabled = false; st.innerHTML = '';
@@ -11038,14 +11080,14 @@ window.doSmartSearch = async function(){
     const d = L.data;
     if(!document.getElementById('lkPrintCss')){
       const st = document.createElement('style'); st.id = 'lkPrintCss';
-      st.textContent = '#lkPrint{display:none;} @media print{ body > *:not(#lkPrint){display:none !important;} #lkPrint{display:block !important;color:#000;background:#fff;font-size:13.5px;line-height:1.55;} .lk-set{page-break-after:always;} .lk-set:last-child{page-break-after:auto;} .lk-q{page-break-inside:avoid;margin:10px 0;} .lk-q img{max-width:100%;} }';
+      st.textContent = '#lkPrint{display:none;} @media print{ body > *:not(#lkPrint){display:none !important;} #lkPrint{display:block !important;color:#000;background:#fff;font-size:13.5px;line-height:1.55;} .lk-set{page-break-after:always;} .lk-set:last-child{page-break-after:auto;} .lk-q{page-break-inside:avoid;break-inside:avoid;margin:10px 0;} .lk-q img{max-width:100%;} .katex{font-size:1.05em;} .katex-display{margin:4px 0;} }';
       document.head.appendChild(st);
     }
     const old = document.getElementById('lkPrint'); if(old) old.remove();
     const box = document.createElement('div'); box.id = 'lkPrint';
     const q2 = (q, i, ans) => {
       const img = q.image ? `<div><img src="${driveImg(q.image)}"></div>` : '';
-      if(q.kind === 'mcq') return `<div class="lk-q"><b>${i}.</b> ${esc(q.text)}${img}<div style="margin:3px 0 0 14px;">${q.options.map((o, j) => `<div>${L4[j]}) ${esc(o)}</div>`).join('')}</div></div>`;
+      if(q.kind === 'mcq') return `<div class="lk-q"><div style="white-space:pre-wrap;"><b>${i}.</b> ${esc(q.text)}</div>${img}<div style="margin:4px 0 0 16px;">${(q.options || []).map((o, j) => `<div style="white-space:pre-wrap;margin:2px 0;">${L4[j]}) ${esc(o)}</div>`).join('')}</div></div>`;
       const head = `<div style="border:1.5px dashed #444;padding:4px 8px;margin-bottom:4px;font-weight:700;">প্রশ্ন ${bn(i)}${q.board ? ' ▶ ' + esc(q.board) : ''}</div>`;
       if(q.parts) return `<div class="lk-q">${head}${q.parts.stem ? `<div style="white-space:pre-wrap;">${esc(q.parts.stem)}</div>` : ''}<div style="display:flex;justify-content:space-between;gap:12px;margin:4px 0;"><div style="white-space:pre-wrap;"><b>গ.</b> ${esc(q.parts.g)}</div><b>${esc(q.parts.gm)}</b></div><div style="display:flex;justify-content:space-between;gap:12px;margin:4px 0;"><div style="white-space:pre-wrap;"><b>ঘ.</b> ${esc(q.parts.gh)}</div><b>${esc(q.parts.ghm)}</b></div>${img}</div>`;
       return `<div class="lk-q">${head}<span style="white-space:pre-wrap;">${esc(q.text)}</span>${img}</div>`;
@@ -11058,11 +11100,15 @@ window.doSmartSearch = async function(){
         <div style="font-weight:700;">${s.title ? esc(s.title) : 'সেট ' + s.no + ' — শিক্ষকের মতে আসার সম্ভাবনা ' + s.prob + '%'}</div></div>
         ${s.cq.length ? `<h3>সৃজনশীল প্রশ্ন${d.answer && d.answer < s.cq.length ? ' (' + bn(s.cq.length) + 'টির মধ্যে যেকোনো ' + bn(d.answer) + 'টির উত্তর দাও)' : ''}</h3>${s.cq.map(q => q2(q, ++n)).join('')}` : ''}${s.mcq.length ? `<h3>বহুনির্বাচনি প্রশ্ন</h3>${s.mcq.map(q => q2(q, ++n)).join('')}` : ''}${ansHtml}</div>`;
     }).join('');
-    document.body.appendChild(box); renderAllMath(box);
+    document.body.appendChild(box);
+    toast('PDF তৈরি হচ্ছে...');
+    for(let t = 0; !window.renderMathInElement && t < 25; t++) await new Promise(r => setTimeout(r, 150));   // গণিতের লাইব্রেরি লোড হওয়া পর্যন্ত
+    renderAllMath(box);
+    if(document.fonts && document.fonts.ready) await Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 2500))]);
     const imgs = [...box.querySelectorAll('img')];
     await Promise.race([Promise.all(imgs.map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; }))), new Promise(r => setTimeout(r, 5000))]);
     toast('প্রিন্ট উইন্ডোতে "PDF হিসেবে সেভ" / "Save as PDF" বাছো');
-    setTimeout(() => { window.print(); }, 350);
+    setTimeout(() => { window.print(); }, 600);
   }
 
   // =====================================================================================
