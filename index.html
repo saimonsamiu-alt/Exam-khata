@@ -10961,18 +10961,21 @@ window.doSmartSearch = async function(){
   function lvDraw(){
     const d = L.data, cfg = d.cfg || d.counts || { cq:0, mcq:0, sets:3 }; cfg.n = cfg.n || cfg.sets || 3;
     const chip = (k, t) => `<button class="btn ${L.focus === k ? 'btn-primary' : 'btn-outline'}" style="flex:1;font-size:12px;padding:8px 4px;" onclick="lkFocus('${k}')">${t}</button>`;
+    const cqUnits = list => list.reduce((a, q) => a + (q.parts ? 2 : 1), 0);
+    const setRow = (s, part) => { const arr = part === 'cq' ? s.cq : s.mcq; if(!arr.length) return '';
+      return `<div style="display:flex;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--rule);"><div style="flex:1;min-width:0;font-weight:700;font-size:13.5px;">${part === 'cq' ? '✍️ CQ সেট ' : '🔘 MCQ সেট '}${s.no} <span class="meta" style="font-weight:400;">(${bn(arr.length)}টা${part === 'cq' && cqUnits(arr) !== arr.length ? ' · গ+ঘ মিলিয়ে ' + bn(cqUnits(arr)) + 'টি প্রশ্ন' : ''})</span></div><button class="btn btn-gold" style="padding:8px 12px;" onclick="lkOpenSet(${s.no}, '${part}')">📖 পড়ো</button><button class="btn btn-outline" style="padding:8px 12px;" onclick="lkPrint(${s.no}, false, '${part}')">📄 PDF</button></div>`; };
     const sets = d.sets.map(s => `<div class="exam-item" style="border-left:5px solid ${s.prob >= 90 ? '#2E9E5B' : (s.prob >= 80 ? '#D9A21B' : '#6B7A99')};">
         <div class="row-top"><div><div style="font-weight:800;font-size:16px;">সেট ${s.no}</div>
           <div style="font-size:13.5px;margin-top:2px;">শিক্ষকের মতে এই সেট আসার সম্ভাবনা <b style="color:var(--green);font-size:17px;">${s.prob}%</b></div>
           <div class="meta">CQ ${s.cq.length}টা · MCQ ${s.mcq.length}টা</div>
           <div style="margin-top:4px;">${s.chapters.slice(0, 4).map(c => `<span class="q-tag" style="margin-right:4px;">${esc(c.replace(/^.*?অধ্যায়-?\d*[:：]?\s*/, '') || c)}</span>`).join('')}</div></div></div>
-        <div class="row" style="margin-top:8px;"><button class="btn btn-gold btn-block" onclick="lkOpenSet(${s.no})">📖 পড়ো</button><button class="btn btn-outline btn-block" onclick="lkPrint(${s.no}, false)">📄 PDF</button></div>
+        ${setRow(s, 'cq')}${setRow(s, 'mcq')}
         <button class="btn btn-outline btn-block" style="margin-top:6px;" onclick="lkRev(${s.no})">🔁 রিভিশনে নাও</button></div>`).join('');
     const pk = d.picks || { exam:{ cq:[], mcq:[] }, you:{ cq:[], mcq:[] }, youData:0 };
     const pickCard = (which, icon, title, color) => { const P = pk[which], n = P.cq.length + P.mcq.length; if(!n) return '';
       return `<div class="card" style="border-left:5px solid ${color};"><h3 style="margin:0;">${icon} ${title}</h3>
         <div class="meta" style="margin:6px 0 10px;">CQ ${P.cq.length}টা · MCQ ${P.mcq.length}টা</div>
-        <div class="row"><button class="btn btn-gold btn-block" onclick="lkOpenPick('${which}')">📖 দেখো</button><button class="btn btn-outline btn-block" onclick="lkPrintPick('${which}', false)">📄 PDF</button></div>
+        ${P.cq.length ? `<div style="display:flex;align-items:center;gap:6px;margin-top:6px;"><div style="flex:1;font-weight:700;font-size:13.5px;">✍️ CQ (${bn(P.cq.length)}টা)</div><button class="btn btn-gold" style="padding:8px 12px;" onclick="lkOpenPick('${which}', 'cq')">📖 দেখো</button><button class="btn btn-outline" style="padding:8px 12px;" onclick="lkPrintPick('${which}', false, 'cq')">📄 PDF</button></div>` : ''}${P.mcq.length ? `<div style="display:flex;align-items:center;gap:6px;margin-top:6px;"><div style="flex:1;font-weight:700;font-size:13.5px;">🔘 MCQ (${bn(P.mcq.length)}টা)</div><button class="btn btn-gold" style="padding:8px 12px;" onclick="lkOpenPick('${which}', 'mcq')">📖 দেখো</button><button class="btn btn-outline" style="padding:8px 12px;" onclick="lkPrintPick('${which}', false, 'mcq')">📄 PDF</button></div>` : ''}
         <button class="btn btn-outline btn-block" style="margin-top:6px;" onclick="lkRevPick('${which}')">🔁 রিভিশনে নাও</button></div>`; };
     const pickCards = pickCard('exam', '🏆', 'পরীক্ষার জন্য সেরা পিক', '#D9A21B') +
       pickCard('you', '💪', 'তোমার জন্য সেরা পিক', '#2E9E5B');
@@ -11014,8 +11017,8 @@ window.doSmartSearch = async function(){
     if(r && r.status === 'success'){ L.data = r; lvDraw(); toast('সেট তৈরি ✅'); }
     else { b.disabled = false; st.innerHTML = `<p class="hint" style="color:var(--red);">❌ ${r && r.message === 'busy_try_again' ? 'এখন ব্যস্ত, একটু পরে আবার চাপো' : (r && r.message === 'invalid_input' ? 'CQ আর MCQ দুটোই ০ হতে পারে না' : 'সেট বানানো যায়নি, আবার চেষ্টা করো')}</p>`; }
   };
-  window.lkOpenSet = function(no){ L.setNo = no; go('leakSet', { setNo:no }); };
-  window.lkOpenPick = function(which){ go('leakSet', { pick:which }); };
+  window.lkOpenSet = function(no, part){ L.setNo = no; go('leakSet', { setNo:no, part:part || 'all' }); };
+  window.lkOpenPick = function(which, part){ go('leakSet', { pick:which, part:part || 'all' }); };
   window.lkRevPick = async function(which){
     const stud = needStud(); if(!stud || !L.data || !L.data.picks) return; const P = L.data.picks[which], keys = P.cq.concat(P.mcq).map(q => q.key);
     if(!keys.length){ toast('প্রশ্ন নেই'); return; }
@@ -11036,7 +11039,7 @@ window.doSmartSearch = async function(){
   function qBlock(q, i, withAns){
     const tags = `${q.board && q.kind === 'mcq' ? `<span class="widget-tag tag-gold" style="margin-right:4px;">🏷️ ${esc(q.board)}</span>` : ''}${yrChip(q)}<span class="widget-tag tag-blue">সম্ভাবনা ${q.p}%</span>`;
     const meta = `<div class="meta" style="margin:2px 0;">${esc(q.chapter.replace(/^.*?অধ্যায়-?\d*[:：]?\s*/, '') || q.chapter)}${q.topic ? ' › ' + esc(q.topic) : ''}${q.why ? ' · <b>' + esc(q.why) + '</b>' : ''}</div>`;
-    const img = q.image ? `<img src="${driveImg(q.image)}" style="max-width:100%;border-radius:8px;margin:6px 0;">` : '';
+    const img = q.image ? `<img src="${driveImg(q.image)}" onclick="openImgZoom(this.getAttribute('src'))" style="max-width:100%;border-radius:8px;margin:6px 0;cursor:zoom-in;"><div class="meta" style="margin:-2px 0 4px;">🔍 ছবিতে ট্যাপ করলে বড় হবে</div>` : '';
     if(q.kind === 'mcq'){
       const opts = q.options.map((o, j) => `<div style="margin:3px 0;${withAns && j === q.correct ? 'font-weight:700;color:var(--green);' : ''}">${L4[j]}) ${esc(o)}</div>`).join('');
       return `<div class="exam-item"><div class="meta"><b>${i}.</b> ${tags}</div>${meta}<div class="q-text" style="white-space:pre-wrap;">${esc(q.text)}</div>${img}<div style="margin-top:4px;">${opts}</div>
@@ -11053,14 +11056,16 @@ window.doSmartSearch = async function(){
     const s = P ? { no:0, prob:null, cq:P.cq, mcq:P.mcq, title:pickKey === 'you' ? '💪 তোমার জন্য সেরা পিক' : '🏆 পরীক্ষার জন্য সেরা পিক' } : (L.data.sets.find(x => x.no === no) || L.data.sets[0]);
     if(!s){ go('leakView', { key:L.key }); return; }
     let n = 0;
+    const part = state.part || 'all', showCq = part !== 'mcq' && s.cq.length, showMcq = part !== 'cq' && s.mcq.length, pTag = part === 'cq' ? ' — CQ' : (part === 'mcq' ? ' — MCQ' : '');
+    const cqUnits = s.cq.reduce((a, q) => a + (q.parts ? 2 : 1), 0), sw = P ? '' : `<div class="center" style="margin-top:8px;">${part !== 'cq' && s.cq.length ? `<a class="link-back" onclick="lkOpenSet(${s.no}, 'cq')">✍️ CQ সেট ${s.no}</a>` : ''}${part !== 'mcq' && s.mcq.length ? ` &nbsp; <a class="link-back" onclick="lkOpenSet(${s.no}, 'mcq')">🔘 MCQ সেট ${s.no}</a>` : ''}</div>`;
     const pf = P ? `lkPrintPick('${pickKey}', ` : `lkPrint(${s.no}, `, rf = P ? `lkRevPick('${pickKey}')` : `lkRev(${s.no})`;
     app.innerHTML = `${header(P ? s.title : 'সেট ' + s.no)}
       <div class="card center"><div style="font-size:12.5px;color:var(--pencil);">${esc(L.data.college)} · ${esc(subjLabel(L.data.subject))} · ${esc(L.data.paper)}</div>
-        <h2 style="margin:4px 0;">${P ? s.title : 'সেট ' + s.no}</h2>${P ? '' : `<div style="font-size:15px;">শিক্ষকের মতে আসার সম্ভাবনা <b style="color:var(--green);font-size:20px;">${s.prob}%</b></div>`}
-        <div class="row" style="margin-top:10px;"><button class="btn btn-outline btn-block" onclick="${pf}false)">📄 PDF (প্রশ্ন)</button><button class="btn btn-outline btn-block" onclick="${pf}true)">📄 PDF (উত্তরসহ)</button></div>
+        <h2 style="margin:4px 0;">${(P ? s.title : 'সেট ' + s.no) + pTag}</h2>${P ? '' : `<div style="font-size:15px;">শিক্ষকের মতে আসার সম্ভাবনা <b style="color:var(--green);font-size:20px;">${s.prob}%</b></div>`}
+        <div class="row" style="margin-top:10px;"><button class="btn btn-outline btn-block" onclick="${pf}false, '${part}')">📄 PDF (প্রশ্ন)</button><button class="btn btn-outline btn-block" onclick="${pf}true, '${part}')">📄 PDF (উত্তরসহ)</button></div>${sw}
         <button class="btn btn-gold btn-block" style="margin-top:6px;" onclick="${rf}">🔁 ${P ? 'এগুলো' : 'এই সেট'} রিভিশনে নাও</button></div>
-      ${s.cq.length ? `<div class="card"><h2>✍️ সৃজনশীল (CQ)</h2>${L.data.answer && L.data.answer < s.cq.length ? `<p class="hint" style="margin-top:-4px;">${bn(s.cq.length)}টির মধ্যে যেকোনো ${bn(L.data.answer)}টির উত্তর দাও</p>` : ''}${s.cq.map(q => qBlock(q, ++n, false)).join('')}</div>` : ''}
-      ${s.mcq.length ? `<div class="card"><h2>🔘 MCQ</h2>${s.mcq.map(q => qBlock(q, ++n, false)).join('')}</div>` : ''}
+      ${showCq ? `<div class="card"><h2>✍️ সৃজনশীল (CQ)</h2><p class="hint" style="margin-top:-4px;">${bn(s.cq.length)}টা CQ${cqUnits !== s.cq.length ? ' — গ+ঘ মিলিয়ে ' + bn(cqUnits) + 'টি প্রশ্ন' : ''} · সবচেয়ে সম্ভাব্য আগে</p>${L.data.answer && L.data.answer < s.cq.length ? `<p class="hint" style="margin-top:-4px;">${bn(s.cq.length)}টির মধ্যে যেকোনো ${bn(L.data.answer)}টির উত্তর দাও</p>` : ''}${s.cq.map(q => qBlock(q, ++n, false)).join('')}</div>` : ''}
+      ${showMcq ? `<div class="card"><h2>🔘 MCQ</h2><p class="hint" style="margin-top:-4px;">${bn(s.mcq.length)}টা MCQ · সবচেয়ে সম্ভাব্য আগে</p>${s.mcq.map(q => qBlock(q, ++n, false)).join('')}</div>` : ''}
       <div class="center"><a class="link-back" onclick="go('leakView', { key:'${esc(L.key)}' })">← সেটের তালিকা</a></div>${creditFooter()}`;
     renderAllMath(app);
   }
@@ -11068,16 +11073,23 @@ window.doSmartSearch = async function(){
   // =====================================================================================
   // PDF — ব্রাউজারের প্রিন্ট থেকে "PDF হিসেবে সেভ" (গণিতের চিহ্ন ও বাংলা ঠিক থাকে)
   // =====================================================================================
-  window.lkPrintPick = function(which, withAns){
-    const d = L.data; if(!d || !d.picks){ return; } const P = d.picks[which];
-    return lkPrintList([{ no:0, prob:null, cq:P.cq, mcq:P.mcq, title:which === 'you' ? 'তোমার জন্য সেরা পিক' : 'পরীক্ষার জন্য সেরা পিক' }], withAns);
+  const partOf = (s, part) => {
+    const base = s.title || ('সেট ' + s.no + ' — শিক্ষকের মতে আসার সম্ভাবনা ' + s.prob + '%');
+    if(part === 'cq') return Object.assign({}, s, { mcq:[], title:base + ' · CQ' });
+    if(part === 'mcq') return Object.assign({}, s, { cq:[], title:base + ' · MCQ' });
+    return s;
   };
-  window.lkPrint = function(no, withAns){
+  window.lkPrintPick = function(which, withAns, part){
+    const d = L.data; if(!d || !d.picks){ return; } const P = d.picks[which];
+    return lkPrintList([partOf({ no:0, prob:null, cq:P.cq, mcq:P.mcq, title:which === 'you' ? 'তোমার জন্য সেরা পিক' : 'পরীক্ষার জন্য সেরা পিক' }, part)], withAns);
+  };
+  window.lkPrint = function(no, withAns, part){
     const d = L.data; if(!d || !d.sets.length){ toast('আগে সেট বানাও'); return; }
-    return lkPrintList(d.sets.filter(s => !no || s.no === no), withAns);
+    return lkPrintList(d.sets.filter(s => !no || s.no === no).map(s => partOf(s, part)), withAns);
   };
   async function lkPrintList(list, withAns){
     const d = L.data;
+    const w = window.open('', '_blank');   // ক্লিকের সাথে সাথে খুলতে হয়, নইলে পপআপ আটকায়
     if(!document.getElementById('lkPrintCss')){
       const st = document.createElement('style'); st.id = 'lkPrintCss';
       st.textContent = '#lkPrint{display:none;} @media print{ body > *:not(#lkPrint){display:none !important;} #lkPrint{display:block !important;color:#000;background:#fff;font-size:13.5px;line-height:1.55;} .lk-set{page-break-after:always;} .lk-set:last-child{page-break-after:auto;} .lk-q{page-break-inside:avoid;break-inside:avoid;margin:10px 0;} .lk-q img{max-width:100%;} .katex{font-size:1.05em;} .katex-display{margin:4px 0;} }';
@@ -11092,7 +11104,7 @@ window.doSmartSearch = async function(){
       if(q.parts) return `<div class="lk-q">${head}${q.parts.stem ? `<div style="white-space:pre-wrap;">${esc(q.parts.stem)}</div>` : ''}<div style="display:flex;justify-content:space-between;gap:12px;margin:4px 0;"><div style="white-space:pre-wrap;"><b>গ.</b> ${esc(q.parts.g)}</div><b>${esc(q.parts.gm)}</b></div><div style="display:flex;justify-content:space-between;gap:12px;margin:4px 0;"><div style="white-space:pre-wrap;"><b>ঘ.</b> ${esc(q.parts.gh)}</div><b>${esc(q.parts.ghm)}</b></div>${img}</div>`;
       return `<div class="lk-q">${head}<span style="white-space:pre-wrap;">${esc(q.text)}</span>${img}</div>`;
     };
-    box.innerHTML = list.map(s => {
+    const bodyHtml = list.map(s => {
       let n = 0;
       const ansHtml = withAns ? `<h3 style="margin-top:16px;">উত্তরমালা</h3>${s.mcq.length ? `<div>MCQ: ${s.mcq.map((q, j) => `${s.cq.length + j + 1}-${L4[q.correct] || '?'}`).join(', ')}</div>` : ''}${s.cq.map((q, j) => `<div class="lk-q"><b>${j + 1}.</b> <span style="white-space:pre-wrap;">${esc(q.modelAnswerText || '—')}</span>${q.modelAnswerImageUrl ? `<div><img src="${driveImg(q.modelAnswerImageUrl)}"></div>` : ''}</div>`).join('')}` : '';
       return `<div class="lk-set"><div style="text-align:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px;"><div style="font-size:17px;font-weight:800;">${esc(d.college)}</div>
@@ -11100,6 +11112,30 @@ window.doSmartSearch = async function(){
         <div style="font-weight:700;">${s.title ? esc(s.title) : 'সেট ' + s.no + ' — শিক্ষকের মতে আসার সম্ভাবনা ' + s.prob + '%'}</div></div>
         ${s.cq.length ? `<h3>সৃজনশীল প্রশ্ন${d.answer && d.answer < s.cq.length ? ' (' + bn(s.cq.length) + 'টির মধ্যে যেকোনো ' + bn(d.answer) + 'টির উত্তর দাও)' : ''}</h3>${s.cq.map(q => q2(q, ++n)).join('')}` : ''}${s.mcq.length ? `<h3>বহুনির্বাচনি প্রশ্ন</h3>${s.mcq.map(q => q2(q, ++n)).join('')}` : ''}${ansHtml}</div>`;
     }).join('');
+    if(w){
+      const title = (list.length === 1 && list[0].title) ? list[0].title : 'Exam Leak';
+      const css = "body{margin:0;padding:12px 14px 40px;font-family:'Noto Sans Bengali','Inter',sans-serif;color:#000;background:#fff;font-size:15px;line-height:1.6;} .bar{position:sticky;top:0;background:#1F2A44;color:#fff;padding:10px 12px;margin:-12px -14px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;z-index:5;} .bar button{background:#D9A441;border:0;border-radius:8px;padding:9px 14px;font-weight:700;font-size:14px;font-family:inherit;} .bar span{font-size:12.5px;} .lk-set{margin-bottom:24px;} .lk-q{margin:12px 0;page-break-inside:avoid;break-inside:avoid;} .lk-q img{max-width:100%;} .katex{font-size:1.05em;} .katex-display{margin:4px 0;overflow-x:auto;overflow-y:hidden;} @media print{.bar{display:none;} body{padding:0;font-size:13.5px;} .lk-set{page-break-after:always;} .lk-set:last-child{page-break-after:auto;}}";
+      const boot = function(){
+        var ps = document.getElementById('ps'), n = 0;
+        function ready(){
+          try{ renderMathInElement(document.getElementById('lkPrint'), { delimiters:[{ left:'$$', right:'$$', display:true }, { left:'$', right:'$', display:false }, { left:'\\(', right:'\\)', display:false }, { left:'\\[', right:'\\]', display:true }], throwOnError:false }); }catch(e){}
+          var P = [].slice.call(document.images).map(function(im){ return im.complete ? 0 : new Promise(function(r){ im.onload = im.onerror = r; }); });
+          P.push((document.fonts && document.fonts.ready) || 0);
+          Promise.race([Promise.all(P), new Promise(function(r){ setTimeout(r, 7000); })]).then(function(){ ps.textContent = 'তৈরি ✅ — "PDF হিসেবে সেভ করো" চাপো'; setTimeout(function(){ window.print(); }, 300); });
+        }
+        (function wait(){ if(window.renderMathInElement || n++ > 80) return ready(); setTimeout(wait, 150); })();
+      };
+      w.document.open();
+      w.document.write('<!doctype html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(title) + '</title>' +
+        '<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"><style>' + css + '</style></head><body>' +
+        '<div class="bar"><button onclick="window.print()">📄 PDF হিসেবে সেভ করো</button><span id="ps">তৈরি হচ্ছে...</span></div><div id="lkPrint">' + bodyHtml + '</div>' +
+        '<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"><\/script><script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/mhchem.min.js"><\/script><script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"><\/script>' +
+        '<script>(' + boot.toString() + ')();<\/script></body></html>');
+      w.document.close();
+      return;
+    }
+    toast('নতুন ট্যাব খোলেনি (পপআপ আটকানো) — এই পাতা থেকেই PDF হচ্ছে');
+    box.innerHTML = bodyHtml;
     document.body.appendChild(box);
     toast('PDF তৈরি হচ্ছে...');
     for(let t = 0; !window.renderMathInElement && t < 25; t++) await new Promise(r => setTimeout(r, 150));   // গণিতের লাইব্রেরি লোড হওয়া পর্যন্ত
