@@ -3688,12 +3688,12 @@ async function renderMonthlyReward(){
           <div class="meta">${s.lastFinalizedAt ? 'শেষ রিওয়ার্ড: ' + fmtBnDate(s.lastFinalizedAt) : 'এখনো কোনো রিওয়ার্ড পায়নি — সব exam গোনা হচ্ছে'}</div>
           <div class="meta"><b>${s.examCount}টা</b> exam গোনা হয়েছে · মোট <b>${s.scored}/${s.total}</b> (${s.percent}%)</div>
           ${skipped.length ? `<div class="meta" style="color:#9B6A15;">⚠️ ${skipped.join(' · ')}</div>` : ''}
-          ${(s.skippedPublicExams && s.skippedPublicExams.length) ? `<details style="margin:4px 0 0 0;"><summary style="cursor:pointer; font-size:12.5px; color:#9B6A15;">⚠️ বাদ গেছে — কোন কোন exam</summary><div style="margin-top:6px;">${s.skippedPublicExams.map(x=> `<div class="meta">• ${escapeHtml(x.title)} — ${x.score}/${x.total} · ${fmtBnDate(x.ts)}</div>`).join('')}</div></details>` : ''}
+          ${(s.skippedPublicExams && s.skippedPublicExams.length) ? `<details style="margin:4px 0 0 0;"><summary style="cursor:pointer; font-size:12.5px; color:#9B6A15;">⚠️ বাদ গেছে — কোন কোন exam</summary><div style="margin-top:6px;">${s.skippedPublicExams.map(x=> `<div class="meta" style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><span>• ${escapeHtml(x.title)} — ${x.score}/${x.total} · ${fmtBnDate(x.ts)}</span><button class="btn btn-outline" style="padding:3px 10px;font-size:12px;white-space:nowrap;" onclick="rwForce('${escapeHtml(x.key)}','${escapeHtml(s.slug)}',true)">➕ গোনো</button></div>`).join('')}</div></details>` : ''}
         </div>
         <div class="score-big score-pass" style="font-size:19px;" id="rwProj${i}">৳${rewardAmount(s.percent, s.studentMax)}</div>
       </div>
       ${s.exams.length ? `<details style="margin:8px 0 0 0;"><summary style="cursor:pointer; font-size:12.5px; color:var(--pencil);">📋 কোন কোন exam গোনা হয়েছে</summary>
-        <div style="margin-top:6px;">${s.exams.map(x=> `<div class="meta">• ${escapeHtml(x.title)} — ${x.score}/${x.total} · ${fmtBnDate(x.ts)}</div>`).join('')}</div></details>` : ''}
+        <div style="margin-top:6px;">${s.exams.map(x=> `<div class="meta" style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><span>• ${escapeHtml(x.title)} — ${x.score}/${x.total} · ${fmtBnDate(x.ts)}${x.forced ? ' <b style="color:#9B6A15;">(হাতে যোগ করা)</b>' : ''}</span>${x.forced ? `<button class="btn btn-outline" style="padding:3px 10px;font-size:12px;white-space:nowrap;" onclick="rwForce('${escapeHtml(x.key)}','${escapeHtml(s.slug)}',false)">↩ সরাও</button>` : ''}</div>`).join('')}</div></details>` : ''}
       <label class="field-label" style="margin-top:10px;">এই ছাত্রের জন্য ১০০% পেলে সর্বোচ্চ কত টাকা (৳)</label>
       <input type="number" id="rwMax${i}" value="${s.studentMax || ''}" min="1" step="1" placeholder="যেমন: ১০০" oninput="rwRecalc(${i})" style="margin-bottom:8px;">
       <button class="btn btn-primary btn-block" ${s.examCount === 0 ? 'disabled' : ''} onclick="finalizeOneReward(${i})">✅ শুধু ${escapeHtml(s.name)}-কে ফাইনালাইজ করো</button>
@@ -3730,6 +3730,13 @@ window.rwLinkAlias = async function(i){
   const res = await postToScriptRaw('setStudentAlias', { alias: s.slug, target });
   if(res && res.status === 'success'){ toast('মেলানো হয়েছে ✅'); renderMonthlyReward(); }
   else toast('মেলানো যায়নি, আবার চেষ্টা করো');
+};
+window.rwForce = async function(key, slug, add){
+  if(!confirm(add ? 'এই exam টা রিওয়ার্ডের হিসাবে গোনা হবে। এগোবে?' : 'এই exam টা আবার হিসাব থেকে বাদ যাবে। এগোবে?')) return;
+  toast('আপডেট হচ্ছে...');
+  const res = await postToScriptRaw(add ? 'forceCountResult' : 'unforceCountResult', { key, slug });
+  if(res && res.status === 'success'){ toast(add ? 'গোনায় যোগ হয়েছে ✅' : 'সরানো হয়েছে ✅'); renderMonthlyReward(); }
+  else toast('হয়নি, আবার চেষ্টা করো');
 };
 window.rwRecalc = function(i){
   const s = (window.__rewardRows || [])[i]; if(!s) return;
