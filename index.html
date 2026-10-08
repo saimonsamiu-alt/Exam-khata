@@ -1967,7 +1967,7 @@ function renderStudentResult(){
       <h2>${escapeHtml(exam.title)}</h2>
       ${auto ? `<p class="hint">⏱️ সময় শেষ হয়ে যাওয়ায় স্বয়ংক্রিয়ভাবে জমা হয়েছে।</p>`:''}
       <div class="stamp ${pct>=50?'':'fail'}">${result.score}/${result.total}</div>
-      ${couponAmount>0 ? `<div class="say" style="margin-top:14px;">🎁 <b>অভিনন্দন!</b> তুমি ৳${couponAmount} Treat Coupon পেয়েছো! "🎁 আমার Treat Coupon" থেকে দেখতে পারবে।</div>` : ''}
+      ${exam.isTreat ? `<div class="say" style="margin-top:14px;">🎁 তোমার Treat Coupon-এর হিসাব CQ পরীক্ষা শেষ হলে একসাথে দেখানো হবে।</div>` : ''}
       <p class="hint" style="margin-top:10px;">নিচে দেখো কোন প্রশ্নে কী দাগিয়েছিলে — এখনই দেখে নাও, পরে আবার লগইন করার দরকার নেই।</p>
     </div>
     <div class="card" style="text-align:start;">${buildAnswerReview(exam, result.answers)}</div>
@@ -2281,6 +2281,7 @@ function labelForCouponExamCode(examCode){
     const [y, m] = monthKey.split('-');
     return `${BN_MONTHS[Number(m)-1] || m} ${y} (মাসিক রিওয়ার্ড)`;
   }
+  if(String(examCode).indexOf('CUT:') === 0) return 'কাট (মিস দিন / API বিল)';
   if(String(examCode).indexOf('PERIOD:') === 0){
     const p = String(examCode).slice(7).split('~'); // from~to~ts
     return `কোড এক্সাম রিওয়ার্ড (${p[0]} থেকে ${p[1]})`;
@@ -3550,7 +3551,7 @@ function renderCouponBalance(){
   const rows = (history||[]).sort((a,b)=> b.createdAt - a.createdAt).map(h=> {
     const statusLabel = h.status==='settled' ? 'পরিশোধিত ✓' : (h.status==='requested' ? 'Withdraw অনুরোধ — Pending ⏳' : 'জমা আছে');
     return `<div class="review-block">
-      <div class="q-text" style="font-size:14px;">পরীক্ষা: ${escapeHtml(labelForCouponExamCode(h.examCode))} · স্কোর: ${h.percent}%</div>
+      <div class="q-text" style="font-size:14px;">পরীক্ষা: ${escapeHtml(labelForCouponExamCode(h.examCode))}${String(h.examCode).indexOf('CUT:') === 0 ? '' : ' · স্কোর: ' + h.percent + '%'}</div>
       <div class="review-ans ${h.status==='settled'?'right':'wrong'}">৳${h.amount} — ${statusLabel}</div>
     </div>`;
   }).join('');
@@ -3602,8 +3603,8 @@ function renderCouponBalance(){
     slot.innerHTML = `
       <h3>📅 চলতি কোড-এক্সাম রিওয়ার্ড হিসাব</h3>
       <div class="meta">${preview.lastFinalizedAt ? fmtBnDate(preview.lastFinalizedAt) + '-এর শেষ রিওয়ার্ডের পর থেকে' : 'এ পর্যন্ত'} code দিয়ে ${preview.examCount}টা exam দিয়েছো, মোট ${preview.scored}/${preview.total} নম্বর (${preview.percent}%)।</div>
-      ${preview.projectedAmount > 0 ? `<div class="score-big score-pass" style="margin-top:6px;">এখন পর্যন্ত প্রজেক্টেড: ৳${preview.projectedAmount}</div>` : ''}
-      <p class="hint" style="margin-top:8px;">শিক্ষক ফাইনালাইজ করলে এই টাকা তোমার ব্যালেন্সে যোগ হবে, তারপর নতুন exam থেকে আবার নতুন করে গোনা শুরু হবে। এর মাঝে আরও exam দিলে এই সংখ্যা বদলাতে পারে।</p>
+      
+      <p class="hint" style="margin-top:8px;">শিক্ষক ফাইনালাইজ করলে কুপন জমা হবে (CQ পরীক্ষা শেষ হলে দেখানো হবে), তারপর নতুন exam থেকে আবার নতুন করে গোনা শুরু হবে। এর মাঝে আরও exam দিলে এই সংখ্যা বদলাতে পারে।</p>
     `;
   })();
 }
@@ -3625,7 +3626,7 @@ async function renderCouponManage(){
   const balances = await listAllCouponBalancesRemote();
   balances.sort((a,b)=> b.balance - a.balance);
   window.__couponBalancesCache = balances;
-  let rows = balances.filter(b=> b.balance > 0).map(b=> `
+  let rows = balances.filter(b=> b.balance > 0 || b.hidden > 0).map(b=> `
     <div class="exam-item">
       <div class="row-top">
         <div>
@@ -3634,7 +3635,8 @@ async function renderCouponManage(){
         </div>
         <div class="score-big score-pass">৳${b.balance}</div>
       </div>
-      <button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="settleCouponItem('${b.slug}')">✅ bKash/Nagad-এ পাঠিয়েছি, পরিশোধ করা হলো</button>
+      ${b.hidden > 0 ? `<div class="meta" style="margin-top:6px;">🔒 লুকানো MCQ কুপন: ৳${b.hidden} (ছাত্র CQ শেষ করলে দেখাবে) <a class="link-back" onclick="rvRevealNow('${b.slug}')">👁️ এখনই দেখাও</a></div>` : ''}
+      ${b.balance > 0 ? `<button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="settleCouponItem('${b.slug}')">✅ bKash/Nagad-এ পাঠিয়েছি, পরিশোধ করা হলো</button>` : ''}
     </div>`).join('');
   if(rows === '') rows = `<div class="empty-state">এখন কোনো অপরিশোধিত কুপন নেই।</div>`;
   app.innerHTML = `
@@ -3643,6 +3645,7 @@ async function renderCouponManage(){
       <h2>অপরিশোধিত ব্যালেন্স</h2>
       <p class="hint">নিয়ম: শুধু "🎁 Treat" হিসেবে চিহ্নিত পরীক্ষায় প্রথমবার ১%+ পেলেই কিছু কুপন পাবে, ৮০%-এর পর থেকে বাড়ার হার আরও দ্রুত হয়। পরীক্ষা বানানোর সময় "১০০% পেলে সর্বোচ্চ কত টাকা" ঠিক করে দেওয়া যায় — ডিফল্ট ৳৩০০, বদলালে সব স্কোরের টাকার পরিমাণ একই অনুপাতে scale হয়। যখন কেউ "ব্যবহার করবো" চাপবে, একটা কোড দেখাবে — bKash Request Money-তে সেই কোড রেফারেন্সে থাকবে, মিলিয়ে দেখে তুমি পাঠিয়ে "পরিশোধ করা হলো" চাপবে।</p>
       ${rows}
+      <div id="rvCfgSlot"></div>
       <button class="btn btn-gold btn-block" style="margin-top:14px;" onclick="go('withdrawManage')">💸 Withdraw অনুরোধ (bKash / Nagad)</button>
       <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('monthlyReward')">📅 Code Exam রিওয়ার্ড</button>
       <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('shopManage')">🛍️ শপ প্রোডাক্ট ম্যানেজ করো</button>
@@ -3651,6 +3654,7 @@ async function renderCouponManage(){
     <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>
     ${creditFooter()}
   `;
+  if(window.rvLoadCfg) window.rvLoadCfg();
 }
 window.settleCouponItem = async function(slug){
   if(!confirm('তুমি কি নিশ্চিত যে bKash/Nagad দিয়ে টাকাটা পাঠিয়ে দিয়েছো? এই ব্যালেন্স এখন শূন্য করে দেওয়া হবে।')) return;
@@ -3982,6 +3986,7 @@ async function finalizeWrittenRemote(code, slug, name){
     await new Promise(x=> setTimeout(x, 1500));
     r = await postToScriptRaw('finalizeWrittenExam', body);
   }
+  if(r && r.status === 'success') window.__lastReveal = r.reveal || null;
   return (r && r.status === 'success') ? r : null;
 }
 async function getWrittenFinalsRemote(code){
@@ -4420,12 +4425,13 @@ function renderWrittenResult(earnedMarks, totalMarks, couponAmount, title){
       <p class="hint">সব প্রশ্ন জমা হয়ে গেছে ✅</p>
       <div class="stamp ${passed?'':'fail'}">${earnedMarks}/${totalMarks}</div>
       <p class="hint" style="margin-top:10px;">এটা তোমার সব প্রশ্নের মোট AI-মূল্যায়িত নম্বর।</p>
-      ${couponAmount>0 ? `<div class="say" style="margin-top:10px;">🎁 <b>অভিনন্দন!</b> তুমি ৳${couponAmount} Treat Coupon পেয়েছো!</div>` : ''}
+      
       <p class="hint" style="margin-top:10px;">কোনো প্রশ্নের নম্বর নিয়ে দ্বিমত থাকলে, ঐ প্রশ্নে গিয়ে "🚩 রিভিউ চাও" চাপতে পারতে — শিক্ষক ম্যানুয়ালি দেখে ঠিক করে দেবেন।</p>
     </div>
     <div class="center"><button class="btn btn-primary" onclick="go('landing')">মূল পাতায় যাও</button></div>
     ${creditFooter()}
   `;
+  if(window.__lastReveal){ const __rv = window.__lastReveal; window.__lastReveal = null; setTimeout(()=> window.startCouponReveal && window.startCouponReveal(__rv), 400); }
 }
 
 
@@ -7060,13 +7066,14 @@ function renderWrittenResult(earnedMarks, totalMarks, couponAmount, title){
       <p class="hint">সব প্রশ্ন জমা হয়ে AI চেক শেষ ✅</p>
       <div class="stamp ${passed ? '' : 'fail'}">${earnedMarks}/${totalMarks}</div>
       <p class="hint" style="margin-top:10px;">এটা তোমার সব প্রশ্নের মোট AI-মূল্যায়িত নম্বর।</p>
-      ${couponAmount > 0 ? `<div style="margin-top:10px;">🎁 <b>অভিনন্দন!</b> তুমি ৳${couponAmount} Treat Coupon পেয়েছো!</div>` : ''}
+      
       <p class="hint" style="margin-top:10px;">কোন প্রশ্নে কত নম্বর পেয়েছো আর AI-র মন্তব্য কী — "Past Exams"-এ গিয়ে দেখো। নম্বর নিয়ে দ্বিমত থাকলে সেখান থেকেই "🚩 রিভিউ চাও" চাপতে পারবে।</p>
       ${getLoggedStudent() ? `<button class="btn btn-gold btn-block" style="margin-top:6px;" onclick="go('pastExams')">📜 Past Exams-এ বিস্তারিত দেখো</button>` : ''}
     </div>
     <div class="center"><button class="btn btn-primary" onclick="go('landing')">মূল পাতায় যাও</button></div>
     ${creditFooter()}
   `;
+  if(window.__lastReveal){ const __rv = window.__lastReveal; window.__lastReveal = null; setTimeout(()=> window.startCouponReveal && window.startCouponReveal(__rv), 400); }
 }
 /* ===================== WRITTEN CQ UX PATCH (end) ===================== */
 
@@ -7679,13 +7686,14 @@ function renderWrittenResult(earnedMarks, totalMarks, couponAmount, title, pendi
       <div class="stamp ${passed ? '' : 'fail'}">${earnedMarks}/${totalMarks}</div>
       <p class="hint" style="margin-top:10px;">এটা তোমার সব প্রশ্নের মোট নম্বর।</p>
       ${pendingCount > 0 ? `<div style="margin-top:10px; background:#FEF8EC; border:1.5px solid #F8DA9D; border-radius:10px; padding:10px 12px; font-size:13.5px; text-align:start;">⏳ <b>${pendingCount}টা প্রশ্ন</b> AI এই মুহূর্তে চেক করতে পারেনি — শিক্ষক নিজে দেখে নম্বর দেবেন। তাই মোট নম্বর ও কুপন পরে বদলাতে পারে। "Past Exams"-এ গিয়ে পরে দেখো।</div>` : ''}
-      ${couponAmount > 0 ? `<div style="margin-top:10px;">🎁 <b>অভিনন্দন!</b> তুমি ৳${couponAmount} Treat Coupon পেয়েছো!</div>` : ''}
+      
       <p class="hint" style="margin-top:10px;">কোন প্রশ্নে কত নম্বর পেয়েছো আর মন্তব্য কী — "Past Exams"-এ গিয়ে দেখো। নম্বর নিয়ে দ্বিমত থাকলে সেখান থেকেই "🚩 রিভিউ চাও" চাপতে পারবে।</p>
       ${getLoggedStudent() ? `<button class="btn btn-gold btn-block" style="margin-top:6px;" onclick="go('pastExams')">📜 Past Exams-এ বিস্তারিত দেখো</button>` : ''}
     </div>
     <div class="center"><button class="btn btn-primary" onclick="go('landing')">মূল পাতায় যাও</button></div>
     ${creditFooter()}
   `;
+  if(window.__lastReveal){ const __rv = window.__lastReveal; window.__lastReveal = null; setTimeout(()=> window.startCouponReveal && window.startCouponReveal(__rv), 400); }
 }
 
 // ---------- শিক্ষক: AI-ব্যর্থ খাতা AI দিয়ে আবার চেক ----------
@@ -11312,7 +11320,8 @@ window.doSmartSearch = async function(){
     if(pr && pr.parentElement && !pr.parentElement.querySelector('[data-leak-w]')){
       const b = pr.cloneNode(true); b.setAttribute('data-leak-w', '1'); b.className = pr.className.replace('btn-outline', 'btn-gold'); b.setAttribute('onclick', 'leakOpen()');
       b.innerHTML = '<div style="font-size:22px;">🎯</div><b>Exam Leak</b><div class="hint" style="font-size:11px;margin-top:2px;">সম্ভাব্য প্রশ্নসেট · সেরা পিক · PDF</div>';
-      pr.parentElement.insertBefore(b, pr);
+      const wr = pr.parentElement.querySelector('button[onclick*="writtenEntry"]');
+      if(wr) wr.parentElement.insertBefore(b, wr.nextSibling); else pr.parentElement.insertBefore(b, pr);
     }
     const tb = document.querySelector('#app button[onclick*="dailyHwManage"]');
     if(tb && tb.parentElement && !tb.parentElement.querySelector('[data-leak-t]')){
@@ -11823,6 +11832,120 @@ window.impBkSave = async function(){
   go('impManage', { subject:M.subject });
 };
 
+
+/* ===================== TREAT COUPON REVEAL (CQ শেষে হিসাব দেখানো) ===================== */
+(function(){
+  const st = document.createElement('style');
+  st.textContent = `
+  .rv-ov{ position:fixed; inset:0; z-index:99999; background:radial-gradient(circle at 50% 30%, #2a3558, #11182e 70%); color:#fff; display:flex; align-items:center; justify-content:center; padding:20px; overflow:auto; font-family:inherit; }
+  .rv-box{ width:100%; max-width:420px; text-align:center; }
+  .rv-big{ font-size:26px; font-weight:800; line-height:1.4; }
+  .rv-dots span{ animation:rvBlink 1.2s infinite; opacity:.2; } .rv-dots span:nth-child(2){ animation-delay:.2s; } .rv-dots span:nth-child(3){ animation-delay:.4s; }
+  @keyframes rvBlink{ 0%,100%{opacity:.2} 50%{opacity:1} }
+  .rv-card{ background:rgba(255,255,255,.08); border:1.5px solid rgba(217,164,65,.55); border-radius:16px; padding:18px 16px; text-align:start; }
+  .rv-row{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:9px 0; border-bottom:1px dashed rgba(255,255,255,.18); opacity:0; transform:translateY(8px); transition:all .6s ease; font-size:15.5px; }
+  .rv-row.in{ opacity:1; transform:none; }
+  .rv-row small{ display:block; opacity:.65; font-size:12px; }
+  .rv-pos b{ color:#7ee2a8; } .rv-neg b{ color:#ff8f86; }
+  .rv-total{ margin-top:12px; text-align:center; opacity:0; transition:opacity .7s; } .rv-total.in{ opacity:1; }
+  .rv-total .n{ font-size:44px; font-weight:800; color:var(--gold); }
+  .rv-fb{ margin-top:16px; opacity:0; transition:opacity .7s; } .rv-fb.in{ opacity:1; }
+  .rv-fb button{ font-size:17px; padding:11px 22px; margin:6px; border-radius:12px; border:0; cursor:pointer; font-weight:700; }
+  .rv-skip{ position:fixed; top:12px; right:14px; font-size:12.5px; opacity:.7; cursor:pointer; text-decoration:underline; z-index:100000; }
+  `;
+  document.head.appendChild(st);
+  const bnD = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  const money = n => '৳' + bnD(Math.round(n));
+
+  window.startCouponReveal = async function(rv){
+    if(!rv) return;
+    const old = document.getElementById('rvOv'); if(old) old.remove();
+    const ov = document.createElement('div'); ov.id = 'rvOv'; ov.className = 'rv-ov';
+    document.body.appendChild(ov);
+    let skip = false;
+    const alive = () => ov.isConnected;
+    const sleep = ms => new Promise(r => skip ? r() : setTimeout(r, ms));
+    ov.innerHTML = `<div class="rv-skip" id="rvSkip">এড়িয়ে যাও ⏭</div><div class="rv-box"><div style="font-size:54px;">🎁</div><div class="rv-big">Treat Coupon গণনা করা হচ্ছে<span class="rv-dots"><span>.</span><span>.</span><span>.</span></span></div><p style="opacity:.7;margin-top:10px;">তোমার MCQ আর CQ-এর হিসাব মেলানো হচ্ছে</p></div>`;
+    document.getElementById('rvSkip').onclick = () => { skip = true; };
+    await sleep(3600); if(!alive()) return;
+
+    const rows = [];
+    const mcqP = rv.mcq && rv.mcq.count > 0 && rv.mcq.percent ? ` (গড় ${bnD(rv.mcq.percent)}%)` : '';
+    rows.push({ icon:'📝', label:'MCQ পরীক্ষা' + mcqP, sub:'MCQ স্কোরের জন্য', val: rv.mcq.amount, sign:'+', cls:'rv-pos' });
+    rows.push({ icon:'✍️', label:'CQ পরীক্ষা' + (rv.cq.percent ? ` (${bnD(rv.cq.percent)}%)` : ''), sub:'CQ স্কোরের জন্য', val: rv.cq.amount, sign:'+', cls:'rv-pos' });
+    rows.push({ icon:'📅', label:'মিস দিনের কাট', sub:'', val: rv.missCut, sign:'−', cls:'rv-neg', pad:true });
+    if(rv.apiBill > 0) rows.push({ icon:'🤖', label:'AI API বিল', sub:'', val: rv.apiBill, sign:'−', cls:'rv-neg' });
+
+    ov.innerHTML = `<div class="rv-skip" id="rvSkip2">এড়িয়ে যাও ⏭</div><div class="rv-box">
+      <div class="rv-big" style="margin-bottom:12px;">🎁 তোমার Treat Coupon</div>
+      <div class="rv-card" id="rvCard">${rows.map((r,i)=>`<div class="rv-row ${r.cls}" id="rvR${i}"><span>${r.icon} ${r.label}${r.sub ? `<small>${r.sub}</small>` : ''}</span><b id="rvV${i}">${r.sign}${r.pad ? '০০' : '৳০'}</b></div>`).join('')}
+        <div class="rv-total" id="rvTot"><div style="opacity:.75;font-size:14px;">মোট কুপন</div><div class="n" id="rvN">৳০</div></div>
+      </div>
+      <div class="rv-fb" id="rvFb"><div style="font-size:14.5px;opacity:.85;">এই হিসাবে তুমি কেমন বোধ করছো?</div>
+        <button style="background:#2F7D5A;color:#fff;" onclick="rvFeel('happy')">😊 Happy</button><button style="background:#BF3A2C;color:#fff;" onclick="rvFeel('sad')">😢 Sad</button></div>
+      <div id="rvMsg"></div></div>`;
+    document.getElementById('rvSkip2').onclick = () => { skip = true; };
+
+    const count = async (el, target, fmt) => {
+      if(skip || target <= 0){ el.textContent = fmt(target); return; }
+      const dur = 1000, t0 = performance.now();
+      await new Promise(res => { const tick = now => { if(!alive() || skip){ res(); return; } const p = Math.min(1, (now - t0) / dur); el.textContent = fmt(target * p); if(p < 1) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
+      if(alive()) el.textContent = fmt(target);
+    };
+    for(let i = 0; i < rows.length; i++){
+      if(!alive()) return;
+      document.getElementById('rvR' + i).classList.add('in');
+      await sleep(500);
+      const r = rows[i], el = document.getElementById('rvV' + i);
+      if(r.pad && !r.val){ el.textContent = r.sign + '০০'; } else { await count(el, r.val, v => r.sign + money(v)); }
+      await sleep(1100);
+    }
+    if(!alive()) return;
+    await sleep(600);
+    document.getElementById('rvTot').classList.add('in');
+    await sleep(500);
+    await count(document.getElementById('rvN'), rv.total, money);
+    await sleep(1400); if(!alive()) return;
+    document.getElementById('rvFb').classList.add('in');
+    ['rvSkip','rvSkip2'].forEach(id => { const e = document.getElementById(id); if(e) e.style.display = 'none'; });
+  };
+
+  window.rvFeel = function(kind){
+    const msg = document.getElementById('rvMsg'), fb = document.getElementById('rvFb');
+    if(fb) fb.style.display = 'none';
+    const happy = kind === 'happy';
+    msg.innerHTML = `<div class="rv-card" style="margin-top:16px;text-align:center;">
+      <div style="font-size:40px;">${happy ? '🎉' : '🥺'}</div>
+      <p style="line-height:1.7;margin:8px 0 14px;">${happy ? 'দারুণ! তুমি এভাবেই চালিয়ে যাও — পরের বার আরও বেশি কুপন অপেক্ষা করছে।' : 'Sorry! আমি সবচেয়ে ভালোটা দেওয়ার অনেক চেষ্টা করেছি, কিন্তু একজন student হিসেবে আমার কিছু limitation আছে… তবুও আরও ভালো করার চেষ্টা চালিয়ে যাবো।'}</p>
+      <button class="btn btn-gold" onclick="document.getElementById('rvOv').remove()">ঠিক আছে</button></div>`;
+  };
+
+  // ---- শিক্ষকের সেটিং (Treat Coupon ম্যানেজ পেজে) ----
+  window.rvLoadCfg = async function(){
+    const slot = document.getElementById('rvCfgSlot'); if(!slot) return;
+    const c = await getJson('getRevealConfig', {});
+    if(!c || c.status !== 'success'){ return; }
+    slot.innerHTML = `<div class="card" style="margin-top:14px;border:1.5px dashed var(--gold);">
+      <h3 style="margin-top:0;">🎬 CQ-এর পরের কুপন রিভিল</h3>
+      <p class="hint">MCQ কুপন লুকানো থাকে; ছাত্র CQ শেষ করলে এখানকার হিসাবসহ দেখানো হয়।</p>
+      <label class="field-label">AI API বিল কাট (৳) — ০ হলে লাইনটা দেখাবে না</label>
+      <input type="number" id="rvApi" min="0" step="1" value="${c.apiBill || 0}">
+      <label class="field-label">মিস দিনের কাট (৳) — আসলেই কাটা হয়</label>
+      <input type="number" id="rvMiss" min="0" step="1" value="${c.missCut || 0}">
+      <label class="field-label">API বিল কীভাবে কাজ করবে</label>
+      <select id="rvMode"><option value="show" ${c.mode !== 'real' ? 'selected' : ''}>শুধু দেখাও — MCQ/CQ বাড়িয়ে দেখিয়ে কেটে নেয়, মোট একই থাকে</option><option value="real" ${c.mode === 'real' ? 'selected' : ''}>সত্যিই কাটো — ব্যালেন্স থেকে বিয়োগ হয়</option></select>
+      <button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="rvSaveCfg()">💾 সেভ করো</button></div>`;
+  };
+  window.rvSaveCfg = async function(){
+    const r = await postToScript('setRevealConfig', { apiBill: Number(document.getElementById('rvApi').value) || 0, missCut: Number(document.getElementById('rvMiss').value) || 0, mode: document.getElementById('rvMode').value });
+    if(r) toast('সেভ হয়েছে ✅');
+  };
+  window.rvRevealNow = async function(slug){
+    if(!confirm('এই ছাত্রের লুকানো MCQ কুপন এখনই প্রকাশ করবে? (CQ-এর রিভিল অ্যানিমেশন আর হবে না)')) return;
+    const r = await postToScript('revealHiddenCoupons', { slug });
+    if(r){ toast('প্রকাশ হয়েছে ✅'); go('couponManage'); }
+  };
+})();
 </script>
 </body>
 </html>
