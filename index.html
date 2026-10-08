@@ -1644,7 +1644,9 @@ async function verifyStudentLogin(){
   const slug = loggedStud ? loggedStud.slug : slugify(name); // [NEW]
 
   const existingResults = await getRemoteResults(code);
-  const myAttempts = existingResults.filter(r => (r.slug ? r.slug === slug : slugify(r.studentName||'') === slug));
+  const allAttempts = existingResults.filter(r => (r.slug ? r.slug === slug : slugify(r.studentName||'') === slug));
+  // [FIX] আগে শুধু উন্মুক্ত practice (viaCode:false) দিয়ে থাকলেও কোড দিয়ে প্রথমবার দিলে সেটা আসল (গোনা) attempt
+  const myAttempts = allAttempts.filter(r => r.viaCode !== false);
   if(myAttempts.length > 0){
     myAttempts.sort((a,b)=> b.submittedAt - a.submittedAt);
     if(exam.isTreat){
@@ -1654,7 +1656,7 @@ async function verifyStudentLogin(){
       go('treatBlocked', { exam, attempt: myAttempts[0] });
       return;
     }
-    go('studentChoice', { exam, slug, name, attempts: myAttempts });
+    go('studentChoice', { exam, slug, name, attempts: allAttempts.sort((a,b)=> b.submittedAt - a.submittedAt) });
     return;
   }
 
@@ -5174,11 +5176,12 @@ window.dashStartExamByCode = async function(){
 
   // same attempt rules as the normal entry flow
   const existingResults = await getRemoteResults(code);
-  const myAttempts = existingResults.filter(r => (r.slug ? r.slug === slug : slugify(r.studentName||'') === slug));
+  const allAttempts = existingResults.filter(r => (r.slug ? r.slug === slug : slugify(r.studentName||'') === slug));
+  const myAttempts = allAttempts.filter(r => r.viaCode !== false);   // [FIX] আগের শুধু-practice attempt কোড-exam আটকাবে না
   if(myAttempts.length > 0){
     myAttempts.sort((a,b)=> b.submittedAt - a.submittedAt);
     if(exam.isTreat){ go('treatBlocked', { exam, attempt: myAttempts[0] }); return; }
-    go('studentChoice', { exam, slug, name: stud.name, attempts: myAttempts });
+    go('studentChoice', { exam, slug, name: stud.name, attempts: allAttempts.sort((a,b)=> b.submittedAt - a.submittedAt) });
     return;
   }
   runCheckingSequence(exam, slug, stud.name, 1);
