@@ -7053,7 +7053,7 @@ window.submitAllWritten = async function(opts){
     }
   }
   if(failed.length === 0){
-    let totalMarks = 0, earnedMarks;
+    let totalMarks = 0, earnedMarks = 0;
     exam.questions.forEach((qq, i)=>{
       const m = Number(qq.marks) || 5;
       totalMarks += m;
@@ -7671,7 +7671,7 @@ window.submitAllWritten = async function(opts){
     }
   }
   if(failed.length === 0){
-    let totalMarks = 0, earnedMarks, pendingCount = 0;
+    let totalMarks = 0, earnedMarks = 0, pendingCount = 0;
     exam.questions.forEach((qq, i)=>{
       const m = Number(qq.marks) || 5;
       totalMarks += m;
