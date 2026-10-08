@@ -4224,7 +4224,7 @@ window.saveWrittenExamItem = async function(examId){
 }
 
 // ---- Teacher: view written submissions with AI score + manual override ----
-function percentToMarks(percent, maxMarks){ maxMarks = Number(maxMarks) || 5; return Math.round((percent/100)*maxMarks*2)/2; } // nearest 0.5
+function percentToMarks(percent, maxMarks){ maxMarks = Number(maxMarks) || 5; percent = Number(percent) || 0; return Math.round((percent/100)*maxMarks*2)/2; } // nearest 0.5
 async function renderWrittenSubmissions(code){
   app.innerHTML = `${header('জমা দেওয়া খাতা')}<div class="card center">লোড হচ্ছে...</div>`;
 
@@ -7686,6 +7686,7 @@ window.submitAllWritten = async function(opts){
 };
 
 function renderWrittenResult(earnedMarks, totalMarks, couponAmount, title, pendingCount, unanswered){
+  earnedMarks = Number(earnedMarks) || 0; totalMarks = Number(totalMarks) || 0;   // [FIX] কখনো NaN দেখাবে না
   const pct = totalMarks ? Math.round((earnedMarks / totalMarks) * 100) : 0;
   const passed = pct >= 50;
   app.innerHTML = `
