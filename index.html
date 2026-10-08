@@ -4224,7 +4224,7 @@ window.saveWrittenExamItem = async function(examId){
 }
 
 // ---- Teacher: view written submissions with AI score + manual override ----
-function percentToMarks(percent, maxMarks){ maxMarks = Number(maxMarks) || 5; percent = Number(percent) || 0; return Math.round((percent/100)*maxMarks*2)/2; } // nearest 0.5
+function percentToMarks(percent, maxMarks){ maxMarks = Number(maxMarks) || 5; return Math.round((percent/100)*maxMarks*2)/2; } // nearest 0.5
 async function renderWrittenSubmissions(code){
   app.innerHTML = `${header('জমা দেওয়া খাতা')}<div class="card center">লোড হচ্ছে...</div>`;
 
@@ -7053,7 +7053,7 @@ window.submitAllWritten = async function(opts){
     }
   }
   if(failed.length === 0){
-    let totalMarks = 0, earnedMarks = 0;
+    let totalMarks = 0, earnedMarks;
     exam.questions.forEach((qq, i)=>{
       const m = Number(qq.marks) || 5;
       totalMarks += m;
@@ -7671,7 +7671,7 @@ window.submitAllWritten = async function(opts){
     }
   }
   if(failed.length === 0){
-    let totalMarks = 0, earnedMarks = 0, pendingCount = 0;
+    let totalMarks = 0, earnedMarks, pendingCount = 0;
     exam.questions.forEach((qq, i)=>{
       const m = Number(qq.marks) || 5;
       totalMarks += m;
@@ -7686,7 +7686,6 @@ window.submitAllWritten = async function(opts){
 };
 
 function renderWrittenResult(earnedMarks, totalMarks, couponAmount, title, pendingCount, unanswered){
-  earnedMarks = Number(earnedMarks) || 0; totalMarks = Number(totalMarks) || 0;   // [FIX] কখনো NaN দেখাবে না
   const pct = totalMarks ? Math.round((earnedMarks / totalMarks) * 100) : 0;
   const passed = pct >= 50;
   app.innerHTML = `
@@ -11956,6 +11955,338 @@ window.impBkSave = async function(){
     const r = await postToScript('revealHiddenCoupons', { slug });
     if(r){ toast('প্রকাশ হয়েছে ✅'); go('couponManage'); }
   };
+})();
+</script>
+
+<!-- ===== Universal Back Button (সব "← ফিরে যাও" লিংকের বদলে একটাই বাটন) ===== -->
+<style>
+  #uniBack{ position:fixed; top:calc(14px + env(safe-area-inset-top,0px)); left:14px; z-index:60; display:none;
+    background:var(--ink,#1F2A44); color:#fff; border:none; border-radius:20px; padding:8px 16px;
+    font-family:var(--font-body,inherit); font-weight:600; font-size:13.5px; cursor:pointer;
+    box-shadow:0 4px 14px -4px rgba(31,42,68,0.5); }
+  #uniBack:active{ transform:translateY(1px); }
+  @media (max-width:480px){ #uniBack{ top:auto; bottom:calc(78px + env(safe-area-inset-bottom,0px)); left:12px; padding:8px 14px; font-size:12.5px; } }
+  .ub-hide{ display:none !important; }
+</style>
+<button id="uniBack" type="button" onclick="uniBackGo()">← পেছনে</button>
+<script>
+(function(){
+  const ROOTS = ['landing','studentDashboard','teacherDashboard'];   // এই স্ক্রিনগুলোতে হিস্ট্রি রিসেট হয়, বাটন দেখায় না
+  const NO_BACK = ['studentExam'];                                    // পরীক্ষা চলাকালীন back বন্ধ
+  const hist = [];
+  const __go = go;
+  go = function(screen, data){
+    const prev = state;
+    if(ROOTS.indexOf(screen) >= 0){ hist.length = 0; }
+    else if(prev && prev.screen && prev.screen !== screen && NO_BACK.indexOf(prev.screen) < 0){
+      hist.push(prev); if(hist.length > 40) hist.shift();
+    }
+    return __go(screen, data === undefined ? {} : data);
+  };
+  window.uniBackGo = function(){
+    const p = hist.pop(); if(!p) return;
+    if(typeof timerInterval !== 'undefined' && timerInterval){ clearInterval(timerInterval); timerInterval = null; }
+    if(typeof closeLibraryPanel === 'function') closeLibraryPanel();
+    state = p; render();
+  };
+  // পুরনো "← ..." back লিংকগুলো লুকাও (শুধু যেগুলো go(...) ডাকে; বাকিগুলো যেমন আছে তেমন থাকবে)
+  function sweep(){
+    document.querySelectorAll('#app a.link-back').forEach(a=>{
+      const oc = a.getAttribute('onclick') || '';
+      if(/^\s*←/.test(a.textContent) && /^\s*(go\(|teacherLogout)/.test(oc)){
+        a.classList.add('ub-hide');
+        const box = a.parentElement;
+        if(box && box !== document.getElementById('app') && box.children.length === 1 && box.textContent.trim() === a.textContent.trim()) box.classList.add('ub-hide');
+      }
+    });
+    const b = document.getElementById('uniBack');
+    const sc = state && state.screen;
+    b.style.display = (hist.length && NO_BACK.indexOf(sc) < 0 && ROOTS.indexOf(sc) < 0) ? 'inline-flex' : 'none';
+  }
+  const __r = render;
+  render = function(){ const r = __r.apply(this, arguments); sweep(); return r; };
+  let q = 0;
+  new MutationObserver(()=>{ if(q) return; q = requestAnimationFrame(()=>{ q = 0; sweep(); }); })
+    .observe(document.getElementById('app'), { childList:true, subtree:true });
+  sweep();
+})();
+</script>
+
+<!-- ===== Universal Tag Button + ট্যাগ সেন্টার (সব ট্যাগ-বাটন একখানে) ===== -->
+<style>
+  #tagFab{ position:fixed; bottom:calc(20px + env(safe-area-inset-bottom,0px)); right:14px; z-index:60; display:none;
+    background:var(--gold,#E9B949); color:#3a2a06; border:none; border-radius:22px; padding:10px 18px;
+    font-family:var(--font-body,inherit); font-weight:700; font-size:14px; cursor:pointer;
+    box-shadow:0 4px 14px -4px rgba(0,0,0,0.4); }
+  #tagFab:active{ transform:translateY(1px); }
+  @media (max-width:480px){ #tagFab{ bottom:calc(128px + env(safe-area-inset-bottom,0px)); right:12px; padding:9px 15px; font-size:13px; } }
+</style>
+<button id="tagFab" type="button" onclick="go('tagCenter')">🏷️ ট্যাগ</button>
+<script>
+(function(){
+  function ptr(title, sub){
+    return `<h3>🏷️ ${title}</h3><p class="hint">${sub}</p><button class="btn btn-gold btn-block" onclick="go('tagCenter')">🏷️ ট্যাগ সেন্টারে যাও</button>`;
+  }
+
+  // ---------- ট্যাগ সেন্টার স্ক্রিন ----------
+  async function renderTagCenter(){
+    syncLogoutFab();
+    if(!currentTeacher){ go('teacherGate'); return; }
+    app.innerHTML = `${header('ট্যাগ সেন্টার')}<div class="card center">লোড হচ্ছে...</div>`;
+    let all = [];
+    try{ all = await getAllNotes(); window.__notesAll = all; }catch(e){}
+    if(state.screen !== 'tagCenter') return;
+    const pend = all.filter(n => n.untagged);
+    const row = (n, withAi) => `
+      <div class="review-block" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+        <div style="min-width:0;"><b>${escapeHtml(n.title || '(শিরোনাম নেই)')}</b>
+          <div class="meta">${n.chapter && n.topic ? '📖 ' + escapeHtml(n.chapter) + ' › ' + escapeHtml(n.topic) : '⚠️ ট্যাগ হয়নি'}</div></div>
+        <div style="display:flex; gap:6px; flex-shrink:0;">
+          <button class="btn btn-outline" style="padding:7px 12px; font-size:12.5px;" onclick="noteTagEditById('${n.id}')">🏷️ ট্যাগ</button>
+          ${withAi ? `<button class="btn btn-outline" style="padding:7px 12px; font-size:12.5px;" onclick="retagNoteUI('${n.id}')">🤖 AI</button>` : ''}
+        </div>
+      </div>`;
+    const sec = (title, open, inner) => `<details class="dg" ${open ? 'open' : ''}><summary><span>${title}</span></summary><div class="dg-in">${inner}</div></details>`;
+    app.innerHTML = `
+      ${header('ট্যাগ সেন্টার')}
+      <div class="card" style="border:2px solid var(--gold);">
+        <h2>🏷️ ট্যাগ সেন্টার</h2>
+        <button id="tagEveryBtn" class="btn btn-gold btn-block" onclick="tagEverything()">⚡ সবকিছু এখনই ট্যাগ করো</button>
+        <p class="hint" style="margin:6px 0 0;">নোট → MCQ → Written CQ → Mastery → Daily HW → নাম মেলানো, শেষে বাকির হিসাব।</p>
+        <div id="tagEveryStatus" style="margin-top:8px;"></div>
+        ${sec(`📝 নোট / স্লাইড ${pend.length ? `<span class="q-tag">${pend.length}টা বাকি</span>` : '<span class="q-tag">✅ সব ঠিক</span>'}`, pend.length > 0, `
+          <button id="tagAllBtn" class="btn btn-primary btn-block" onclick="tagAllNotesUI()" ${pend.length ? '' : 'disabled'}>🤖 সবগুলো AI দিয়ে ট্যাগ করো</button>
+          <div id="tagAllStatus" style="margin:8px 0;"></div>
+          ${pend.map(n => row(n, true)).join('')}
+          ${all.length ? `<details style="margin-top:10px;"><summary style="cursor:pointer; font-weight:600; font-size:13px;">সব নোট (${all.length}টা) — ট্যাগ বদলাও</summary>${all.map(n => row(n, false)).join('')}</details>` : ''}`)}
+        ${sec('📋 প্রশ্ন · Daily HW', false, `
+          <div class="row">
+            <button class="btn btn-outline btn-block" id="tagNowBtn" onclick="tagNowUI()">🏷️ বাকি সব ট্যাগ করো</button>
+            <button class="btn btn-outline btn-block" id="unifyTagBtn" onclick="unifyTagsUI()">🔗 টপিক এক নামে মেলাও</button>
+          </div>
+          <div id="tagNowStatus" style="margin-top:8px;"></div><div id="unifyTagStatus" style="margin-top:8px;"></div>
+          <p class="hint" style="margin-top:6px;">এগুলো প্রতি ১০ মিনিটে অটো ট্যাগ হয় (ট্রিগার চালু থাকলে)।</p>`)}
+        ${sec('🔁 রিভিশনের প্রশ্ন', false, `
+          <button id="revTagBtn" class="btn btn-primary btn-block" onclick="revTTag()">🤖 প্রশ্নের বিষয় ট্যাগ করো</button>
+          <div id="revTagSt" style="margin-top:8px;"></div>`)}
+        ${sec('🎯 Exam Leak', false, `
+          <button class="btn btn-gold btn-block" onclick="go('tLeakPrep')">⚙️ MCQ/CQ ট্যাগ ও স্লাইডের CQ</button>`)}
+      </div>
+      ${creditFooter()}`;
+  }
+
+  // ---------- একটাই বাটনে সব ট্যাগ ----------
+  let teBusy = false;
+  window.tagEverything = async function(){
+    if(teBusy) return; teBusy = true;
+    const btn = document.getElementById('tagEveryBtn'), st = document.getElementById('tagEveryStatus');
+    if(btn) btn.disabled = true;
+    const say = h => { const el = document.getElementById('tagEveryStatus'); if(el) el.innerHTML = h; };
+    const line = (ok, t) => `<div class="meta" style="color:${ok === true ? 'var(--green)' : ok === false ? 'var(--red)' : '#9B6A15'};">${t}</div>`;
+    const log = [];
+    const show = cur => say(log.join('') + (cur ? `<p class="hint">🤖 ${cur} — পেজ বন্ধ কোরো না</p>` : ''));
+    let failed = false;
+    try{
+      // ১) নোট/স্লাইড
+      let nDone = 0, nLeft = null, guard = 0, nStuck = false, nErr = false;
+      while(guard++ < 60){
+        show(`নোট ট্যাগ হচ্ছে... ${nDone}টা হয়েছে${nLeft !== null ? ', বাকি ' + nLeft + 'টা' : ''}`);
+        const r = await postToScriptRaw('tagNotesBatch', { max:3 });
+        if(!r || r.status !== 'success'){ nErr = true; break; }
+        nDone += r.done; nLeft = r.remaining;
+        if(r.remaining <= 0) break;
+        if(r.done === 0){ nStuck = true; break; }
+      }
+      log.push(nErr ? line(false, '❌ নোট: সংযোগ সমস্যা') : nStuck ? line(null, `⚠️ নোট: ${nDone}টা হয়েছে, বাকি ${nLeft}টায় AI এখন পারছে না`) : line(true, `✅ নোট/স্লাইড: ${nDone}টা ট্যাগ হলো`));
+      if(nErr) failed = true;
+
+      // ২) প্রশ্ন/HW/Mastery/Written — একটাই সার্ভার-লুপ (note, exam, mcq, wq, hw সবই এর ভেতরে)
+      let total = 0, left = null, unclass = 0, g2 = 0, pStuck = false, pErr = false;
+      while(g2++ < 40){
+        show(`প্রশ্ন ও HW ট্যাগ হচ্ছে... ${total}টা হয়েছে${left !== null ? ', বাকি ' + left + 'টা' : ''}`);
+        const r = await postToScriptRaw('tagPendingNow', {});
+        if(!r || r.status !== 'success'){ pErr = true; break; }
+        total += r.tagged; left = r.remaining; if(typeof r.unclassified === 'number') unclass = r.unclassified;
+        if(r.remaining <= 0) break;
+        if((typeof r.progress === 'number' ? r.progress : r.tagged) === 0){ pStuck = true; break; }
+      }
+      log.push(pErr ? line(false, '❌ প্রশ্ন/HW: সংযোগ/সার্ভার সমস্যা (Apps Script নতুন version Deploy করা আছে তো?)')
+        : pStuck ? line(null, `⚠️ প্রশ্ন/HW: ${total}টা হয়েছে, বাকি ${left}টায় AI এখন পারছে না (কোটা শেষ?) — পরে আবার চাপো`)
+        : line(true, `✅ প্রশ্ন (MCQ, Written CQ, Mastery) ও Daily HW: ${total}টা ট্যাগ হলো`));
+      if(pErr) failed = true;
+      if(unclass > 0) log.push(line(null, `⚠️ ${unclass}টা আইটেম AI ধরতে পারেনি ("অশ্রেণিবদ্ধ") — আবার চাপলে নিজে থেকে আবার চেষ্টা হবে`));
+
+      // ৩) টপিকের নাম মেলানো
+      show('একই টপিকের নাম মেলানো হচ্ছে...');
+      const u = await postToScriptRaw('unifyTagsNow', {});
+      log.push(u && u.status === 'success' ? line(true, `✅ নাম মেলানো: ${u.changed || 0}টা বদলেছে (মোট ${u.total || 0}টার মধ্যে)`) : line(false, '❌ নাম মেলানো যায়নি'));
+
+      // ৪) বাকি কিছু আছে কিনা — Exam Leak-এর হিসাব থেকে
+      show('শেষ হিসাব মেলানো হচ্ছে...');
+      const lp = await postToScriptRaw('leakPrepGet', { tkey:TEACHER_PASSWORD });
+      if(lp && lp.status === 'success'){
+        const rest = o => Math.max(0, (o.total || 0) - (o.tagged || 0));
+        const bits = [];
+        if(rest(lp.exam)) bits.push(`পরীক্ষার MCQ ${rest(lp.exam)}টা`);
+        if(rest(lp.mastery)) bits.push(`Mastery MCQ ${rest(lp.mastery)}টা`);
+        if(rest(lp.wq)) bits.push(`Written CQ ${rest(lp.wq)}টা`);
+        if(lp.notes && lp.notes.untaggedNotes) bits.push(`স্লাইড-নোট ${lp.notes.untaggedNotes}টা`);
+        if(lp.notes && lp.notes.noChapter) bits.push(`স্লাইড থেকে তোলা CQ ${lp.notes.noChapter}টার অধ্যায় নেই`);
+        log.push(bits.length ? line(null, '📋 এখনো বাকি: ' + bits.join(' · ')) : line(true, '🎉 পরীক্ষা, Written, Mastery ও নোট — কিছুই ট্যাগ-ছাড়া নেই'));
+      }
+    }catch(e){
+      log.push(line(false, '❌ মাঝপথে সমস্যা হয়েছে, আবার চাপো'));
+    }
+    say(log.join('') + '<p class="hint" style="margin-top:8px;">রিভিশন ও Exam Leak এই একই ট্যাগ-তালিকা থেকে প্রশ্ন নেয়, তাই এখানে ট্যাগ হলেই সব জায়গায় কাজ করবে।</p>');
+    if(btn) btn.disabled = false;
+    teBusy = false;
+    if(failed) return;
+    // নোটের তালিকা (বাকি সংখ্যা) নতুন করে আনো, কিন্তু রিপোর্ট ঢেকে ফেলো না
+    try{ const all = await getAllNotes(); window.__notesAll = all; }catch(e){}
+  };
+
+  // ---------- এক নোটের AI ট্যাগ → ট্যাগ-এডিট পাতার ভেতরে ----------
+  window.ntAi = async function(){
+    const n = window.__noteTagCtx; if(!n) return;
+    toast('AI ট্যাগ করছে...');
+    const res = await postToScriptRaw('retagNote', { id:n.id });
+    toast(res && res.status === 'success' && res.tagged ? '✅ ট্যাগ হয়েছে' : 'AI এখন ট্যাগ করতে পারেনি — নিজে ট্যাগ করো বা পরে চেষ্টা করো');
+    go('notesManage');
+  };
+
+  // tagAllNotesUI শেষে 'notesManage'-এ পাঠায় — ট্যাগ সেন্টারে থাকলে ওখানেই রিফ্রেশ হোক
+  const __g = go;
+  go = function(screen, data){
+    if(screen === 'notesManage' && state && state.screen === 'tagCenter'){ renderTagCenter(); return; }
+    return __g(screen, data);
+  };
+
+  // render-এ নতুন স্ক্রিন যোগ
+  const __r = render;
+  render = function(){
+    if(state.screen === 'tagCenter'){ renderTagCenter(); return; }
+    return __r.apply(this, arguments);
+  };
+
+  // ---------- ছড়ানো ট্যাগ-বাটন লুকিয়ে এক জায়গায় দেখাও ----------
+  function sweepTags(){
+    const sc = state && state.screen;
+    const fab = document.getElementById('tagFab');
+    fab.style.display = (typeof currentTeacher !== 'undefined' && currentTeacher && sc !== 'tagCenter' && sc !== 'teacherGate') ? 'block' : 'none';
+    if(sc === 'tagCenter') return;
+    const swap = (el, html) => { if(el && !el.dataset.ub){ el.dataset.ub = '1'; el.innerHTML = html; } };
+    const a = document.getElementById('tagAllBtn');   if(a) swap(a.closest('.card'), ptr('নোটের ট্যাগ', 'ট্যাগ বাকি থাকা নোট ও AI ট্যাগের সব বাটন এখন ট্যাগ সেন্টারে।'));
+    const r = document.getElementById('revTagBtn');   if(r) swap(r.closest('.card'), ptr('প্রশ্নের বিষয় ট্যাগ', 'রিভিশনের প্রশ্ন ট্যাগ করার বাটন এখন ট্যাগ সেন্টারে।'));
+    const t = document.getElementById('tagNowBtn');   if(t) swap(t.parentElement, ptr('প্রশ্ন / HW ট্যাগ', 'এখনই ট্যাগ করা ও টপিক মেলানোর বাটন এখন ট্যাগ সেন্টারে।'));
+    document.querySelectorAll('#app button[onclick^="retagNoteUI"]').forEach(b => b.classList.add('ub-hide'));
+    if(sc === 'notesTagEdit' && !document.getElementById('ntAiBtn')){
+      const save = document.querySelector('#app button[onclick^="saveNoteTagEdit"]');
+      if(save) save.insertAdjacentHTML('afterend', '<button id="ntAiBtn" class="btn btn-outline btn-block" style="margin-top:8px;" onclick="ntAi()">🤖 AI দিয়ে ট্যাগ করো</button>');
+    }
+  }
+  let q = 0;
+  new MutationObserver(() => { if(q) return; q = requestAnimationFrame(() => { q = 0; sweepTags(); }); })
+    .observe(document.getElementById('app'), { childList:true, subtree:true });
+  sweepTags();
+})();
+</script>
+
+<!-- ===== শিক্ষক ড্যাশবোর্ড: ছোট ট্যাব-টাইলে গ্রুপ করা (একবারে একটা গ্রুপ খোলে) ===== -->
+<style>
+  details.dg{ border:1.5px solid var(--rule,#E3E8F0); border-radius:12px; margin-top:8px; background:#fff; }
+  details.dg > summary{ cursor:pointer; padding:11px 14px; font-weight:700; font-size:14px; list-style:none; display:flex; justify-content:space-between; align-items:center; }
+  details.dg > summary::-webkit-details-marker{ display:none; }
+  details.dg > summary::after{ content:'▾'; color:var(--pencil,#6B7A90); }
+  details.dg[open] > summary::after{ content:'▴'; }
+  details.dg .dg-in{ padding:0 12px 12px; }
+  .dg-top{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .dg-tiles{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+  .dg-tile{ border:1.5px solid var(--rule,#E3E8F0); background:#fff; border-radius:12px; padding:10px 8px; font-family:var(--font-body,inherit);
+    font-weight:700; font-size:13px; cursor:pointer; text-align:center; line-height:1.35; color:var(--ink,#1F2A44); }
+  .dg-tile small{ display:block; font-weight:600; font-size:11px; color:var(--pencil,#6B7A90); }
+  .dg-tile.on{ background:var(--ink,#1F2A44); color:#fff; border-color:var(--ink,#1F2A44); }
+  .dg-tile.on small{ color:#e6e9f2; }
+  .dg-panel{ display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:10px; padding:10px; background:#F6F8FB; border-radius:12px; }
+  .dg-panel .btn{ padding:9px 8px; font-size:12.5px; line-height:1.3; }
+  @media (max-width:340px){ .dg-panel, .dg-top, .dg-tiles{ grid-template-columns:1fr; } }
+</style>
+<script>
+(function(){
+  const GROUPS = [
+    ['📚 HW',          /HW|হোমওয়ার্ক/],
+    ['🔁 রিভিশন',       /রিভিশন/],
+    ['🗂️ প্রশ্নভান্ডার', /বাল্ক|মাস্টার তালিকা|চ্যাপ্টার|Taxonomy|TOC|ট্যাগ|Exam Leak/],
+    ['⚙️ ম্যানেজ',       /উপস্থিতি|রেজিস্ট্রেশন|পাসওয়ার্ড|প্রশ্নোত্তর|জ্ঞানমূলক|ব্যাটেল/],
+    ['🎓 কনটেন্ট',      /নোট|স্লাইড|গুরুত্বপূর্ণ টপিক|Mastery|Past|পরীক্ষা|রিভিউ/],
+    ['🎁 রিওয়ার্ড',     /Coupon|Withdraw|শপ|কুপন/]
+  ];
+  const OTHER = '➕ অন্যান্য';
+  let active = null, lastSig = '';
+
+  function quickCard(){
+    return [...document.querySelectorAll('#app .card')].find(c => !c.id && c.querySelector('h2') && /দ্রুত অ্যাকশন/.test(c.querySelector('h2').textContent));
+  }
+  function build(){
+    if(!(state && state.screen === 'teacherDashboard')){ lastSig = ''; return; }
+    const qc = quickCard(); if(!qc) return;
+    const btns = [...qc.querySelectorAll('button, a.btn')];
+    const sig = btns.map(b => b.textContent.trim()).join('|');
+    const old = document.getElementById('dashGroups');
+    if(old && sig === lastSig) return;
+    if(old) old.remove();
+    lastSig = sig;
+
+    const buckets = {}; GROUPS.forEach(g => buckets[g[0]] = []); buckets[OTHER] = [];
+    let primary = null;
+    btns.forEach((b, i) => {
+      const label = b.textContent.trim();
+      if(i === 0 && /নতুন পরীক্ষা/.test(label)){ primary = b; return; }
+      const g = GROUPS.find(g => g[1].test(label));
+      buckets[g ? g[0] : OTHER].push(b);
+    });
+    const names = Object.keys(buckets).filter(n => buckets[n].length);
+    if(!names.includes(active)) active = null;
+
+    const proxy = (orig, cls) => {
+      const p = document.createElement('button');
+      p.type = 'button'; p.className = 'btn btn-block ' + (cls || (/btn-gold/.test(orig.className) ? 'btn-gold' : 'btn-outline'));
+      p.textContent = orig.textContent.trim().replace(/^(\S+)\s+/, '$1 ');
+      p.onclick = () => orig.click();
+      return p;
+    };
+    const card = document.createElement('div');
+    card.className = 'card'; card.id = 'dashGroups';
+    const top = document.createElement('div'); top.className = 'dg-top';
+    if(primary){ const pb = proxy(primary, 'btn-primary'); pb.textContent = '+ নতুন পরীক্ষা'; top.appendChild(pb); }
+    const tg = document.createElement('button'); tg.type = 'button'; tg.className = 'btn btn-gold btn-block';
+    tg.textContent = '🏷️ ট্যাগ সেন্টার'; tg.onclick = () => go('tagCenter'); top.appendChild(tg);
+    card.appendChild(top);
+
+    const tiles = document.createElement('div'); tiles.className = 'dg-tiles';
+    const panelBox = document.createElement('div');
+    const draw = () => {
+      tiles.querySelectorAll('.dg-tile').forEach(t => t.classList.toggle('on', t.dataset.g === active));
+      panelBox.innerHTML = '';
+      if(!active) return;
+      const panel = document.createElement('div'); panel.className = 'dg-panel';
+      buckets[active].forEach(b => panel.appendChild(proxy(b)));
+      panelBox.appendChild(panel);
+    };
+    names.forEach(n => {
+      const t = document.createElement('button'); t.type = 'button'; t.className = 'dg-tile'; t.dataset.g = n;
+      t.innerHTML = n + '<small>' + buckets[n].length + 'টা</small>';
+      t.onclick = () => { active = (active === n) ? null : n; draw(); };
+      tiles.appendChild(t);
+    });
+    card.appendChild(tiles); card.appendChild(panelBox); draw();
+
+    qc.classList.add('ub-hide');          // আসল কার্ড লুকানো থাকে (অন্য ফিচারের বাটন-ইনজেকশন যেন ঠিকঠাক কাজ করে)
+    qc.parentNode.insertBefore(card, qc);
+  }
+  let q = 0;
+  new MutationObserver(() => { if(q) return; q = requestAnimationFrame(() => { q = 0; build(); }); })
+    .observe(document.getElementById('app'), { childList:true, subtree:true });
+  build();
 })();
 </script>
 </body>
