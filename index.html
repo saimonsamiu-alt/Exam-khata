@@ -3667,8 +3667,8 @@ window.settleCouponItem = async function(slug){
 }
 
 // ---- Teacher: code-exam reward — শেষ রিওয়ার্ডের পর থেকে এখন পর্যন্ত সব exam, ছাত্রভেদে আলাদা সর্বোচ্চ টাকা ----
-function rewardBase(p){ p = Math.round(Number(p)); if(p <= 0) return 0; if(p < 80) return Math.round((p/79)*90); const n = p - 80; return 90 + Math.round(n*(n+1)/2); }
-function rewardAmount(p, max){ return Math.round(rewardBase(p) * ((Number(max) || 0) / 300)); }
+function rewardBase(p){ p = Math.round(Number(p)); return (!isFinite(p) || p <= 0) ? 0 : Math.min(100, p); }   // শতকরা অংশ
+function rewardAmount(p, max){ return Math.round(rewardBase(p) / 100 * (Number(max) || 0)); }   // টাকা = % × সর্বোচ্চ
 async function renderMonthlyReward(){
   app.innerHTML = `${header('Code Exam রিওয়ার্ড')}<div class="card center">লোড হচ্ছে...</div>`;
   const r = await getJson('listRewardPreview', {});
