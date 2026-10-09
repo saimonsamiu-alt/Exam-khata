@@ -4000,6 +4000,7 @@ async function finalizeWrittenRemote(code, slug, name){
 }
 async function getWrittenFinalsRemote(code){
   const r = await getJson('listWrittenFinals', { code });
+  window.__writtenFinalNames = (r && r.names) || {};
   return (r && r.status === 'success') ? r.data : [];
 }
 async function getWrittenSubmissionsRemote(code){
@@ -7464,7 +7465,15 @@ async function renderWrittenSubmissions(code){
       <div style="margin-top:8px;">${qRows}</div>
     </div>`;
   }).join('');
-  if(!slugs.length) rows = `<div class="empty-state">${only ? 'কোনো Pending রিভিউ নেই ✅' : 'এখনো কেউ জমা দেয়নি।'}</div>`;
+  // খাতা ছাড়াই জমা (সময় শেষ ইত্যাদি) হয়ে যাওয়া ছাত্র — আগে লিস্টে আসত না, তাই অনুমতি দেওয়া যেত না
+  const noKhata = only ? [] : finalList.filter(sl => !bySlug[sl]);
+  const finNames = window.__writtenFinalNames || {};
+  rows += noKhata.map(sl => `<div class="exam-item" style="border-left:4px solid #E0A93B;">
+      <h3 style="margin-bottom:4px;">${escapeHtml(finNames[sl] || sl)}</h3>
+      <div class="meta">⏹ জমা চূড়ান্ত — <b>কোনো খাতা জমা দেয়নি</b> (০/${examQuestions.length}টা প্রশ্ন, সব প্রশ্নে ০ ধরা হয়েছে)</div>
+      <button class="btn btn-outline" style="margin-top:8px;" onclick="reopenWrittenExam('${code}','${sl}')">🔓 আবার জমা দেওয়ার অনুমতি দাও</button>
+    </div>`).join('');
+  if(!slugs.length && !noKhata.length) rows = `<div class="empty-state">${only ? 'কোনো Pending রিভিউ নেই ✅' : 'এখনো কেউ জমা দেয়নি।'}</div>`;
 
   app.innerHTML = `
     ${header('জমা দেওয়া খাতা')}
@@ -12287,6 +12296,39 @@ window.impBkSave = async function(){
   new MutationObserver(() => { if(q) return; q = requestAnimationFrame(() => { q = 0; build(); }); })
     .observe(document.getElementById('app'), { childList:true, subtree:true });
   build();
+})();
+</script>
+
+<!-- ===== ছবির ইনপুটে "📷 ছবি তোলো" (ক্যামেরা) বাটন — "ছবি বাছো"-র পাশাপাশি ===== -->
+<script>
+(function(){
+  const SKIP = ['bkFiles','tcFiles'];                       // শিক্ষকের বাল্ক-আপলোড ইনপুট বাদ
+  function addCam(inp){
+    if(inp.dataset.cam || SKIP.indexOf(inp.id) >= 0 || inp.style.display === 'none' || inp.hidden) return;
+    inp.dataset.cam = '1';
+    const cam = document.createElement('input');
+    cam.type = 'file'; cam.accept = 'image/*'; cam.setAttribute('capture', 'environment'); cam.style.display = 'none';
+    cam.onchange = () => {
+      const f = cam.files && cam.files[0]; if(!f) return;
+      try{
+        const dt = new DataTransfer(); dt.items.add(f);
+        inp.files = dt.files;
+        inp.dispatchEvent(new Event('change', { bubbles:true }));
+      }catch(e){ if(typeof toast === 'function') toast('এই ব্রাউজারে ক্যামেরা সরাসরি কাজ করছে না — "ছবি বাছো" ব্যবহার করো'); }
+      cam.value = '';
+    };
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn btn-outline'; b.textContent = '📷 ছবি তোলো';
+    b.style.cssText = 'margin:0 0 8px 0; padding:8px 14px; font-size:13px;';
+    b.onclick = () => cam.click();
+    inp.insertAdjacentElement('afterend', b);
+    b.insertAdjacentElement('afterend', cam);
+  }
+  function sweepCam(){ document.querySelectorAll('#app input[type=file][accept^="image"]').forEach(addCam); }
+  let q = 0;
+  new MutationObserver(() => { if(q) return; q = requestAnimationFrame(() => { q = 0; sweepCam(); }); })
+    .observe(document.getElementById('app'), { childList:true, subtree:true });
+  sweepCam();
 })();
 </script>
 </body>
