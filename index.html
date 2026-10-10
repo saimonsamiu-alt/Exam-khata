@@ -5380,6 +5380,7 @@ async function renderDailyHwManage(){
     ${header('Daily HW জমা')}
     <div class="card">
       <h2>📅 স্টুডেন্টদের HW</h2>
+      <button class="btn btn-gold btn-block" style="margin-bottom:12px;" onclick="go('assignAnswersT')">📥 অ্যাসাইন করা HW-র সমাধান দেখো</button>
       <p class="hint">মোট <b>${window.__hwTeacherAll.length}</b>টি HW জমা · সবচেয়ে নতুন আগে</p>
       <label class="field-label">স্টুডেন্ট ফিল্টার</label>
       <select id="hwStudFilter" onchange="drawHwTeacherList()">
@@ -5397,6 +5398,25 @@ async function renderDailyHwManage(){
     ${creditFooter()}
   `;
   drawHwTeacherList();
+}
+async function renderAssignAnswersT(){
+  app.innerHTML = `${header('অ্যাসাইন করা HW')}<div class="card center">লোড হচ্ছে...</div>`;
+  const res = await postToScriptRaw('revisionAssignAnswers', {});
+  if(!res || res.status !== 'success'){
+    app.innerHTML = `${header('অ্যাসাইন করা HW')}<div class="card center"><h2>লোড করা যায়নি</h2><p class="hint">ইন্টারনেট বা সার্ভার ধীর থাকতে পারে।</p><button class="btn btn-primary" onclick="renderAssignAnswersT()">🔁 আবার চেষ্টা করো</button></div><div class="center"><a class="link-back" onclick="go('dailyHwManage')">← ফিরে যাও</a></div>`;
+    return;
+  }
+  const items = res.data || [];
+  const card = x => `<div class="exam-item">
+    <span class="q-tag">${escapeHtml([x.chapter, x.topic].filter(Boolean).join(' › ') || x.subject)}</span>
+    <div class="meta" style="margin-top:6px;">${escapeHtml(x.date)} · স্টুডেন্ট: <b>${escapeHtml(x.studentName)}</b> · <b>${x.percent}%</b></div>
+    ${x.text ? `<div style="font-size:13.5px; margin-top:8px; line-height:1.55;">${escapeHtml(x.text)}</div>` : ''}
+    ${x.imageUrl ? `<a href="${escapeHtml(x.imageUrl)}" target="_blank" rel="noopener"><img src="${driveImg(x.imageUrl)}" alt="খাতা" style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); margin-top:10px; display:block;"></a>` : ''}
+    <div style="margin-top:10px; background:#F5F9FE; border-radius:8px; padding:10px 12px; font-size:13.5px; line-height:1.6;">🤖 ${escapeHtml(x.feedback || '—')}</div></div>`;
+  app.innerHTML = `${header('অ্যাসাইন করা HW')}
+    <div class="card"><h2>📥 অ্যাসাইন করা HW — জমা পড়া সমাধান</h2><p class="hint">সবচেয়ে নতুন ${items.length}টি · রিভিশন সেটআপে অ্যাসাইন করা প্রশ্নের উত্তর</p>
+    ${items.map(card).join('') || '<div class="empty-state">এখনো কেউ জমা দেয়নি।</div>'}</div>
+    <div class="center"><a class="link-back" onclick="go('dailyHwManage')">← ফিরে যাও</a></div>${creditFooter()}`;
 }
 window.drawHwTeacherList = function(){
   const f = (document.getElementById('hwTopicFilter')||{}).value || '';
@@ -6738,6 +6758,7 @@ function render(){
   else if(s==='studentDashboard') renderStudentDashboard();
   else if(s==='examResume') renderExamResume();
   else if(s==='mistakeBook') renderMistakeBook();
+  else if(s==='assignAnswersT') renderAssignAnswersT();
   else if(s==='teacherRegCodes') renderTeacherRegCodes();
   else if(s==='teacherBattleAudit') renderTeacherBattleAudit();
   else if(s==='battleWorldMap') renderBattleWorldMap();
