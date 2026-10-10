@@ -3205,6 +3205,16 @@ async function getMyDailyHomeworkRemote(slug, month){
   }catch(e){}
   return [];
 }
+async function listAllDailyHomeworkOrNull(){ // [NEW] ব্যর্থ হলে null (ফাঁকা লিস্ট নয়)
+  try{
+    const ctl = new AbortController(); const to = setTimeout(()=> ctl.abort(), 30000);
+    const r = await fetch(`${SCRIPT_URL}?action=listAllDailyHomework`, { signal: ctl.signal });
+    clearTimeout(to);
+    const j = await r.json();
+    if(j && j.status === 'success') return j.data || [];
+  }catch(e){}
+  return null;
+}
 async function listAllDailyHomeworkRemote(slug){
   try{
     const url = `${SCRIPT_URL}?action=listAllDailyHomework` + (slug?`&slug=${encodeURIComponent(slug)}`:'');
@@ -5070,7 +5080,7 @@ function hwEntryInner(rec, opts){
     <div class="row-top">
       <div>
         <span class="q-tag">📚 ${escapeHtml(rec.topic||'সাধারণ')}</span>
-        <div class="meta" style="margin-top:6px;">${escapeHtml(fmtBnDate(new Date(rec.date).getTime()))}${opts.teacher ? ' · স্টুডেন্ট: ' + escapeHtml(rec.slug) : ''}</div>
+        <div class="meta" style="margin-top:6px;">${escapeHtml(fmtBnDate(new Date(rec.date).getTime()))}${opts.teacher ? ' · স্টুডেন্ট: <b>' + escapeHtml(rec.studentName || rec.slug) + '</b>' : ''}</div>
       </div>
       ${opts.student ? `<a class="link-back" onclick="deleteHw('${rec.id}')">🗑️ মুছো</a>` : ''}
     </div>
@@ -5357,7 +5367,12 @@ function renderDailyHwDayDetail(dateStr){
 window.__hwTeacherAll = null;
 async function renderDailyHwManage(){
   app.innerHTML = `${header('Daily HW জমা')}<div class="card center">লোড হচ্ছে...</div>`;
-  window.__hwTeacherAll = await listAllDailyHomeworkRemote();
+  const __all = await listAllDailyHomeworkOrNull();
+  if(__all === null){
+    app.innerHTML = `${header('Daily HW জমা')}<div class="card center"><h2>লোড করা যায়নি</h2><p class="hint">ইন্টারনেট বা সার্ভার ধীর থাকতে পারে। HW মুছে যায়নি।</p><button class="btn btn-primary" onclick="renderDailyHwManage()">🔁 আবার চেষ্টা করো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>`;
+    return;
+  }
+  window.__hwTeacherAll = __all;
   window.__hwTeacherView = true;
   const topics = [...new Set(window.__hwTeacherAll.map(x=> x.topic))];
   app.innerHTML = `
