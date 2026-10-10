@@ -5375,10 +5375,17 @@ async function renderDailyHwManage(){
   window.__hwTeacherAll = __all;
   window.__hwTeacherView = true;
   const topics = [...new Set(window.__hwTeacherAll.map(x=> x.topic))];
+  const studs = [...new Set(window.__hwTeacherAll.map(x=> x.studentName || x.slug))];
   app.innerHTML = `
     ${header('Daily HW জমা')}
     <div class="card">
       <h2>📅 স্টুডেন্টদের HW</h2>
+      <p class="hint">মোট <b>${window.__hwTeacherAll.length}</b>টি HW জমা · সবচেয়ে নতুন আগে</p>
+      <label class="field-label">স্টুডেন্ট ফিল্টার</label>
+      <select id="hwStudFilter" onchange="drawHwTeacherList()">
+        <option value="">— সব স্টুডেন্ট —</option>
+        ${studs.map(t=> `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('')}
+      </select>
       <label class="field-label">টপিক ফিল্টার</label>
       <select id="hwTopicFilter" onchange="drawHwTeacherList()">
         <option value="">— সব টপিক —</option>
@@ -5393,7 +5400,8 @@ async function renderDailyHwManage(){
 }
 window.drawHwTeacherList = function(){
   const f = (document.getElementById('hwTopicFilter')||{}).value || '';
-  const items = (window.__hwTeacherAll||[]).filter(x=> !f || x.topic === f);
+  const sf = (document.getElementById('hwStudFilter')||{}).value || '';
+  const items = (window.__hwTeacherAll||[]).filter(x=> (!f || x.topic === f) && (!sf || (x.studentName || x.slug) === sf));
   const el = document.getElementById('hwTeacherList'); if(!el) return;
   el.innerHTML = items.map(x=> hwEntryCard(x, { teacher:true })).join('') || `<div class="empty-state">এখনো কেউ জমা দেয়নি।</div>`;
 };
