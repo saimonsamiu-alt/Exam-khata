@@ -914,7 +914,14 @@ window.startMistakePractice = function(){
 // ===== [NEW] Firebase (শুধু নতুন ফিচারের ডাটা: ভুল খাতা + টপিক হিসাব) =====
 // নিচের null-এর জায়গায় Firebase Console থেকে পাওয়া config বসাও। null থাকলে সবকিছু আগের মতো শুধু এই ফোনে সেভ হবে।
 // উদাহরণ: { apiKey:'...', authDomain:'xxx.firebaseapp.com', projectId:'xxx', appId:'...' }
-const FIREBASE_CONFIG = null;
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyC9mRLvk7bTgbgG2NTs_3LNsn247_zs6dw",
+  authDomain: "tuition-khata-8d057.firebaseapp.com",
+  projectId: "tuition-khata-8d057",
+  storageBucket: "tuition-khata-8d057.firebasestorage.app",
+  messagingSenderId: "402216962821",
+  appId: "1:402216962821:web:58d97614f59ed3c15a056c"
+};
 let __fbP = null;
 function fbInit(){
   if(!FIREBASE_CONFIG) return Promise.resolve(null);
