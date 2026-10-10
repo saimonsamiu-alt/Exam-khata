@@ -849,7 +849,8 @@ function recordExamForMistakes(exam, slug, answers){
       const ok = answers[i] === q.correct;
       const key = q.mkey || (exam.code + '|' + i);
       const tag = (q.tag && String(q.tag).trim()) || 'অন্যান্য';
-      const t = ts[tag] || (ts[tag] = { right:0, total:0 });
+      const statTag = tag.split(' › ').slice(0,2).join(' › ');
+      const t = ts[statTag] || (ts[statTag] = { right:0, total:0 });
       t.total += 1; if(ok) t.right += 1;
       if(!ok){
         const prev = mb[key] || {};
@@ -865,6 +866,23 @@ function recordExamForMistakes(exam, slug, answers){
     localStorage.setItem('lrn_updated_' + slug, String(Date.now()));
     fbPushLearning(slug); // [NEW] Firebase চালু থাকলে ক্লাউডে সেভ
   }catch(e){}
+}
+async function fetchExamTags(code){
+  try{
+    const ctl = new AbortController(); const to = setTimeout(()=> ctl.abort(), 4000);
+    const r = await fetch(`${SCRIPT_URL}?action=getExamTags&code=${encodeURIComponent(code)}`, { signal: ctl.signal });
+    clearTimeout(to);
+    const j = await r.json();
+    if(!j || j.status !== 'success') return {};
+    const L = { physics:'পদার্থবিজ্ঞান', chemistry:'রসায়ন', mathematics:'গণিত', biology:'জীববিজ্ঞান', ict:'ICT' };
+    const out = {};
+    Object.keys(j.tags || {}).forEach(i=>{ const t = j.tags[i]; out[i] = [L[t.subject] || t.subject, t.chapter, t.topic].filter(Boolean).join(' › '); });
+    return out;
+  }catch(e){ return {}; }
+}
+function examWithTags(exam, tg){
+  if(!tg || !Object.keys(tg).length) return exam;
+  return Object.assign({}, exam, { questions: exam.questions.map((q,i)=> tg[i] ? Object.assign({}, q, { tag: tg[i] }) : q) });
 }
 function resultEncouragement(exam, answers, pct){
   const wt = {};
@@ -2116,6 +2134,7 @@ function updateTimerDisplay(sec){
 window.submitExam = async function(auto){
   if(timerInterval){ clearInterval(timerInterval); timerInterval=null; }
   const { exam, slug, name, answers, attemptNumber, viaCode } = state;
+  window.__tagsP = (exam.code === '__MISTAKES__') ? null : fetchExamTags(exam.code); // [NEW] সার্ভারে জমা হওয়ার সাথে সাথে ট্যাগও আনো
   let score = 0;
   exam.questions.forEach((q,i)=>{ if(answers[i] === q.correct) score++; });
   const resultObj = { id: genId('res'), studentName: name, slug, score, total: exam.questions.length, submittedAt: Date.now(), answers, attemptNumber: attemptNumber||1, viaCode: !!viaCode };
@@ -2157,6 +2176,7 @@ window.retrySubmit = async function(){
 }
 async function finalizeExamSubmission(exam, slug, resultObj, auto, viaCode){
   clearExamProgress(); // [NEW] জমা সফল হলে সেভ করা প্রোগ্রেস মুছে ফেলো
+  { const tg = window.__tagsP ? await window.__tagsP : await fetchExamTags(exam.code); window.__tagsP = null; exam = examWithTags(exam, tg); } // [NEW] ট্যাগ সেন্টারের ট্যাগ
   await recordAndSync(exam, slug, resultObj.answers); // [NEW] ভুল খাতা ও টপিক হিসাব
   let couponAmount = 0;
   if(exam.isTreat && (resultObj.attemptNumber||1) === 1){
