@@ -11,10 +11,13 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://script.google.com" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <!-- KaTeX for Math & Science LaTeX equations -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" media="print" onload="this.media='all'">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/mhchem.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" onload="if(typeof renderAllMath==='function')renderAllMath();"></script>
@@ -359,6 +362,7 @@ const CREATOR_DEPT = 'Industrial and Production Engineering (IPE)';
 const CREATOR_WHATSAPP = '01577477346';
 const CREATOR_WA_LINK = 'https://wa.me/8801577477346';
 
+try{ setTimeout(()=>fetch('https://script.google.com/macros/s/AKfycbzop85YoNAYzEmfL92k0OkwEMojYFYotcKKaFHbh62Li0seaj68KDAkRGJkHG9VCXSt/exec?action=ping',{mode:'no-cors'}).catch(()=>{}), 50); }catch(e){} // [SPEED] সার্ভার আগেভাগে জাগিয়ে রাখো
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzop85YoNAYzEmfL92k0OkwEMojYFYotcKKaFHbh62Li0seaj68KDAkRGJkHG9VCXSt/exec';
 
 const holesEl = document.getElementById('holes');
@@ -781,12 +785,82 @@ window.teacherLogout = function(){
   go('landing');
 };
 window.studentLogout = function(){
+  clearExamProgress(); // [NEW]
   clearLoggedStudent();
   toast('লগআউট সম্পন্ন হয়েছে');
   go('landing');
 };
 
-let state = { screen: getLoggedTeacher() ? 'teacherDashboard' : (getLoggedStudent() ? 'studentDashboard' : 'landing') };
+// ===== [NEW] Exam progress: অ্যাপ থেকে বের হলেও পরীক্ষা ও লগইন ফেরত আসবে =====
+const EXAM_PROGRESS_KEY = 'exam_progress_v1';
+function saveExamProgress(){
+  try{
+    if(!state || state.screen !== 'studentExam' || !state.exam) return;
+    const s = { exam: state.exam, slug: state.slug, name: state.name, attemptNumber: state.attemptNumber, viaCode: state.viaCode,
+      answers: state.answers, locked: state.locked, startedAt: state.startedAt, qIndex: state.qIndex || 0,
+      qStartedAt: state.qStartedAt || Date.now(), qStartedFor: state.qStartedFor, savedAt: Date.now() };
+    localStorage.setItem(EXAM_PROGRESS_KEY, JSON.stringify(s));
+  }catch(e){}
+}
+function clearExamProgress(){ try{ localStorage.removeItem(EXAM_PROGRESS_KEY); }catch(e){} }
+function loadExamProgress(){
+  try{
+    const raw = localStorage.getItem(EXAM_PROGRESS_KEY);
+    if(!raw) return null;
+    const s = JSON.parse(raw);
+    if(!s || !s.exam || !s.answers || Date.now() - s.savedAt > 12*3600*1000){ clearExamProgress(); return null; }
+    const now = Date.now();
+    if(s.exam.timerMode !== 'total'){
+      const sec = s.exam.perQuestionSeconds || 30;
+      if(s.answers[s.qIndex] !== null && s.answers[s.qIndex] !== undefined){ s.qIndex += 1; s.qStartedAt = now; }
+      const skip = Math.floor((now - s.qStartedAt)/1000/sec);
+      if(skip > 0){ s.qIndex += skip; s.qStartedAt += skip*sec*1000; }
+      s.qStartedFor = s.qIndex;
+      s.finished = s.qIndex >= s.exam.questions.length;
+      s.remaining = Math.max(0, sec - Math.floor((now - s.qStartedAt)/1000));
+    } else {
+      s.remaining = Math.max(0, s.exam.duration*60 - Math.floor((now - s.startedAt)/1000));
+      s.finished = s.remaining <= 0;
+    }
+    return s;
+  }catch(e){ return null; }
+}
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden) saveExamProgress(); });
+window.addEventListener('pagehide', saveExamProgress);
+const __resumeExam = (getLoggedTeacher() ? null : loadExamProgress());
+let state = __resumeExam
+  ? { screen: 'examResume', saved: __resumeExam }
+  : { screen: getLoggedTeacher() ? 'teacherDashboard' : (getLoggedStudent() ? 'studentDashboard' : 'landing') };
+function renderExamResume(){
+  const s = state.saved;
+  if(s.finished){
+    const { remaining, finished, ...keep } = s;
+    go('studentExam', keep); submitExam(true); return;
+  }
+  const total = s.exam.questions.length;
+  const done = s.answers.filter(a=> a !== null && a !== undefined).length;
+  const isTotal = s.exam.timerMode === 'total';
+  app.innerHTML = `
+    ${header('পরীক্ষা চলছে')}
+    <div class="card center">
+      <h2>তোমার পরীক্ষা চলছে</h2>
+      <p class="hint">চিন্তা নেই, আগের উত্তরগুলো সেভ করা আছে। আবার লগইন করতে হবে না।</p>
+      <div style="font-weight:700; margin-bottom:12px;">${escapeHtml(s.exam.title)}</div>
+      <div class="cls-chips" style="margin-bottom:16px;">
+        <div class="cls-chip" style="background:#F5F7FB;"><b>${done}</b><span>উত্তর সেভ</span></div>
+        <div class="cls-chip" style="background:#F5F7FB;"><b>${total - done}</b><span>বাকি প্রশ্ন</span></div>
+        <div class="cls-chip" style="background:#FEF6E8;"><b style="color:#7A5210;">${fmtTime(s.remaining)}</b><span style="color:#7A5210;">${isTotal ? 'বাকি সময়' : 'এই প্রশ্নের সময়'}</span></div>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="resumeExamNow()">চালিয়ে যাও</button>
+      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="submitSavedExamNow()">এখনই জমা দাও</button>
+    </div>
+    ${creditFooter()}`;
+}
+window.resumeExamNow = function(){ const { remaining, finished, ...keep } = state.saved; go('studentExam', keep); };
+window.submitSavedExamNow = function(){
+  if(!confirm('এখনই খাতা জমা দিতে চাও?')) return;
+  const { remaining, finished, ...keep } = state.saved; go('studentExam', keep); submitExam(false);
+};
 let timerInterval = null;
 function go(screen, data={}){
   if(timerInterval){ clearInterval(timerInterval); timerInterval = null; }
@@ -865,8 +939,8 @@ function renderLanding(){
     studentCardHtml = `
       <div class="card center">
         <h1>স্বাগতম! 👋</h1>
-        <p class="hint">পরীক্ষা দিতে চাইলে বা একাউন্টে ঢুকতে নিচের বাটনে যাও</p>
-        <button class="btn btn-gold btn-block" onclick="go('studentAuth')">🧑‍🎓 শিক্ষার্থী পোর্টাল (লগইন / নতুন একাউন্ট)</button>
+        <p class="hint">পরীক্ষা দিতে চাইলে বা শিক্ষার্থী পোর্টালে প্রবেশ করতে নিচের বাটনে যাও</p>
+        <button class="btn btn-gold btn-block" onclick="go('studentAuth')">🧑‍🎓 শিক্ষার্থী পোর্টাল (প্রবেশ / নতুন নিবন্ধন)</button>
         <div class="admin-link" onclick="go('teacherGate')">🛠️ শিক্ষক/Admin হলে এখানে যাও</div>
       </div>
     `;
@@ -1633,6 +1707,7 @@ async function verifyStudentLogin(){
   if(!name || !code || !pass){ toast('সবগুলো পূরণ করো'); return; }
 
   toast('গুগল শিট থেকে পরীক্ষা খোঁজা হচ্ছে...');
+  const __resultsP = getRemoteResults(code); // [SPEED] দুটো রিকোয়েস্ট একসাথে চলবে
   const examRaw = await sget('exam:'+code);
   if(!examRaw){ alert('পরীক্ষা পাওয়া যায়নি! কোডটি সঠিক কিনা যাচাই করো বা একটি নতুন এক্সাম তৈরি করে ট্রাই করো।'); return; }
 
@@ -1643,7 +1718,7 @@ async function verifyStudentLogin(){
 
   const slug = loggedStud ? loggedStud.slug : slugify(name); // [NEW]
 
-  const existingResults = await getRemoteResults(code);
+  const existingResults = await __resultsP;
   const allAttempts = existingResults.filter(r => (r.slug ? r.slug === slug : slugify(r.studentName||'') === slug));
   // [FIX] আগে শুধু উন্মুক্ত practice (viaCode:false) দিয়ে থাকলেও কোড দিয়ে প্রথমবার দিলে সেটা আসল (গোনা) attempt
   const myAttempts = allAttempts.filter(r => r.viaCode !== false);
@@ -1753,9 +1828,9 @@ function runCheckingSequence(exam, slug, name, attemptNumber, opts){
     </div>
     ${creditFooter()}
   `;
-  setTimeout(()=> document.getElementById('cLine0').classList.add('show'), 150);
-  setTimeout(()=> document.getElementById('cLine1').classList.add('show'), 600);
-  setTimeout(()=> document.getElementById('cLine2').classList.add('show'), 1100);
+  setTimeout(()=> document.getElementById('cLine0').classList.add('show'), 30);
+  setTimeout(()=> document.getElementById('cLine1').classList.add('show'), 180);
+  setTimeout(()=> document.getElementById('cLine2').classList.add('show'), 330);
   setTimeout(async ()=>{
     go('studentExam', {
       exam, slug, name, attemptNumber: attemptNumber || 1,
@@ -1765,12 +1840,13 @@ function runCheckingSequence(exam, slug, name, attemptNumber, opts){
       startedAt: Date.now(),
       qIndex: 0
     });
-  }, 1600);
+  }, 500);
 }
 
 function renderStudentExam(){
   if(state.exam.timerMode === 'total') renderStudentExamTotal();
   else renderStudentExamPerQ();
+  saveExamProgress(); // [NEW] প্রতিবার সেভ
 }
 
 function renderStudentExamTotal(){
@@ -1856,7 +1932,9 @@ function renderStudentExamPerQ(){
     ${creditFooter()}
   `;
 
-  let remaining = secPerQ;
+  if(state.qStartedFor !== qIndex){ state.qStartedFor = qIndex; state.qStartedAt = Date.now(); } // [NEW]
+  let remaining = secPerQ - Math.floor((Date.now() - state.qStartedAt)/1000);
+  if(remaining <= 0){ setTimeout(()=> advanceQuestion(), 0); return; }
   updateTimerDisplay(remaining);
   timerInterval = setInterval(()=>{
     remaining -= 1;
@@ -1870,6 +1948,7 @@ function renderStudentExamPerQ(){
 window.setAnswerPerQ = function(oi){
   if(timerInterval){ clearInterval(timerInterval); timerInterval = null; }
   state.answers[state.qIndex] = oi;
+  saveExamProgress(); // [NEW]
   setTimeout(()=> advanceQuestion(), 450);
 }
 function advanceQuestion(){
@@ -1931,6 +2010,7 @@ window.retrySubmit = async function(){
   await finalizeExamSubmission(exam, slug, resultObj, auto, viaCode);
 }
 async function finalizeExamSubmission(exam, slug, resultObj, auto, viaCode){
+  clearExamProgress(); // [NEW] জমা সফল হলে সেভ করা প্রোগ্রেস মুছে ফেলো
   let couponAmount = 0;
   if(exam.isTreat && (resultObj.attemptNumber||1) === 1){
     const percent = Math.round((resultObj.score/exam.questions.length)*100);
@@ -2381,7 +2461,7 @@ async function renderAttendanceDashboard(){
     ${header('উপস্থিতি ও বেতন')}
     <div class="card">
       <h2>স্টুডেন্ট তালিকা</h2>
-      <p class="hint">নতুন স্টুডেন্ট যোগ করো, তারপর ক্যালেন্ডারে ক্লিক করে যেদিন ক্লাস হয়েছে সেটা মার্ক করো। Student শুধু নিজের নাম লিখে ঢুকে সেটা confirm করবে — কোনো ID/পাসওয়ার্ড লাগবে না।</p>
+      <p class="hint">নতুন স্টুডেন্ট যোগ করো, তারপর ক্যালেন্ডারে ক্লিক করে যেদিন ক্লাস হয়েছে সেটা মার্ক করো। Student শুধু নিজের নাম লিখে প্রবেশ করে সেটা confirm করবে — কোনো ID/পাসওয়ার্ড লাগবে না।</p>
       <div class="row">
         <input type="text" id="newStudentName" placeholder="নতুন স্টুডেন্টের নাম" style="margin-bottom:0;">
         <button class="btn btn-outline" onclick="addNewStudent()">+ যোগ করো</button>
@@ -2717,7 +2797,7 @@ function renderNotesManage(){
     ${header('নোট/স্লাইড ম্যানেজ করো')}
     <div class="card">
       <h2>কোন বিষয়ের নোট/স্লাইড যোগ করবে?</h2>
-      <p class="hint">দুইভাবে যোগ করা যায়: (১) Google Drive/Slides এর শেয়ার লিংক, অথবা (২) সরাসরি HTML কোড পেস্ট করে — সেটা অ্যাপের ভেতরেই স্লাইড আকারে দেখাবে। স্টুডেন্টরা পাসওয়ার্ড (${NOTES_PASSWORD}) দিয়ে ঢুকে এগুলো দেখতে পারবে।</p>
+      <p class="hint">দুইভাবে যোগ করা যায়: (১) Google Drive/Slides এর শেয়ার লিংক, অথবা (২) সরাসরি HTML কোড পেস্ট করে — সেটা অ্যাপের ভেতরেই স্লাইড আকারে দেখাবে। স্টুডেন্টরা পাসওয়ার্ড (${NOTES_PASSWORD}) দিয়ে প্রবেশ করে এগুলো দেখতে পারবে।</p>
       ${btns}
     </div>
     <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>
@@ -6464,6 +6544,7 @@ function render(){
   if(s==='landing') renderLanding();
   else if(s==='studentAuth') renderStudentAuth();
   else if(s==='studentDashboard') renderStudentDashboard();
+  else if(s==='examResume') renderExamResume();
   else if(s==='teacherRegCodes') renderTeacherRegCodes();
   else if(s==='teacherBattleAudit') renderTeacherBattleAudit();
   else if(s==='battleWorldMap') renderBattleWorldMap();
@@ -7808,7 +7889,7 @@ async function renderNotesManage(){
     </div>` : ''}
     <div class="card">
       <h2>বিষয় অনুযায়ী নোট দেখো / এডিট করো</h2>
-      <p class="hint">দুইভাবে যোগ করা যায়: (১) Google Drive/Slides এর শেয়ার লিংক, অথবা (২) HTML কোড পেস্ট। স্টুডেন্টরা পাসওয়ার্ড (${NOTES_PASSWORD}) দিয়ে ঢুকে এগুলো দেখতে পারে।</p>
+      <p class="hint">দুইভাবে যোগ করা যায়: (১) Google Drive/Slides এর শেয়ার লিংক, অথবা (২) HTML কোড পেস্ট। স্টুডেন্টরা পাসওয়ার্ড (${NOTES_PASSWORD}) দিয়ে প্রবেশ করে এগুলো দেখতে পারে।</p>
       ${btns}
     </div>
     <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>
