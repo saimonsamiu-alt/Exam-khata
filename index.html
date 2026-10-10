@@ -8535,23 +8535,32 @@ window.doSmartSearch = async function(){
   function revSetupDraw(allowed){
     const goal = Number(localStorage.getItem('rev_goal') || 10);
     const done = Math.floor(doneSec() / 60);
+    // [NEW] আগের বারের পছন্দ মনে রাখা — একবার ঠিক করলেই হবে
+    let pr = null; try{ pr = JSON.parse(localStorage.getItem('rev_prefs_v1') || 'null'); }catch(e){}
+    const sel = (pr && pr.subs ? pr.subs : []).filter(k => allowed.indexOf(k) !== -1 && NOTES_SUBJECTS[k]);
+    const valid = sel.length > 0;
+    const pm = (pr && pr.mode) || 'unified', pmins = (pr && pr.mins) || goal;
+    const prefNote = valid ? `<div style="padding:10px 12px;background:#EEF2FA;border-radius:10px;margin:0 0 12px 0;font-size:13.5px;line-height:1.5;">আগের সেটিংস: <b>${sel.map(k => NOTES_SUBJECTS[k].label).join(', ')}</b> · ${pm === 'sep' ? 'প্রতি বিষয়ে' : 'মোট'} ${pmins} মিনিট</div>` : '';
     app.innerHTML = `
       ${header('রিভিশন')}
       <div class="card">
         <h2>🔁 আজকের রিভিশন</h2>
-        <p class="hint">তোমার এ পর্যন্ত সব HW, MCQ, Written আর স্লাইডের ভুল ও আংশিক-ঠিক জায়গা (শুধু এই সপ্তাহের না) আর শিক্ষকের দেওয়া প্রশ্ন থেকে নিজে নিজে প্রশ্ন আসবে — দুর্বল → সহজ → দুর্বল এভাবে। আজ করেছো: <b>${done}</b> মিনিট / লক্ষ্য <b>${goal}</b> মিনিট।</p>
+        <p class="hint">আজ করেছো: <b>${done}</b> মিনিট / লক্ষ্য <b>${goal}</b> মিনিট</p>
         <div id="revCov"></div>
+        ${prefNote}
+        <details ${valid ? '' : 'open'} style="margin-bottom:12px;"><summary style="cursor:pointer;font-weight:600;font-size:13.5px;padding:6px 0;">${valid ? 'সেটিংস বদলাও' : 'সেটিংস ঠিক করো (একবারই লাগবে)'}</summary>
         <label class="field-label">বিষয় (একাধিক বাছতে পারো)</label>
-        ${allowed.map(k => `<label class="bubble-opt"><input type="checkbox" id="revS_${k}" style="display:inline-block;width:auto;margin:0;"><span>${NOTES_SUBJECTS[k].icon} ${NOTES_SUBJECTS[k].label}</span></label>`).join('')}
+        ${allowed.map(k => `<label class="bubble-opt"><input type="checkbox" id="revS_${k}" ${sel.indexOf(k) !== -1 ? 'checked' : ''} style="display:inline-block;width:auto;margin:0;"><span>${NOTES_SUBJECTS[k].icon} ${NOTES_SUBJECTS[k].label}</span></label>`).join('')}
         <label class="field-label" style="margin-top:12px;">সময়ের ধরন</label>
         <select id="revMode">
-          <option value="unified">সব বিষয় মিলিয়ে মোট একটাই সময়</option>
-          <option value="sep">প্রতিটা বিষয়ের জন্য আলাদা সময়</option>
+          <option value="unified" ${pm === 'unified' ? 'selected' : ''}>সব বিষয় মিলিয়ে মোট একটাই সময়</option>
+          <option value="sep" ${pm === 'sep' ? 'selected' : ''}>প্রতিটা বিষয়ের জন্য আলাদা সময়</option>
         </select>
         <label class="field-label">সময় (মিনিট, সর্বনিম্ন ৫) — "আলাদা" হলে প্রতি বিষয়ে এই সময়</label>
-        <input type="number" id="revMin" min="5" value="${goal}">
+        <input type="number" id="revMin" min="5" value="${pmins}">
         <label class="field-label">প্রতিদিনের লক্ষ্য (মিনিট)</label>
         <input type="number" id="revGoal" min="5" value="${goal}">
+        </details>
         <button class="btn btn-primary btn-block" onclick="revStart()">▶️ শুরু করো</button>
       </div>
       <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>
@@ -8567,6 +8576,7 @@ window.doSmartSearch = async function(){
     const goal = Math.max(5, parseInt(document.getElementById('revGoal').value, 10) || mins);
     localStorage.setItem('rev_goal', goal);
     const sep = document.getElementById('revMode').value === 'sep';
+    try{ localStorage.setItem('rev_prefs_v1', JSON.stringify({ subs, mode: sep ? 'sep' : 'unified', mins })); }catch(e){} // [NEW] পছন্দ সেভ
     const segs = sep ? subs.map(s => ({ subs:[s], sec:mins * 60 })) : [{ subs:subs, sec:mins * 60 }];
     window.__rev = { phase:'loading', slug:stud.slug, segs, si:0, tog:0, used:{}, stats:{ m:0, mc:0, cq:[] } };
     revRender();
