@@ -5410,7 +5410,7 @@ async function renderAssignAnswersT(){
   const card = x => `<div class="exam-item">
     <span class="q-tag">${escapeHtml([x.chapter, x.topic].filter(Boolean).join(' › ') || x.subject)}</span>
     <div class="meta" style="margin-top:6px;">${escapeHtml(x.date)} · স্টুডেন্ট: <b>${escapeHtml(x.studentName)}</b> · <b>${x.percent}%</b></div>
-    ${x.text ? `<div style="font-size:13.5px; margin-top:8px; line-height:1.55;">${escapeHtml(x.text)}</div>` : ''}
+    ${x.text ? `<details style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; color:#44506A;">প্রশ্ন দেখো</summary><div style="font-size:13.5px; margin-top:6px; line-height:1.55;">${escapeHtml(x.text)}</div></details>` : ''}
     ${x.imageUrl ? `<a href="${escapeHtml(x.imageUrl)}" target="_blank" rel="noopener"><img src="${driveImg(x.imageUrl)}" alt="খাতা" style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); margin-top:10px; display:block;"></a>` : ''}
     <div style="margin-top:10px; background:#F5F9FE; border-radius:8px; padding:10px 12px; font-size:13.5px; line-height:1.6;">🤖 ${escapeHtml(x.feedback || '—')}</div></div>`;
   app.innerHTML = `${header('অ্যাসাইন করা HW')}
