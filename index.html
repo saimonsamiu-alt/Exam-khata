@@ -334,6 +334,11 @@
   .cls-chip{ border-radius:10px; padding:8px 4px; text-align:center; display:flex; flex-direction:column; gap:2px; }
   .cls-chip b{ font-family:var(--font-mono); font-size:19px; }
   .cls-chip span{ font-size:11px; font-weight:600; line-height:1.25; }
+  /* [NEW] প্রশ্ন প্যালেট + নরম ফলাফল */
+  .qpal{ position:sticky; top:0; z-index:4; display:flex; gap:8px; overflow-x:auto; padding:10px 2px; margin:0 0 10px; background:linear-gradient(180deg,#F8FAFD 80%,rgba(248,250,253,0)); -webkit-overflow-scrolling:touch; }
+  .qpal-b{ flex:none; width:42px; height:42px; border-radius:12px; border:2px solid #C9D2E2; background:#fff; color:#44506A; font-family:var(--font-mono); font-weight:700; font-size:14px; cursor:pointer; }
+  .qpal-b.done{ background:var(--ink); border-color:var(--ink); color:#fff; }
+  .stamp.soft{ border-color:var(--gold); color:#9B6A15; }
 </style>
 
 
@@ -831,6 +836,125 @@ const __resumeExam = (getLoggedTeacher() ? null : loadExamProgress());
 let state = __resumeExam
   ? { screen: 'examResume', saved: __resumeExam }
   : { screen: getLoggedTeacher() ? 'teacherDashboard' : (getLoggedStudent() ? 'studentDashboard' : 'landing') };
+// ===== [NEW] ভুল খাতা + দুর্বল টপিক (এই ফোনে সেভ থাকে) =====
+const MB_KEY = s => 'mistakes_v1_' + s;
+const TS_KEY = s => 'topicstats_v1_' + s;
+function _mbLoad(k, d){ try{ const r = localStorage.getItem(k); return r ? JSON.parse(r) : d; }catch(e){ return d; } }
+function _mbSave(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function recordExamForMistakes(exam, slug, answers){
+  try{
+    if(!slug || !exam || !exam.questions || !answers) return;
+    const mb = _mbLoad(MB_KEY(slug), {}), ts = _mbLoad(TS_KEY(slug), {});
+    exam.questions.forEach((q, i)=>{
+      const ok = answers[i] === q.correct;
+      const key = q.mkey || (exam.code + '|' + i);
+      const tag = (q.tag && String(q.tag).trim()) || 'অন্যান্য';
+      const t = ts[tag] || (ts[tag] = { right:0, total:0 });
+      t.total += 1; if(ok) t.right += 1;
+      if(!ok){
+        const prev = mb[key] || {};
+        mb[key] = { key, text:q.text, options:q.options, correct:q.correct, tag, title:exam.title, wrong:(prev.wrong||0)+1, streak:0, ts:Date.now() };
+      } else if(mb[key]){
+        mb[key].streak = (mb[key].streak||0) + 1;
+        if(mb[key].streak >= 2) delete mb[key]; // পরপর ২বার ঠিক হলে খাতা থেকে বাদ
+      }
+    });
+    const keys = Object.keys(mb);
+    if(keys.length > 200) keys.sort((a,b)=> mb[a].ts - mb[b].ts).slice(0, keys.length-200).forEach(k=> delete mb[k]);
+    _mbSave(MB_KEY(slug), mb); _mbSave(TS_KEY(slug), ts);
+    localStorage.setItem('lrn_updated_' + slug, String(Date.now()));
+    fbPushLearning(slug); // [NEW] Firebase চালু থাকলে ক্লাউডে সেভ
+  }catch(e){}
+}
+function resultEncouragement(exam, answers, pct){
+  const wt = {};
+  exam.questions.forEach((q,i)=>{ if(answers[i] !== q.correct){ const t = (q.tag && String(q.tag).trim()) || ''; if(t) wt[t] = (wt[t]||0) + 1; } });
+  const tags = Object.keys(wt).sort((a,b)=> wt[b]-wt[a]).slice(0,3);
+  let msg;
+  if(pct >= 90) msg = 'অসাধারণ! তোমার প্রস্তুতি দারুণ — এভাবেই চালিয়ে যাও।';
+  else if(pct >= 70) msg = 'খুব ভালো হয়েছে! আর একটু ঝালিয়ে নিলেই পুরো নম্বরের কাছাকাছি পৌঁছে যাবে।';
+  else if(pct >= 50) msg = 'ভালো এগোচ্ছো! যে প্রশ্নগুলো ভুল হয়েছে সেগুলো একবার দেখে নিলে পরেরবার আরও ভালো হবে।';
+  else msg = 'এই ফলটাই শেষ কথা নয়। প্রতিটি ভুল নতুন কিছু শেখায় — একটু একটু করে এগোলে পরেরবার নিশ্চয়ই ভালো হবে।';
+  const tip = (pct < 90 && tags.length) ? `<div style="margin-top:8px; font-size:13px; color:#44506A;">এই টপিকগুলো আরেকবার দেখে নিতে পারো: <b>${tags.map(escapeHtml).join(', ')}</b></div>` : '';
+  return `<div style="margin-top:14px; padding:12px 14px; border-radius:12px; text-align:start; background:${pct>=50?'#E8F6EF':'#FEF6E8'}; font-size:14px; line-height:1.55;">${msg}${tip}</div>`;
+}
+function renderMistakeBook(){
+  const stud = getLoggedStudent();
+  const slug = stud ? stud.slug : '';
+  if(slug && Date.now() - (window.__mbPulledAt||0) > 60000){ window.__mbPulledAt = Date.now(); fbPullLearning(slug).then(ch=>{ if(ch && state.screen==='mistakeBook') renderMistakeBook(); }); }
+  const mb = Object.values(_mbLoad(MB_KEY(slug), {})).sort((a,b)=> b.ts - a.ts);
+  const ts = _mbLoad(TS_KEY(slug), {});
+  const weak = Object.keys(ts).map(t=> ({ tag:t, right:ts[t].right, total:ts[t].total, pct:Math.round(ts[t].right/ts[t].total*100) })).filter(x=> x.total >= 2).sort((a,b)=> a.pct - b.pct);
+  const weakHtml = weak.length ? weak.slice(0,8).map(w=> `<div style="margin-bottom:14px;"><div style="display:flex; justify-content:space-between; font-size:13.5px; font-weight:600;"><span>${escapeHtml(w.tag)}</span><span>${w.right}/${w.total} সঠিক</span></div><div style="height:8px; border-radius:4px; background:#E3E8F1; margin-top:5px;"><div style="width:${w.pct}%; height:8px; border-radius:4px; background:${w.pct>=70?'var(--green)':'var(--gold)'};"></div></div></div>`).join('') : '<p class="hint">কয়েকটা পরীক্ষা দিলে এখানে টপিক অনুযায়ী তোমার অগ্রগতি দেখা যাবে।</p>';
+  const listHtml = mb.length ? mb.slice(0,30).map(m=> `<div class="review-block"><div class="q-text" style="font-size:14px;">${escapeHtml(m.text)}</div><div class="review-ans right">সঠিক উত্তর: ${['ক','খ','গ','ঘ'][m.correct]}) ${escapeHtml(m.options[m.correct])}</div><div class="meta">${escapeHtml(m.tag)} · ${escapeHtml(m.title||'')}</div></div>`).join('') : '<div class="empty-state">এখন কোনো ভুল জমা নেই। দারুণ!</div>';
+  app.innerHTML = `
+    ${header('আমার ভুল খাতা')}
+    <div class="card">
+      <h3>টপিক অনুযায়ী অগ্রগতি</h3>
+      <p class="hint">হলুদ দাগ মানে ওই টপিকে আরেকটু সময় দিলে ভালো হবে।</p>
+      ${weakHtml}
+    </div>
+    <div class="card">
+      <h3>যে প্রশ্নগুলো আবার দেখা দরকার (${mb.length})</h3>
+      ${mb.length ? '<button class="btn btn-gold btn-block" style="margin-bottom:10px;" onclick="startMistakePractice()">এগুলো নিয়ে অনুশীলন করো</button><p class="hint">কোনো প্রশ্ন পরপর ২বার ঠিক করলে সেটা খাতা থেকে বাদ যাবে।</p>' : ''}
+      ${listHtml}
+    </div>
+    <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>
+    ${creditFooter()}`;
+}
+window.startMistakePractice = function(){
+  const stud = getLoggedStudent(); if(!stud) return;
+  const mb = Object.values(_mbLoad(MB_KEY(stud.slug), {})).sort((a,b)=> (b.wrong||0) - (a.wrong||0)).slice(0,10);
+  if(!mb.length){ toast('এখন কোনো ভুল জমা নেই'); return; }
+  const questions = mb.map(m=> ({ text:m.text, options:m.options, correct:m.correct, tag:m.tag, mkey:m.key }));
+  const exam = { code:'__MISTAKES__', title:'আমার ভুল খাতা — অনুশীলন', subject:'practice', timerMode:'total', duration:Math.max(3, questions.length), questions, isPublic:true };
+  go('studentExam', { exam, slug:stud.slug, name:stud.name, attemptNumber:1, viaCode:false,
+    answers:new Array(questions.length).fill(null), locked:new Array(questions.length).fill(false), startedAt:Date.now(), qIndex:0 });
+};
+// ===== [NEW] Firebase (শুধু নতুন ফিচারের ডাটা: ভুল খাতা + টপিক হিসাব) =====
+// নিচের null-এর জায়গায় Firebase Console থেকে পাওয়া config বসাও। null থাকলে সবকিছু আগের মতো শুধু এই ফোনে সেভ হবে।
+// উদাহরণ: { apiKey:'...', authDomain:'xxx.firebaseapp.com', projectId:'xxx', appId:'...' }
+const FIREBASE_CONFIG = null;
+let __fbP = null;
+function fbInit(){
+  if(!FIREBASE_CONFIG) return Promise.resolve(null);
+  if(__fbP) return __fbP;
+  const load = src => new Promise((res, rej)=>{ const sc = document.createElement('script'); sc.src = src; sc.onload = res; sc.onerror = rej; document.head.appendChild(sc); });
+  const B = 'https://www.gstatic.com/firebasejs/10.12.2/';
+  __fbP = load(B + 'firebase-app-compat.js')
+    .then(()=> Promise.all([ load(B + 'firebase-auth-compat.js'), load(B + 'firebase-firestore-compat.js') ]))
+    .then(async ()=>{ firebase.initializeApp(FIREBASE_CONFIG); await firebase.auth().signInAnonymously(); return firebase.firestore(); })
+    .catch(e=>{ console.warn('Firebase বন্ধ:', e); return null; });
+  return __fbP;
+}
+function _fbDoc(db, slug){ return db.collection('students').doc(slug).collection('data').doc('learning'); }
+async function fbPullLearning(slug){
+  try{
+    const db = await fbInit(); if(!db || !slug) return false;
+    const snap = await _fbDoc(db, slug).get();
+    if(!snap.exists) return false;
+    const r = snap.data();
+    const localAt = Number(localStorage.getItem('lrn_updated_' + slug) || 0);
+    if(!(r.updatedAt > localAt)) return false; // ফোনের ডাটা নতুন হলে রেখে দাও
+    _mbSave(MB_KEY(slug), JSON.parse(r.mistakes || '{}'));
+    _mbSave(TS_KEY(slug), JSON.parse(r.topics || '{}'));
+    localStorage.setItem('lrn_updated_' + slug, String(r.updatedAt));
+    return true;
+  }catch(e){ return false; }
+}
+async function fbPushLearning(slug){
+  try{
+    const db = await fbInit(); if(!db || !slug) return;
+    const at = Number(localStorage.getItem('lrn_updated_' + slug) || Date.now());
+    await _fbDoc(db, slug).set({ mistakes: JSON.stringify(_mbLoad(MB_KEY(slug), {})), topics: JSON.stringify(_mbLoad(TS_KEY(slug), {})), updatedAt: at });
+  }catch(e){}
+}
+async function recordAndSync(exam, slug, answers){
+  // আগে অন্য ডিভাইসের ডাটা টেনে আনো (সর্বোচ্চ ১.৫ সেকেন্ড), তারপর হিসাব যোগ করো
+  await Promise.race([ fbPullLearning(slug), new Promise(r=> setTimeout(r, 1500)) ]);
+  recordExamForMistakes(exam, slug, answers);
+}
+setTimeout(()=>{ try{ const st = getLoggedStudent(); if(st) fbPullLearning(st.slug); }catch(e){} }, 1500);
 function renderExamResume(){
   const s = state.saved;
   if(s.finished){
@@ -1853,7 +1977,7 @@ function renderStudentExamTotal(){
   const { exam, answers, locked } = state;
   const totalSec = exam.duration*60;
   const qHtml = exam.questions.map((q,i)=> `
-    <div class="q-block">
+    <div class="q-block" id="qb${i}">
       <div style="display:flex; align-items:flex-start; gap:2px;">
         <span class="q-num">${i+1}</span>
         <div style="margin-inline-start:4px;">
@@ -1876,8 +2000,9 @@ function renderStudentExamTotal(){
       <div class="timer-chip" id="timerChip"><span class="timer-dot"></span><span id="timerText">${fmtTime(totalSec)}</span></div>
       <header class="top" style="margin-bottom:8px;"><div class="logo" style="font-size:22px;">${escapeHtml(exam.title)}</div></header>
     </div>
+    ${examPaletteHtml()}
     <div class="card">${qHtml}</div>
-    <button class="btn btn-primary btn-block" onclick="submitExam(false)">✅ খাতা জমা দাও</button>
+    <button class="btn btn-primary btn-block" onclick="confirmSubmitTotal()">✅ খাতা জমা দাও</button>
     ${creditFooter()}
   `;
 
@@ -1896,8 +2021,21 @@ function renderStudentExamTotal(){
 window.setAnswerTotal = function(qi, oi){
   state.answers[qi] = oi;
   state.locked[qi] = true;
+  const y = window.scrollY;
   renderStudentExamTotal();
+  window.scrollTo(0, y); // [NEW] উত্তর দিলে পেজ উপরে লাফিয়ে যাবে না
+  saveExamProgress();    // [NEW] প্রতিটি উত্তর সাথে সাথে সেভ
 }
+function examPaletteHtml(){
+  const a = state.answers || [];
+  return `<div class="qpal" aria-label="প্রশ্নের তালিকা">${a.map((v,i)=> `<button type="button" class="qpal-b ${(v!==null && v!==undefined)?'done':''}" onclick="jumpToQ(${i})" aria-label="প্রশ্ন ${i+1}">${i+1}</button>`).join('')}</div>`;
+}
+window.jumpToQ = function(i){ const el = document.getElementById('qb'+i); if(el) el.scrollIntoView({behavior:'smooth', block:'start'}); };
+window.confirmSubmitTotal = function(){
+  const un = (state.answers||[]).filter(v=> v===null || v===undefined).length;
+  if(un > 0 && !confirm(un + 'টি প্রশ্নের উত্তর দাওনি। তবুও জমা দেবে?')) return;
+  submitExam(false);
+};
 
 function renderStudentExamPerQ(){
   const { exam, answers, qIndex } = state;
@@ -1975,6 +2113,7 @@ window.submitExam = async function(auto){
   exam.questions.forEach((q,i)=>{ if(answers[i] === q.correct) score++; });
   const resultObj = { id: genId('res'), studentName: name, slug, score, total: exam.questions.length, submittedAt: Date.now(), answers, attemptNumber: attemptNumber||1, viaCode: !!viaCode };
 
+  if(exam.code === '__MISTAKES__'){ clearExamProgress(); await recordAndSync(exam, slug, answers); go('studentResult', { exam, result: resultObj, auto, couponAmount: 0 }); return; } // [NEW] ভুল খাতার অনুশীলন সার্ভারে যায় না
   app.innerHTML = `${header('জমা হচ্ছে')} <div class="card center">গুগল শিটে আপনার উত্তরপত্র জমা হচ্ছে, দয়া করে অপেক্ষা করুন...</div>`;
 
   const res = await sset('result:'+exam.code+':'+slug, JSON.stringify(resultObj));
@@ -2011,6 +2150,7 @@ window.retrySubmit = async function(){
 }
 async function finalizeExamSubmission(exam, slug, resultObj, auto, viaCode){
   clearExamProgress(); // [NEW] জমা সফল হলে সেভ করা প্রোগ্রেস মুছে ফেলো
+  await recordAndSync(exam, slug, resultObj.answers); // [NEW] ভুল খাতা ও টপিক হিসাব
   let couponAmount = 0;
   if(exam.isTreat && (resultObj.attemptNumber||1) === 1){
     const percent = Math.round((resultObj.score/exam.questions.length)*100);
@@ -2048,13 +2188,15 @@ function renderStudentResult(){
     <div class="card center">
       <h2>${escapeHtml(exam.title)}</h2>
       ${auto ? `<p class="hint">⏱️ সময় শেষ হয়ে যাওয়ায় স্বয়ংক্রিয়ভাবে জমা হয়েছে।</p>`:''}
-      <div class="stamp ${pct>=50?'':'fail'}">${result.score}/${result.total}</div>
+      <div class="stamp ${pct>=50?'':'soft'}">${result.score}/${result.total}</div>
+      ${resultEncouragement(exam, result.answers, pct)}
       ${exam.isTreat ? `<div class="say" style="margin-top:14px;">🎁 তোমার Treat Coupon-এর হিসাব CQ পরীক্ষা শেষ হলে একসাথে দেখানো হবে।</div>` : ''}
       <p class="hint" style="margin-top:10px;">নিচে দেখো কোন প্রশ্নে কী দাগিয়েছিলে — এখনই দেখে নাও, পরে আবার লগইন করার দরকার নেই।</p>
     </div>
     <div class="card" style="text-align:start;">${buildAnswerReview(exam, result.answers)}</div>
     <div class="center">
-      <button class="btn btn-primary" onclick="go('landing')">মূল পাতায় যাও</button>
+      <button class="btn btn-gold" onclick="go('mistakeBook')">আমার ভুল খাতা দেখো</button>
+      <button class="btn btn-primary" onclick="go(getLoggedStudent()?'studentDashboard':'landing')">মূল পাতায় যাও</button>
     </div>
     ${creditFooter()}
   `;
@@ -4859,7 +5001,7 @@ async function renderStudentDashboard(){
 
       <!-- মূল বাটন: ৩টা হাব + ক্যালেন্ডার -->
       <div class="widget" style="padding:12px;"><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        ${[['📚','স্টাডি','রিভিশন · HW · প্র্যাকটিস · মাস্টারি',"go('studyHub')",'hubStudyBadge'],['📝','পরীক্ষা','কোড · Practice · লিখিত · Past',"go('examHub')",''],['🎁','রিওয়ার্ড','Vorkuta শেয়ার · ক্যাশআউট · শপ',"go('rewardHub')",''],['📅','ক্যালেন্ডার','ক্লাস · HW · রিভিশন',"go('myCal')",'']].map(t => `<button class="btn btn-outline" style="padding:16px 10px;text-align:center;border-radius:14px;" onclick="${t[3]}"><div style="font-size:30px;">${t[0]}</div><b>${t[1]}</b>${t[4] ? `<div id="${t[4]}"></div>` : ''}<div class="hint" style="font-size:11px;margin-top:2px;">${t[2]}</div></button>`).join('')}
+        ${[['📚','স্টাডি','রিভিশন · HW · প্র্যাকটিস · মাস্টারি',"go('studyHub')",'hubStudyBadge'],['📝','পরীক্ষা','কোড · Practice · লিখিত · Past',"go('examHub')",''],['🎁','রিওয়ার্ড','Vorkuta শেয়ার · ক্যাশআউট · শপ',"go('rewardHub')",''],['📅','ক্যালেন্ডার','ক্লাস · HW · রিভিশন',"go('myCal')",''],['📒','ভুল খাতা','দুর্বল টপিক · ভুলগুলো আবার',"go('mistakeBook')",'']].map(t => `<button class="btn btn-outline" style="padding:16px 10px;text-align:center;border-radius:14px;" onclick="${t[3]}"><div style="font-size:30px;">${t[0]}</div><b>${t[1]}</b>${t[4] ? `<div id="${t[4]}"></div>` : ''}<div class="hint" style="font-size:11px;margin-top:2px;">${t[2]}</div></button>`).join('')}
       </div></div>
     </div>
 
@@ -6545,6 +6687,7 @@ function render(){
   else if(s==='studentAuth') renderStudentAuth();
   else if(s==='studentDashboard') renderStudentDashboard();
   else if(s==='examResume') renderExamResume();
+  else if(s==='mistakeBook') renderMistakeBook();
   else if(s==='teacherRegCodes') renderTeacherRegCodes();
   else if(s==='teacherBattleAudit') renderTeacherBattleAudit();
   else if(s==='battleWorldMap') renderBattleWorldMap();
