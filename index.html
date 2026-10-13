@@ -1105,6 +1105,7 @@ function renderLanding(){
       <button class="pwa-btn" onclick="installPwa()">ইনস্টল</button>
     </div>
     ${studentCardHtml}
+    ${wResumeCardHtml()}
     <div class="card">
       <h3 style="margin-bottom:12px;">✨ আরও যা করতে পারো</h3>
       <div class="feature-grid">
@@ -1322,8 +1323,10 @@ async function renderTeacherDashboard(){
     }
   }
 
+  setTimeout(function(){ try{ trkLoadAlert(); }catch(e){} }, 0);
   app.innerHTML = `
     ${header('শিক্ষক প্যানেল · ' + escapeHtml(teacherName))}
+    <div id="trkAlertBox"></div>
     ${rvPending.length ? `
     <div onclick="go('reviewInbox')" style="cursor:pointer; background:linear-gradient(135deg,#FDEEEE,#FAD4D0); border:1.5px solid #E58B82; border-radius:12px; padding:14px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px;">
       <div style="font-size:28px;">🚩</div>
@@ -1351,6 +1354,7 @@ async function renderTeacherDashboard(){
         <button class="btn btn-outline btn-block" onclick="go('topicsManage')">📚 জ্ঞানমূলক ম্যানেজ করো</button>
         <button class="btn btn-outline btn-block" onclick="go('faqManage')">❓ প্রশ্নোত্তর ম্যানেজ করো</button>
       </div>
+      <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="go('teacherTracker')">👥 ছাত্র ট্র্যাকার — কে কী জমা দিল · Vorkuta শেয়ার</button>
       <button class="btn btn-gold btn-block" style="margin-top:10px;" onclick="go('impManage',{subject:'physics'})">⭐ গুরুত্বপূর্ণ টপিক (সাল-ভিত্তিক) ম্যানেজ করো</button>
       <div class="row" style="margin-top:10px;">
         <button class="btn btn-outline btn-block" onclick="go('masteryManage')">🎯 Mastery কোর্স</button>
@@ -4556,10 +4560,11 @@ window.saveWrittenManualScore = async function(submissionId, idx, code, maxMarks
 function renderWrittenEntry(){
   app.innerHTML = `
     ${header('Written CQ পরীক্ষা')}
+    ${wResumeCardHtml()}
     <div class="card">
       <h2>তোমার তথ্য দাও</h2>
       <label class="field-label">তোমার নাম</label>
-      <input type="text" id="wStudName" placeholder="নাম লেখো">
+      <input type="text" id="wStudName" placeholder="নাম লেখো" value="${escapeHtml((getLoggedStudent() || {}).name || '')}">
       <label class="field-label">এক্সাম কোড</label>
       <input type="text" id="wCode" placeholder="যেমন: 7K3PQ2" style="text-transform:uppercase;">
       <label class="field-label">পাসওয়ার্ড</label>
@@ -4570,10 +4575,11 @@ function renderWrittenEntry(){
     ${creditFooter()}
   `;
 }
-window.startWrittenExam = async function(){
-  const name = document.getElementById('wStudName').value.trim();
-  const code = document.getElementById('wCode').value.trim().toUpperCase();
-  const pass = document.getElementById('wPass').value.trim().toUpperCase();
+window.startWrittenExam = async function(creds){
+  const isResume = !!(creds && creds.code);
+  let name = isResume ? String(creds.name || '') : document.getElementById('wStudName').value.trim();
+  const code = isResume ? String(creds.code || '').toUpperCase() : document.getElementById('wCode').value.trim().toUpperCase();
+  const pass = isResume ? String(creds.pass || '').toUpperCase() : document.getElementById('wPass').value.trim().toUpperCase();
   if(!name || !code || !pass){ toast('সবগুলো পূরণ করো'); return; }
   toast('খোঁজা হচ্ছে...');
   const q = await getWrittenQuestionByCode(code);
@@ -4581,31 +4587,45 @@ window.startWrittenExam = async function(){
   // compare as text, defensively, in case a password ever ends up stored/read as a different type
   if(String(pass).trim().toUpperCase() !== String(q.treatPassword).trim().toUpperCase()){ toast('পাসওয়ার্ড ভুল হয়েছে'); return; }
 
-  const slug = slugify(name);
+  const typedName = name;
+  const stud0 = getLoggedStudent();
+  let slug = (isResume && creds.slug) ? creds.slug : slugify(name);
+  if(!isResume && stud0 && stud0.slug){ slug = stud0.slug; name = stud0.name || name; }   // [NEW] লগইন থাকলে ছাত্রের নিজের অ্যাকাউন্টেই জমা (নাম আলাদা লিখলেও)
   // this is a Treat exam tied to money - block re-entry once this name has fully
   // completed it before; if partially done, resume exactly where they left off
   const [mySubs, finalSlugs] = await Promise.all([getWrittenSubmissionsRemote(code), getWrittenFinalsRemote(code)]);
-  const mine = mySubs.filter(s=> s.slug === slug);
+  let mine = mySubs.filter(s=> s.slug === slug);
+  const cands = Array.from(new Set([slug, slugify(typedName), stud0 && stud0.slug, stud0 && slugify(stud0.name || '')].filter(Boolean)));
+  if(!mine.length){
+    // [NEW] আগে অন্য নামে/স্লাগে জমা দিয়ে থাকলেও একই ছাত্রের জমা খুঁজে এনে চালিয়ে যাওয়া
+    const alt = mySubs.filter(s=> cands.indexOf(s.slug) !== -1 || (stud0 && slugify(s.studentName || '') === slugify(stud0.name || '')));
+    if(alt.length){ slug = alt[0].slug; mine = alt.filter(s=> s.slug === slug); }
+  }
+  const isFinal = finalSlugs.some(x=> cands.indexOf(x) !== -1 || x === slug);
   const answered = {};
   mine.forEach(s=>{ answered[s.questionIndex] = { percent: s.percent, aiFeedback: s.aiFeedback }; });
-  if(Object.keys(answered).length >= q.questions.length || finalSlugs.indexOf(slug) !== -1){
+  if(Object.keys(answered).length >= q.questions.length || isFinal){
     let totalMarks = 0, earnedMarks = 0;
     q.questions.forEach((qq,i)=>{
       const m = Number(qq.marks) || 5;
       totalMarks += m;
       if(answered[i]) earnedMarks += percentToMarks(answered[i].percent, m);
     });
+    wActiveClear();
     go('treatBlocked', { exam: { title: q.title, isWritten: true }, attempt: { score: earnedMarks, total: totalMarks } });
     return;
   }
   let timer = null;
   if(Number(q.timeLimit) > 0){
-    if(!confirm(`এই পরীক্ষায় সময় ${q.timeLimit} মিনিট। "OK" চাপলেই টাইমার চালু হবে (আগে শুরু করে থাকলে আগের টাইমারই চলবে, রিফ্রেশ করলেও থামবে না)। সময় শেষ হলে যে প্রশ্নের ছবি বাছা থাকবে সেগুলো নিজে থেকেই জমা হয়ে যাবে। শুরু করবে?`)) return;
+    if(!isResume && !confirm(`এই পরীক্ষায় সময় ${q.timeLimit} মিনিট। "OK" চাপলেই টাইমার চালু হবে (আগে শুরু করে থাকলে আগের টাইমারই চলবে, রিফ্রেশ করলেও থামবে না)। সময় শেষ হলে যে প্রশ্নের ছবি বাছা থাকবে সেগুলো নিজে থেকেই জমা হয়ে যাবে। শুরু করবে?`)) return;
     const t = await postToScriptRaw('startWrittenTimer', { code, slug });
     if(!t || t.status !== 'success' || !t.startedAt){ toast('টাইমার চালু করা যায়নি, আবার চেষ্টা করো'); return; }
     timer = { endAt: Number(t.startedAt) + Number(q.timeLimit) * 60000, offset: Number(t.now) - Date.now() };
   }
-  window.__writtenSolveCtx = { exam: q, slug, name, answered, timer };
+  const ctx0 = { exam: q, slug, name, answered, timer };
+  window.__writtenSolveCtx = ctx0;
+  wActiveSave({ code, slug, name, pass });      // [NEW] অ্যাপ বন্ধ হলেও ফিরে আসার জন্য
+  await Promise.race([wLoadPending(ctx0), new Promise(r=> setTimeout(r, 2500))]);   // [NEW] আগে বেছে রাখা ছবি ফেরত আনা (আটকে গেলে ২.৫ সেকেন্ড পর এগিয়ে যায়)
   go('writtenSolve', { exam: q, slug, name });
 }
 function renderWrittenSolve(exam, slug, name){
@@ -6302,7 +6322,7 @@ async function renderPastExams(){
   wr.forEach(w=>{
     const answered = w.answeredCount || 0;
     items.push({ kind:'written', rawSlugs:(w.rawSlugs||[]), code:w.examCode, title:w.title, subject:w.subject, isTreat:true,
-                 attempts:1, score:w.earnedMarks, total:w.answeredMaxMarks, pct:w.avgPercent, when:w.lastSubmittedAt,
+                 attempts:1, score:(w.earnedMarks || 0), total:(w.totalMarks || w.answeredMaxMarks || 0), pct:(w.totalMarks ? Math.round(((w.earnedMarks || 0) / w.totalMarks) * 100) : (w.avgPercent || 0)), when:w.lastSubmittedAt,
                  answered, totalQ:w.totalQ });
   });
   items.sort((a,b)=> (b.when||0) - (a.when||0));
@@ -6765,6 +6785,8 @@ function render(){
   else if(s==='battleChapterSelect') renderBattleChapterSelect(state.courseId, state.subject, state.title);
   else if(s==='teacherGate') renderTeacherGate();
   else if(s==='teacherDashboard') renderTeacherDashboard();
+  else if(s==='teacherTracker') renderTeacherTracker();
+  else if(s==='teacherTrackerStudent') renderTeacherTrackerStudent(state.slug, state.name, state.kind);
   else if(s==='teacherNewExam') renderTeacherNewExam(state.editingExam);
   else if(s==='teacherResults') renderTeacherResults(state.code);
   else if(s==='studentEntry') renderStudentEntry();
@@ -7118,6 +7140,9 @@ function redrawWrittenSolve(){
   const { exam, answered, pending } = ctx;
   const total = exam.questions.length;
   const totalMarksAll = exam.questions.reduce((a, qq)=> a + (Number(qq.marks) || 5), 0);
+  const earnedSoFar = exam.questions.reduce((a, qq, i)=> a + (answered[i] && answered[i].percent != null && !answered[i].aiFailed ? percentToMarks(answered[i].percent, Number(qq.marks) || 5) : 0), 0);
+  const nAnsweredSoFar = Object.keys(answered).length;
+  const soFarBox = nAnsweredSoFar ? `<div style="background:#EAF2FF; border:1.5px solid #BBD3F5; border-radius:10px; padding:8px 12px; margin-bottom:10px; text-align:center;">এখন পর্যন্ত পেয়েছো: <b>${earnedSoFar} / ${totalMarksAll}</b> নম্বর <span class="meta">(${nAnsweredSoFar}/${total}টা প্রশ্ন জমা)</span></div>` : '';
 
   const qHtml = exam.questions.map((q, idx)=>{
     const maxMarks = Number(q.marks) || 5;
@@ -7126,11 +7151,12 @@ function redrawWrittenSolve(){
       ${q.imageUrl ? `<img src="${driveImg(q.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:6px; display:block;" alt="প্রশ্নের ছবি">
         <div class="meta" style="margin:0 0 10px 0;">🔍 ছবিতে চাপলে বড় করে দেখা যাবে</div>` : ''}`;
     if(answered[idx]){
-      return `<div class="q-block">${head}<div style="background:#E8F6EF; border-radius:8px; padding:8px 12px; font-size:13.5px;">✅ এই প্রশ্নের উত্তর আগেই জমা হয়েছে</div></div>`;
+      return `<div class="q-block">${head}<div style="background:#E8F6EF; border-radius:8px; padding:8px 12px; font-size:13.5px;">✅ এই প্রশ্নের উত্তর জমা হয়েছে${answered[idx].percent != null && !answered[idx].aiFailed ? ' — <b>' + percentToMarks(answered[idx].percent, maxMarks) + '/' + maxMarks + '</b> নম্বর' : ' — শিক্ষক নম্বর দেবেন'}</div></div>`;
     }
     return `<div class="q-block">${head}
-      <input type="file" id="wFile${idx}" accept="image/*" onchange="pickWrittenImage(${idx})" style="margin-bottom:6px;">
-      <div id="wPrev${idx}">${pending[idx] ? `<img src="${pending[idx].preview}" alt="তোমার খাতার প্রিভিউ" style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block;">` : ''}</div>
+      <input type="file" id="wFile${idx}" accept="image/*" multiple onchange="pickWrittenImage(${idx})" style="margin-bottom:6px;">
+      <div class="meta" style="margin:0 0 6px 0;">একাধিক পেজ হলে আবার "ছবি বাছো" চাপো (সর্বোচ্চ ${W_MAX_PARTS}টা) — সব পেজ মিলে একটাই উত্তর হিসেবে জমা হবে</div>
+      <div id="wPrev${idx}">${wPartsHtml(idx)}</div>
     </div>`;
   }).join('');
 
@@ -7139,6 +7165,7 @@ function redrawWrittenSolve(){
     ${ctx.timer ? '<div id="wTimerBar" style="position:sticky; top:0; z-index:50;"></div>' : ''}
     <div class="card">
       <h2>${escapeHtml(exam.title)}</h2>
+      ${soFarBox}
       <p class="hint">মোট ${total}টা প্রশ্ন (${totalMarksAll} নম্বর)। যে প্রশ্নগুলোর উত্তর এখন দিতে চাও সেগুলোর খাতার ছবি বাছো — অন্তত ১টা বাছলেই নিচের "জমা দাও" বাটন চাপা যাবে, তখন AI এক এক করে চেক করবে। ⚠️ একবার জমা দিলে আর কোনো প্রশ্ন জমা দিতে পারবে না (শিক্ষক অনুমতি না দিলে) — যে প্রশ্ন জমা দেবে না সেগুলোতে ০ ধরা হবে। জমা দেওয়ার আগে ছবি বদলানো যাবে।</p>
     </div>
     <div class="card">${qHtml}</div>
@@ -7251,22 +7278,112 @@ window.retryFinalizeWritten = async function(){
   go('writtenResult', { earnedMarks, totalMarks, pendingCount, couponAmount: fin.couponAmount || 0, unanswered: exam.questions.filter((qq, i)=> !ctx.answered[i]).length, title: exam.title });
 };
 
+// ===== [NEW] একাধিক পেজের ছবি + ফোনে সেভ + পরীক্ষা চালিয়ে যাওয়া =====
+const W_MAX_PARTS = 4;
+function wLoadImg(src){ return new Promise((res, rej)=>{ const im = new Image(); im.onload = ()=> res(im); im.onerror = ()=> rej(new Error('img')); im.src = src; }); }
+// কয়েকটা পেজের ছবি উপর-নিচ জুড়ে একটাই লম্বা ছবি বানায় (সার্ভারে আগের মতোই ১টা প্রশ্ন = ১টা ছবি যায়)
+async function wBuildComposite(p){
+  if(p.parts.length === 1){ const a = p.parts[0]; p.base64 = a.base64; p.mimeType = a.mimeType; p.fileName = a.fileName; p.preview = a.preview; return; }
+  const imgs = await Promise.all(p.parts.map(pt=> wLoadImg(pt.preview)));
+  let width = p.parts.length >= 3 ? 900 : 1000, quality = 0.75, out = '';
+  for(let attempt = 0; attempt < 4; attempt++){
+    const gap = 14;
+    const heights = imgs.map(im=> Math.round(im.naturalHeight * (width / im.naturalWidth)));
+    const H = heights.reduce((x, y)=> x + y, 0) + gap * (imgs.length - 1);
+    const cv = document.createElement('canvas'); cv.width = width; cv.height = H;
+    const cx = cv.getContext('2d'); cx.fillStyle = '#d9dee8'; cx.fillRect(0, 0, width, H);
+    let y = 0; imgs.forEach((im, i)=>{ cx.drawImage(im, 0, y, width, heights[i]); y += heights[i] + gap; });
+    out = cv.toDataURL('image/jpeg', quality).split(',')[1];
+    if(out.length < 3200000) break;
+    width = Math.round(width * 0.85); quality = Math.max(0.5, quality - 0.08);
+  }
+  p.base64 = out; p.mimeType = 'image/jpeg'; p.fileName = 'pages-' + p.parts.length + '.jpg'; p.preview = 'data:image/jpeg;base64,' + out;
+}
+function wPartsHtml(idx){
+  const ctx = window.__writtenSolveCtx, p = ctx && ctx.pending && ctx.pending[idx];
+  if(!p || !p.parts || !p.parts.length) return '';
+  return `<div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:4px;">` + p.parts.map((pt, k)=> `
+    <div style="position:relative; width:30%; min-width:92px;">
+      <img src="${pt.preview}" alt="পেজ ${k + 1}" style="width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block;">
+      <div class="meta" style="margin:2px 0 0 0; text-align:center;">পেজ ${k + 1}</div>
+      <button type="button" onclick="removeWrittenPart(${idx},${k})" aria-label="ছবি সরাও" style="position:absolute; top:4px; right:4px; border:0; border-radius:50%; width:26px; height:26px; background:rgba(0,0,0,.65); color:#fff; cursor:pointer;">✕</button>
+    </div>`).join('') + `</div>` + (p.parts.length > 1 ? `<div class="meta">${p.parts.length}টা পেজ মিলে একটাই উত্তর হিসেবে জমা হবে</div>` : '');
+}
+const W_DB = { name:'pk_written', store:'pending' };
+function wDb(){ return new Promise((res, rej)=>{ try{ const r = indexedDB.open(W_DB.name, 1); r.onupgradeneeded = ()=> r.result.createObjectStore(W_DB.store); r.onsuccess = ()=> res(r.result); r.onerror = ()=> rej(r.error); }catch(e){ rej(e); } }); }
+function wKey(ctx){ return 'wp:' + ctx.exam.code + ':' + ctx.slug; }
+async function wSavePending(ctx){
+  try{
+    const db = await wDb(), data = {};
+    Object.keys(ctx.pending || {}).forEach(i=>{ data[i] = ctx.pending[i].parts.map(pt=> ({ base64:pt.base64, mimeType:pt.mimeType, fileName:pt.fileName })); });
+    await new Promise((res, rej)=>{ const tx = db.transaction(W_DB.store, 'readwrite'), st = tx.objectStore(W_DB.store); if(Object.keys(data).length) st.put({ data, ts:Date.now() }, wKey(ctx)); else st.delete(wKey(ctx)); tx.oncomplete = res; tx.onerror = ()=> rej(tx.error); });
+  }catch(e){}
+}
+async function wLoadPending(ctx){
+  try{
+    const db = await wDb();
+    const rec = await new Promise((res, rej)=>{ const rq = db.transaction(W_DB.store, 'readonly').objectStore(W_DB.store).get(wKey(ctx)); rq.onsuccess = ()=> res(rq.result); rq.onerror = ()=> rej(rq.error); });
+    if(!rec || !rec.data) return;
+    ctx.pending = ctx.pending || {};
+    for(const k of Object.keys(rec.data)){
+      const i = Number(k); if(ctx.answered[i]) continue;
+      const parts = rec.data[k].map(pt=> ({ base64:pt.base64, mimeType:pt.mimeType, fileName:pt.fileName, preview:'data:' + pt.mimeType + ';base64,' + pt.base64 }));
+      if(!parts.length) continue;
+      const pp = { parts }; await wBuildComposite(pp); ctx.pending[i] = pp;
+    }
+  }catch(e){}
+}
+function wActiveGet(){ try{ return JSON.parse(localStorage.getItem('pk_wActive') || 'null'); }catch(e){ return null; } }
+function wActiveSave(o){ try{ localStorage.setItem('pk_wActive', JSON.stringify(Object.assign({}, o, { ts:Date.now() }))); }catch(e){} }
+function wActiveClear(){ try{ localStorage.removeItem('pk_wActive'); }catch(e){} }
+window.resumeWrittenExam = function(){ const a = wActiveGet(); if(!a) return; toast('পরীক্ষা চালু হচ্ছে...'); startWrittenExam(a); };
+window.dismissWrittenResume = function(){ if(!confirm('চলমান পরীক্ষার এই শর্টকাট সরিয়ে দেবে? (সার্ভারে জমা হওয়া উত্তর থাকবে, কিন্তু ফোনে রাখা বাছাই করা ছবিগুলো আর ফিরবে না)')) return; wActiveClear(); render(); };
+function wResumeCardHtml(){
+  const a = wActiveGet(); if(!a || !a.code) return '';
+  return `<div class="card" style="border:1.5px solid #E9B949; background:#FFF8E6;">
+    <div style="font-weight:700; margin-bottom:6px;">▶️ তোমার একটা Written পরীক্ষা চলছে <span class="code-chip">${escapeHtml(a.code)}</span></div>
+    <div class="meta" style="margin:0 0 10px 0;">আগে যা জমা দিয়েছো আর যে ছবি বেছে রেখেছিলে সব ফিরে আসবে — নতুন করে কোড/পাসওয়ার্ড দিতে হবে না।</div>
+    <button class="btn btn-primary btn-block" onclick="resumeWrittenExam()">▶️ চালিয়ে যাও</button>
+    <div style="margin-top:8px; text-align:center;"><a class="link-back" onclick="dismissWrittenResume()">শর্টকাট সরাও</a></div>
+  </div>`;
+}
+
 window.pickWrittenImage = async function(idx){
   const ctx = window.__writtenSolveCtx;
   const input = document.getElementById('wFile' + idx);
-  const file = input && input.files && input.files[0];
-  if(!ctx || !file) return;
+  const files = input && input.files ? Array.from(input.files) : [];
+  if(!ctx || !files.length) return;
   ctx.pending = ctx.pending || {};
+  const cur = ctx.pending[idx] || { parts: [] };
+  const before = cur.parts.length, room = W_MAX_PARTS - before;
+  if(room <= 0){ toast('এক প্রশ্নে সর্বোচ্চ ' + W_MAX_PARTS + 'টা ছবি'); if(input) input.value = ''; return; }
+  if(files.length > room) toast('সর্বোচ্চ ' + W_MAX_PARTS + 'টা ছবি নেওয়া হয়েছে');
   const prev = document.getElementById('wPrev' + idx);
   if(prev) prev.innerHTML = `<p class="hint">ছবি প্রস্তুত করা হচ্ছে...</p>`;
   try{
-    const c = await compressImageFile(file, 1200, 0.75);
-    ctx.pending[idx] = { base64: c.base64, mimeType: c.mimeType, fileName: file.name, preview: 'data:' + c.mimeType + ';base64,' + c.base64 };
-    if(prev) prev.innerHTML = `<img src="${ctx.pending[idx].preview}" alt="তোমার খাতার প্রিভিউ" style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block;">`;
+    for(const f of files.slice(0, room)){
+      const c = await compressImageFile(f, 1200, 0.75);
+      cur.parts.push({ base64:c.base64, mimeType:c.mimeType, fileName:f.name, preview:'data:' + c.mimeType + ';base64,' + c.base64 });
+    }
+    await wBuildComposite(cur);
+    ctx.pending[idx] = cur;
+    wSavePending(ctx);
   }catch(e){
-    delete ctx.pending[idx];
-    if(prev) prev.innerHTML = `<p class="hint" style="color:var(--red);">ছবি পড়া যায়নি, অন্য ছবি দিয়ে চেষ্টা করো।</p>`;
+    cur.parts.length = before;
+    if(before){ try{ await wBuildComposite(cur); ctx.pending[idx] = cur; }catch(x){} } else { delete ctx.pending[idx]; }
+    toast('ছবি পড়া যায়নি, অন্য ছবি দিয়ে চেষ্টা করো।');
   }
+  if(input) input.value = '';
+  if(prev) prev.innerHTML = wPartsHtml(idx);
+  updateWrittenFinalBar();
+};
+window.removeWrittenPart = async function(idx, k){
+  const ctx = window.__writtenSolveCtx; if(!ctx || ctx.grading) return;
+  const p = ctx.pending && ctx.pending[idx]; if(!p) return;
+  p.parts.splice(k, 1);
+  if(!p.parts.length) delete ctx.pending[idx]; else { try{ await wBuildComposite(p); }catch(e){} }
+  wSavePending(ctx);
+  const prev = document.getElementById('wPrev' + idx); if(prev) prev.innerHTML = wPartsHtml(idx);
   updateWrittenFinalBar();
 };
 
@@ -7325,12 +7442,12 @@ window.submitAllWritten = async function(opts){
     }
     if(res && res.status === 'success'){
       ctx.answered[i] = { percent: res.percent, aiFeedback: res.aiFeedback, subId: res.subId };
-      delete ctx.pending[i];
+      delete ctx.pending[i]; wSavePending(ctx);
       status[i] = 'done';
       if(res.allDone) last = res;
     } else {
       status[i] = 'fail';
-      failed.push(i);
+      failed.push(i); (ctx.failInfo = ctx.failInfo || {})[i] = res;
     }
     paintWrittenGrading(exam, order, status);
   }
@@ -7904,13 +8021,21 @@ function renderPastWrittenDetail(title, subs, examQuestions){
       <div id="pastRev_${s.id}" style="margin-top:8px;">${reviewArea}</div>
     </div>`;
   }).join('');
+  // [NEW] মোট নম্বর একসাথে — নিজে যোগ করা লাগবে না; জমা না দেওয়া প্রশ্নে ০
+  const seenQ = {}; (subs||[]).forEach(x=>{ seenQ[x.questionIndex] = x; });
+  const totalAll = examQuestions.reduce((t,q)=> t + (Number(q.marks) || 5), 0);
+  const pendChk = (subs||[]).filter(x=> x.aiFailed && !x.reviewResolved).length;
+  const earnedAll = Object.keys(seenQ).reduce((t,k)=>{ const x = seenQ[k]; if(x.aiFailed && !x.reviewResolved) return t; return t + percentToMarks(x.percent, Number((examQuestions[k]||{}).marks) || 5); }, 0);
+  const missedRows = examQuestions.map((q,i)=> seenQ[i] ? '' : `<div class="exam-item"><div class="row-top"><div class="q-text" style="font-size:14.5px;">প্রশ্ন ${i+1}</div><div style="text-align:end;"><div class="score-big score-fail" style="font-size:17px;">0/${Number(q.marks) || 5}</div><div class="meta" style="margin-top:0;">জমা দেওয়া হয়নি</div></div></div></div>`).join('');
+  const totalBox = (subs && subs.length) ? `<div style="background:#EAF2FF; border:1.5px solid #BBD3F5; border-radius:10px; padding:10px 12px; margin:6px 0 12px 0; text-align:center; font-size:16px;">মোট: <b>${earnedAll}${totalAll ? ' / ' + totalAll : ''}</b> নম্বর <span class="meta">(${Object.keys(seenQ).length}${examQuestions.length ? '/' + examQuestions.length : ''}টা প্রশ্ন জমা)</span>${pendChk ? `<div class="meta" style="color:#9B6A15;">⏳ ${pendChk}টা প্রশ্ন শিক্ষক চেক করবেন — তখন মোট বদলাবে</div>` : ''}</div>` : '';
   app.innerHTML = `
     ${header('Past Exams')}
     <div class="card">
       <h2>${escapeHtml(title)}</h2>
+      ${totalBox}
       <p class="hint">প্রতিটা প্রশ্নের নম্বর, তোমার খাতা আর AI-র মন্তব্য নিচে দেখো। নম্বর নিয়ে দ্বিমত থাকলে রিভিউ চাও — শিক্ষক নিজে দেখে ঠিক করে দেবেন।</p>
     </div>
-    ${rows || `<div class="card"><div class="empty-state">কোনো উত্তর পাওয়া যায়নি।</div></div>`}
+    ${rows ? (rows + missedRows) : `<div class="card"><div class="empty-state">কোনো উত্তর পাওয়া যায়নি।</div></div>`}
     <div class="center"><a class="link-back" onclick="go('pastExams')">← Past Exams-এ ফিরে যাও</a></div>
     ${creditFooter()}
   `;
@@ -7951,12 +8076,12 @@ window.submitAllWritten = async function(opts){
     }
     if(res && res.status === 'success'){
       ctx.answered[i] = { percent: res.percent, aiFeedback: res.aiFeedback, subId: res.subId, aiFailed: !!res.aiFailed };
-      delete ctx.pending[i];
+      delete ctx.pending[i]; wSavePending(ctx);
       status[i] = 'done';
       if(res.allDone) last = res;
     } else {
       status[i] = 'fail';
-      failed.push(i);
+      failed.push(i); (ctx.failInfo = ctx.failInfo || {})[i] = res;
     }
     paintWrittenGrading(exam, order, status);
   }
@@ -7975,7 +8100,7 @@ window.submitAllWritten = async function(opts){
     }
   }
   if(failed.length === 0){
-    let totalMarks = 0, earnedMarks, pendingCount = 0;
+    let totalMarks = 0, earnedMarks = 0, pendingCount = 0;
     exam.questions.forEach((qq, i)=>{
       const m = Number(qq.marks) || 5;
       totalMarks += m;
@@ -7985,11 +8110,12 @@ window.submitAllWritten = async function(opts){
     go('writtenResult', { earnedMarks, totalMarks, pendingCount, couponAmount: finRes ? (finRes.couponAmount || 0) : 0, unanswered: exam.questions.filter((qq, i)=> !ctx.answered[i]).length, title: exam.title });
     return;
   }
-  ctx.lastError = `${failed.length}টা প্রশ্ন জমা দেওয়া যায়নি (ইন্টারনেট সমস্যা)। ছবিগুলো এখনো আছে — নিচের বাটন চেপে আবার চেষ্টা করো।`;
+  ctx.lastError = failed.length + 'টা প্রশ্ন জমা দেওয়া যায়নি। ' + failed.map(i=> 'প্রশ্ন ' + (i + 1) + ': ' + gradeErrMsg((ctx.failInfo || {})[i])).join(' ') + ' ছবিগুলো এখনো আছে — ঠিক করে আবার জমা দাও।';
   redrawWrittenSolve();
 };
 
 function renderWrittenResult(earnedMarks, totalMarks, couponAmount, title, pendingCount, unanswered){
+  try{ wActiveClear(); }catch(e){}
   const pct = totalMarks ? Math.round((earnedMarks / totalMarks) * 100) : 0;
   const passed = pct >= 50;
   app.innerHTML = `
@@ -10867,12 +10993,14 @@ window.doSmartSearch = async function(){
     const slug = slugify(val('fgSlug').trim()); window.__fgSlug = val('fgSlug').trim();
     if(!slug){ toast('আগে ইউজারনেম লেখো'); return; }
     const b = document.getElementById('fgAsk'); b.disabled = true;
-    const r = await postToScript('pwrForgot', { slug });
+    const r = await postToScriptRaw('pwrForgot', { slug }); // [FIX] postToScript সব এরর null করে দিত, তাই আসল কারণ ধরা যেত না
     b.disabled = false;
     if(r && r.status === 'success'){ window.__fgRequested = true; fgRender(); }
     else if(r && r.message === 'not_registered') toast('❌ এই ইউজারনেমে কোনো অ্যাকাউন্ট নেই');
     else if(r && r.message === 'wait_a_bit') toast('একটু আগেই রিকোয়েস্ট গেছে — শিক্ষকের কাছে কোডটা চাও, বা ১ মিনিট পর আবার চাপো');
-    else toast('রিকোয়েস্ট যায়নি, ইন্টারনেট চেক করে আবার চেষ্টা করো');
+    else if(r && r.message === 'busy_try_again') toast('সার্ভার একটু ব্যস্ত, আবার চাপো');
+    else if(!r || r.message === 'network' || r.message === 'timeout') toast('ইন্টারনেট সমস্যা — চেক করে আবার চেষ্টা করো');
+    else toast('রিকোয়েস্ট যায়নি (' + (r.message || 'অজানা') + '), শিক্ষককে জানাও');
   };
   window.fgDo = async function(){
     const slug = slugify(val('fgSlug').trim()), code = val('fgCode').replace(/\D/g, ''), p1 = val('fgPass').trim(), p2 = val('fgPass2').trim();
@@ -10881,16 +11009,18 @@ window.doSmartSearch = async function(){
     if(p1.length < 4){ toast('পাসওয়ার্ড কমপক্ষে ৪ অক্ষরের হতে হবে'); return; }
     if(p1 !== p2){ toast('দুই জায়গায় পাসওয়ার্ড মেলেনি'); return; }
     const b = document.getElementById('fgGo'); b.disabled = true;
-    const r = await postToScript('pwrReset', { slug, code, password:p1 });
+    const r = await postToScriptRaw('pwrReset', { slug, code, password:p1 }); // [FIX]
     b.disabled = false;
     if(r && r.status === 'success'){
       setLoggedStudent({ slug:r.slug || slug, name:r.name || slug, studentCode:r.studentCode || '' });
       studentAuthTab = 'login'; window.__fgRequested = false; toast('✅ নতুন পাসওয়ার্ড সেট হয়েছে! স্বাগতম, ' + (r.name || slug)); go('studentDashboard');
     } else if(r && r.message === 'wrong_code') toast(`❌ কোড ভুল — আর ${r.left}বার চেষ্টা করতে পারবে`);
     else if(r && r.message === 'too_many') toast('❌ অনেকবার ভুল হয়েছে, কোডটা বাতিল। শিক্ষকের কাছে নতুন কোড চাও');
-    else if(r && r.message === 'no_active_code') toast('❌ কোডের মেয়াদ শেষ বা আগেই ব্যবহার হয়েছে — নতুন কোড চাও');
+    else if(r && r.message === 'no_active_code') toast('❌ এই কোড আর চলবে না — মেয়াদ (৩০ মিনিট) শেষ, ব্যবহার হয়ে গেছে, বা নতুন রিকোয়েস্ট করায় আগেরটা বাতিল। শিক্ষকের কাছে নতুন কোড নাও');
     else if(r && r.message === 'weak_password') toast('পাসওয়ার্ড কমপক্ষে ৪ অক্ষরের হতে হবে');
-    else toast('হয়নি, ইন্টারনেট চেক করে আবার চেষ্টা করো');
+    else if(r && r.message === 'busy_try_again') toast('সার্ভার একটু ব্যস্ত, আবার চাপো');
+    else if(!r || r.message === 'network' || r.message === 'timeout') toast('ইন্টারনেট সমস্যা — চেক করে আবার চেষ্টা করো');
+    else toast('হয়নি (' + (r.message || 'অজানা') + '), শিক্ষককে জানাও');
   };
 
   // ---------------- শিক্ষক: রিসেট কোডের তালিকা ----------------
@@ -12634,6 +12764,100 @@ window.impBkSave = async function(){
   new MutationObserver(() => { if(q) return; q = requestAnimationFrame(() => { q = 0; sweepCam(); }); })
     .observe(document.getElementById('app'), { childList:true, subtree:true });
   sweepCam();
+})();
+</script>
+
+<script>
+// ===== [NEW] শিক্ষকের ছাত্র-ট্র্যাকার: কে কী জমা দিল (CQ / HW / রিভিশন) + টানা বাদ পড়ার সতর্কতা + Vorkuta শেয়ার =====
+(function(){
+  function bnDate(d){ if(!d) return ''; const x = new Date(d + 'T12:00:00'); return isNaN(x.getTime()) ? d : x.toLocaleDateString('bn-BD', { day:'numeric', month:'short' }); }
+  function missedDays(s){ return s.silentDays === null ? null : Math.max(0, s.silentDays - 1); }   // আজকের দিন বাদে, পুরো কতদিন কিছু জমা পড়েনি
+  function lastTxt(s){ if(s.silentDays === null) return 'এখনো কিছু জমা দেয়নি'; if(s.silentDays === 0) return 'শেষ জমা: আজ'; if(s.silentDays === 1) return 'শেষ জমা: গতকাল'; return 'শেষ জমা: ' + s.silentDays + ' দিন আগে (' + bnDate(s.last) + ')'; }
+  function isLate(s, alertDays){ const m = missedDays(s); return m !== null && m >= alertDays; }
+
+  window.trkLoadAlert = async function(){
+    const box = document.getElementById('trkAlertBox'); if(!box) return;
+    const r = await getJson('trkOverview', { today: todayStr() });
+    const box2 = document.getElementById('trkAlertBox');
+    if(!box2 || !r || r.status !== 'success') return;
+    const late = r.students.filter(s=> isLate(s, r.alertDays));
+    if(!late.length) return;
+    box2.innerHTML = `<div onclick="go('teacherTracker')" style="cursor:pointer; background:linear-gradient(135deg,#FFF3D6,#FFE4A8); border:1.5px solid #E9B949; border-radius:12px; padding:14px 16px; margin-bottom:16px;">
+      <div style="font-weight:700; color:#6B4A05;">⚠️ ${late.length} জন টানা ${r.alertDays}+ দিন কিছু জমা দেয়নি</div>
+      <div style="font-size:12.5px; color:#7B5A10;">${late.slice(0, 4).map(s=> escapeHtml(s.name)).join(', ')}${late.length > 4 ? ' …' : ''} — চাপ দিয়ে দেখো →</div>
+    </div>`;
+  };
+
+  window.renderTeacherTracker = async function(){
+    app.innerHTML = `${header('ছাত্র ট্র্যাকার')}<div class="card center">লোড হচ্ছে...</div>`;
+    const r = await getJson('trkOverview', { today: todayStr() });
+    if(!r || r.status !== 'success'){
+      app.innerHTML = `${header('ছাত্র ট্র্যাকার')}<div class="card center"><p class="hint" style="color:var(--red);">লোড করা যায়নি। ইন্টারনেট দেখে আবার চেষ্টা করো (নতুন Code.gs ডিপ্লয় করেছো তো?)।</p><button class="btn btn-primary" onclick="renderTeacherTracker()">আবার চেষ্টা</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>`;
+      return;
+    }
+    const rows = r.students.map(s=>{
+      const late = isLate(s, r.alertDays), m = missedDays(s);
+      return `<div class="exam-item" style="${late ? 'border-color:#E58B82; background:#FFF6F5;' : ''}">
+        <div class="row-top">
+          <div style="min-width:0;">
+            <h3 style="margin-bottom:4px;">${escapeHtml(s.name)}</h3>
+            <div class="meta" style="${late ? 'color:var(--red); font-weight:700;' : ''}">${late ? '⚠️ টানা ' + m + ' দিন কিছু জমা নেই · ' : ''}${lastTxt(s)}</div>
+          </div>
+          <div style="text-align:end;">
+            <div style="font-weight:700; font-size:18px;">📈 ${s.shares}</div>
+            <div class="meta" style="margin:0;">শেয়ার</div>
+          </div>
+        </div>
+        <div class="meta" style="margin-top:8px;">গত ৭ দিনে: ✍️ CQ <b>${s.cq7}</b> · 📚 HW <b>${s.hw7}</b> · 🔁 রিভিশন <b>${s.rev7}</b></div>
+        <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('teacherTrackerStudent',{slug:'${escapeHtml(s.slug)}', name:'${escapeHtml(s.name).replace(/'/g, '')}', kind:'all'})">📂 কী কী জমা দিয়েছে দেখো</button>
+      </div>`;
+    }).join('');
+    app.innerHTML = `
+      ${header('ছাত্র ট্র্যাকার')}
+      <div class="card">
+        <h2>👥 সব ছাত্র</h2>
+        <p class="hint">যে ছাত্র সবচেয়ে বেশি দিন ধরে কিছু জমা দেয়নি সে উপরে আছে। CQ, HW আর রিভিশন — যেকোনো একটা জমা দিলেই সেদিন "কাজ করেছে" ধরা হয়। টানা ${r.alertDays}+ দিন বাদ পড়লে লাল চিহ্ন আসে (আর ইমেইলও যায়)। শেয়ার = ওই ছাত্রের নিজের Vorkuta শেয়ার।</p>
+      </div>
+      ${rows || '<div class="card"><div class="empty-state">কোনো ছাত্র পাওয়া যায়নি।</div></div>'}
+      <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেলে ফিরে যাও</a></div>
+      ${creditFooter()}`;
+  };
+
+  window.renderTeacherTrackerStudent = async function(slug, name, kind){
+    kind = kind || 'all';
+    app.innerHTML = `${header('ছাত্র ট্র্যাকার')}<div class="card center">${escapeHtml(name || '')} — লোড হচ্ছে...</div>`;
+    const r = await getJson('trkDetail', { slug: slug, kind: kind });
+    if(!r || r.status !== 'success'){
+      app.innerHTML = `${header('ছাত্র ট্র্যাকার')}<div class="card center"><p class="hint" style="color:var(--red);">লোড করা যায়নি।</p></div><div class="center"><a class="link-back" onclick="go('teacherTracker')">← ফিরে যাও</a></div>`;
+      return;
+    }
+    const nm = r.name || name || slug;
+    const tab = (k, label, n)=> `<button class="btn ${kind === k ? 'btn-primary' : 'btn-outline'}" style="padding:8px 12px; font-size:13px;" onclick="go('teacherTrackerStudent',{slug:'${escapeHtml(slug)}', name:'${escapeHtml(nm).replace(/'/g, '')}', kind:'${k}'})">${label}${n !== null ? ' (' + n + ')' : ''}</button>`;
+    const total = r.counts.cq + r.counts.hw + r.counts.rev;
+    const rows = r.items.map(it=>{
+      let res = '';
+      if(it.kind === 'cq') res = it.aiFailed ? '⏳ AI চেক করেনি' : `<b>${it.marks}/${it.max}</b> নম্বর <span class="meta">(${it.percent}%)</span>`;
+      else if(it.kind === 'hw') res = (it.percent !== null && it.percent !== undefined) ? `<b>${it.percent}%</b>` : escapeHtml(it.status || 'জমা হয়েছে');
+      else res = escapeHtml(it.detail || '');
+      const icon = it.kind === 'cq' ? '✍️' : (it.kind === 'hw' ? '📚' : '🔁');
+      return `<div class="review-block">
+        <div class="q-text" style="font-size:14px;">${icon} ${escapeHtml(it.title || '')} ${it.tag ? `<span class="q-tag">${escapeHtml(it.tag)}</span>` : ''}</div>
+        <div class="meta" style="margin:2px 0 0 0;">${bnDate(it.date)} · ${res}${it.url ? ` · <a href="${escapeHtml(it.url)}" target="_blank" rel="noopener">খাতা/ছবি দেখো</a>` : ''}</div>
+      </div>`;
+    }).join('');
+    app.innerHTML = `
+      ${header('ছাত্র ট্র্যাকার')}
+      <div class="card">
+        <h2>${escapeHtml(nm)}</h2>
+        <div class="meta" style="margin:0 0 10px 0;">📈 Vorkuta শেয়ার: <b>${r.shares.balance}</b> <span class="meta">(আয় ${r.shares.earned} − কাটা ${r.shares.penalty})</span> · মোট জমা: ${total}টা</div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px;">
+          ${tab('all', 'সব', total)}${tab('cq', '✍️ CQ', r.counts.cq)}${tab('hw', '📚 HW', r.counts.hw)}${tab('rev', '🔁 রিভিশন', r.counts.rev)}
+        </div>
+      </div>
+      <div class="card">${rows || '<div class="empty-state">এই ধরনের কিছু এখনো জমা পড়েনি।</div>'}</div>
+      <div class="center"><a class="link-back" onclick="go('teacherTracker')">← সব ছাত্রের তালিকায় ফিরে যাও</a></div>
+      ${creditFooter()}`;
+  };
 })();
 </script>
 </body>
