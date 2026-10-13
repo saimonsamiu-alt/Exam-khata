@@ -7829,6 +7829,10 @@ async function renderWrittenSubmissions(code){
       totalMarks += mm; earnedMarks += percentToMarks(s.percent, mm);
     });
     const shown = only ? list.filter(isPend) : list;
+    // এই ছাত্রের সব সম্ভাব্য slug (আলাদা slug-এ চূড়ান্ত হয়ে থাকলেও যেন ধরা পড়ে)
+    const nmKey = slugify(list[0].studentName || '');
+    const myFinals = finalList.filter(sl => sl === slug || (nmKey && slugify((window.__writtenFinalNames || {})[sl] || '') === nmKey));
+    const reopenSlugs = Array.from(new Set([slug].concat(myFinals))).join(',');
     const qRows = shown.map(s=>{
       const idx = window.__writtenSubsCache.indexOf(s);
       const q = examQuestions[s.questionIndex] || {};
@@ -7872,13 +7876,15 @@ async function renderWrittenSubmissions(code){
     return `<div class="exam-item">
       <h3 style="margin-bottom:4px;">${escapeHtml(list[0].studentName)}</h3>
       <div class="meta">মোট: <b>${earnedMarks} / ${totalMarks}</b> নম্বর (${list.length}টা প্রশ্নের ভিত্তিতে)</div>
-      ${finalSet.has(slug) ? `<div class="meta" style="margin-top:4px;">⏹ জমা চূড়ান্ত (${list.length}/${examQuestions.length}টা প্রশ্ন)${list.length < examQuestions.length ? ' — না-দেওয়া প্রশ্নে ০ ধরা হয়েছে' : ''}</div>` : ''}
-      ${(finalSet.has(slug) && list.length < examQuestions.length) ? `<button class="btn btn-outline" style="margin-top:8px;" onclick="reopenWrittenExam('${code}','${slug}')">🔓 আবার জমা দেওয়ার অনুমতি দাও</button>` : ''}
+      ${myFinals.length ? `<div class="meta" style="margin-top:4px;">⏹ জমা চূড়ান্ত (${new Set(list.map(x=>x.questionIndex)).size}/${examQuestions.length}টা প্রশ্ন)${new Set(list.map(x=>x.questionIndex)).size < examQuestions.length ? ' — না-দেওয়া প্রশ্নে ০ ধরা হয়েছে' : ''}</div>` : ''}
+      <button class="btn btn-outline" style="margin-top:8px;" onclick="reopenWrittenExam('${code}','${reopenSlugs}')">🔓 আবার জমা দেওয়ার অনুমতি দাও</button>
       <div style="margin-top:8px;">${qRows}</div>
     </div>`;
   }).join('');
   // খাতা ছাড়াই জমা (সময় শেষ ইত্যাদি) হয়ে যাওয়া ছাত্র — আগে লিস্টে আসত না, তাই অনুমতি দেওয়া যেত না
-  const noKhata = only ? [] : finalList.filter(sl => !bySlug[sl]);
+  const shownFinalSet = new Set();
+  slugs.forEach(sl => { const nk = slugify((bySlug[sl][0] || {}).studentName || ''); finalList.forEach(f => { if(f === sl || (nk && slugify((window.__writtenFinalNames || {})[f] || '') === nk)) shownFinalSet.add(f); }); });
+  const noKhata = only ? [] : finalList.filter(sl => !bySlug[sl] && !shownFinalSet.has(sl));
   const finNames = window.__writtenFinalNames || {};
   rows += noKhata.map(sl => `<div class="exam-item" style="border-left:4px solid #E0A93B;">
       <h3 style="margin-bottom:4px;">${escapeHtml(finNames[sl] || sl)}</h3>
@@ -7903,7 +7909,13 @@ async function renderWrittenSubmissions(code){
 }
 window.reopenWrittenExam = async function(code, slug){
   if(!confirm('এই ছাত্রকে বাকি প্রশ্ন আবার জমা দেওয়ার অনুমতি দেবে? (এখনকার অসম্পূর্ণ কুপন মুছে যাবে, সব জমা হলে নতুন করে হিসাব হবে।)')) return;
-  const r = await postToScriptRaw('reopenWrittenExam', { code, slug });
+  let r = null;
+  const slugList = String(slug).split(',').filter(Boolean);
+  for(const sl of slugList){
+    const rr = await postToScriptRaw('reopenWrittenExam', { code, slug: sl });
+    if(rr && rr.status === 'success'){ r = rr; }
+    else if(!r){ r = rr; }
+  }
   if(r && r.status === 'success'){
     toast('✅ অনুমতি দেওয়া হয়েছে — ছাত্র এখন বাকি প্রশ্ন জমা দিতে পারবে');
     go('writtenSubmissions', { code: code, onlyPending: !!(state && state.onlyPending) });
