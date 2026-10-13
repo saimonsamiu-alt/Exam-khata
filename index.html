@@ -12795,12 +12795,33 @@ window.impBkSave = async function(){
       app.innerHTML = `${header('ছাত্র ট্র্যাকার')}<div class="card center"><p class="hint" style="color:var(--red);">লোড করা যায়নি। ইন্টারনেট দেখে আবার চেষ্টা করো (নতুন Code.gs ডিপ্লয় করেছো তো?)।</p><button class="btn btn-primary" onclick="renderTeacherTracker()">আবার চেষ্টা</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>`;
       return;
     }
-    const rows = r.students.map(s=>{
+    window.__trkData = r; if(!window.__trk) window.__trk = { sort:'shares', dir:'desc' };
+    trkDrawList();
+  };
+
+  const TRK_SORTS = [['shares', '📈 Vorkuta শেয়ার'], ['silent', '⏳ কতদিন জমা নেই'], ['week', '✍️ গত ৭ দিনের কাজ'], ['name', '🔤 নাম']];
+  window.trkSetSort = function(k){ window.__trk.sort = k; trkDrawList(); };
+  window.trkToggleDir = function(){ window.__trk.dir = window.__trk.dir === 'desc' ? 'asc' : 'desc'; trkDrawList(); };
+  window.trkDrawList = function(){
+    const r = window.__trkData; if(!r) return;
+    const T = window.__trk, sgn = T.dir === 'desc' ? -1 : 1;
+    const keyOf = s => T.sort === 'shares' ? (Number(s.shares) || 0)
+      : T.sort === 'silent' ? (s.silentDays === null ? 99999 : s.silentDays)
+      : T.sort === 'week' ? (s.cq7 + s.hw7 + s.rev7) : String(s.name || '').toLowerCase();
+    const arr = r.students.slice().sort((a, b)=>{
+      const x = keyOf(a), y = keyOf(b);
+      const c = (typeof x === 'string') ? x.localeCompare(y, 'bn') : (x - y);
+      return c !== 0 ? sgn * c : String(a.name || '').localeCompare(String(b.name || ''), 'bn');
+    });
+    const rnd = v => Math.round((Number(v) || 0) * 100) / 100;
+    const tot = r.totals || { earned: r.students.reduce((t, s)=> t + (Number(s.earned) || 0), 0), penalty: r.students.reduce((t, s)=> t + (Number(s.penalty) || 0), 0), balance: r.students.reduce((t, s)=> t + (Number(s.shares) || 0), 0) };
+    const showRank = T.sort === 'shares';
+    const rows = arr.map((s, i)=>{
       const late = isLate(s, r.alertDays), m = missedDays(s);
       return `<div class="exam-item" style="${late ? 'border-color:#E58B82; background:#FFF6F5;' : ''}">
         <div class="row-top">
           <div style="min-width:0;">
-            <h3 style="margin-bottom:4px;">${escapeHtml(s.name)}</h3>
+            <h3 style="margin-bottom:4px;">${showRank ? '<span class="meta" style="margin:0 6px 0 0; font-weight:700;">#' + (i + 1) + '</span>' : ''}${escapeHtml(s.name)}</h3>
             <div class="meta" style="${late ? 'color:var(--red); font-weight:700;' : ''}">${late ? '⚠️ টানা ' + m + ' দিন কিছু জমা নেই · ' : ''}${lastTxt(s)}</div>
           </div>
           <div style="text-align:end;">
@@ -12814,6 +12835,18 @@ window.impBkSave = async function(){
     }).join('');
     app.innerHTML = `
       ${header('ছাত্র ট্র্যাকার')}
+      <div style="margin:0 0 12px 0;"><button type="button" class="btn btn-outline" style="padding:8px 14px; font-size:13.5px;" onclick="go('teacherDashboard')">← শিক্ষক প্যানেল</button></div>
+      <div class="card" style="background:linear-gradient(135deg,#FFF8E6,#FFEFC7); border-color:#E9B949;">
+        <div class="meta" style="margin:0 0 4px 0;">📈 সব ছাত্র মিলিয়ে মোট Vorkuta শেয়ার</div>
+        <div style="font-size:28px; font-weight:800; color:#6B4A05;">${rnd(tot.earned)} <span style="font-size:13px; font-weight:600;">তৈরি হয়েছে</span></div>
+        <div class="meta" style="margin:6px 0 0 0;">কাটা গেছে: <b>${rnd(tot.penalty)}</b> · এখন ছাত্রদের হাতে মোট: <b>${rnd(tot.balance)}</b> · ছাত্র: ${r.students.length} জন</div>
+      </div>
+      <div class="card" style="padding:14px 16px;">
+        <div style="display:flex; gap:8px; align-items:center;">
+          <select id="trkSortSel" onchange="trkSetSort(this.value)" style="margin:0; flex:1;">${TRK_SORTS.map(o=> `<option value="${o[0]}" ${T.sort === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select>
+          <button type="button" class="btn btn-outline" style="padding:10px 14px; white-space:nowrap;" onclick="trkToggleDir()">${T.dir === 'desc' ? '↓ বেশি → কম' : '↑ কম → বেশি'}</button>
+        </div>
+      </div>
       <div class="card">
         <h2>👥 সব ছাত্র</h2>
         <p class="hint">যে ছাত্র সবচেয়ে বেশি দিন ধরে কিছু জমা দেয়নি সে উপরে আছে। CQ, HW আর রিভিশন — যেকোনো একটা জমা দিলেই সেদিন "কাজ করেছে" ধরা হয়। টানা ${r.alertDays}+ দিন বাদ পড়লে লাল চিহ্ন আসে (আর ইমেইলও যায়)। শেয়ার = ওই ছাত্রের নিজের Vorkuta শেয়ার।</p>
@@ -12840,13 +12873,20 @@ window.impBkSave = async function(){
       else if(it.kind === 'hw') res = (it.percent !== null && it.percent !== undefined) ? `<b>${it.percent}%</b>` : escapeHtml(it.status || 'জমা হয়েছে');
       else res = escapeHtml(it.detail || '');
       const icon = it.kind === 'cq' ? '✍️' : (it.kind === 'hw' ? '📚' : '🔁');
+      if(it.rawDetail) res = it.detail || '';   // সার্ভার থেকে আসা সাজানো টেক্সট (শুধু % বোল্ড)
+      const qBox = it.qText ? `<div class="meta" style="margin:6px 0 0 0;">❓ ${escapeHtml(it.qText)}</div>` : '';
+      const fbBox = it.feedback ? `<details style="margin-top:6px;"><summary style="cursor:pointer; font-size:13px; font-weight:600;">🤖 AI-র মন্তব্য দেখো</summary><div class="say" style="margin-top:6px; white-space:pre-wrap; font-size:13.5px; line-height:1.55;">${escapeHtml(it.feedback)}</div></details>` : '';
+      const revBox = it.reviewReq ? `<div class="meta" style="margin:6px 0 0 0; color:#7B5A10;">🚩 ছাত্র রিভিউ চেয়েছে${it.reason ? ': ' + escapeHtml(it.reason) : ''}${it.resolved ? ' · ✅ নিষ্পত্তি হয়েছে' : ''}${it.tnote ? '<br>💬 শিক্ষকের উত্তর: ' + escapeHtml(it.tnote) : ''}</div>` : '';
+      const noRp = it.noReply ? `<div class="meta" style="margin:6px 0 0 0;">ℹ️ এই রেকর্ডে AI-র উত্তর/খাতার ছবি সেভ ছিল না (এখন থেকে নতুন CQ প্র্যাকটিসে সেভ হবে)</div>` : '';
       return `<div class="review-block">
         <div class="q-text" style="font-size:14px;">${icon} ${escapeHtml(it.title || '')} ${it.tag ? `<span class="q-tag">${escapeHtml(it.tag)}</span>` : ''}</div>
         <div class="meta" style="margin:2px 0 0 0;">${bnDate(it.date)} · ${res}${it.url ? ` · <a href="${escapeHtml(it.url)}" target="_blank" rel="noopener">খাতা/ছবি দেখো</a>` : ''}</div>
+        ${qBox}${fbBox}${revBox}${noRp}
       </div>`;
     }).join('');
     app.innerHTML = `
       ${header('ছাত্র ট্র্যাকার')}
+      <div style="margin:0 0 12px 0;"><button type="button" class="btn btn-outline" style="padding:8px 14px; font-size:13.5px;" onclick="go('teacherTracker')">← সব ছাত্রের তালিকা</button></div>
       <div class="card">
         <h2>${escapeHtml(nm)}</h2>
         <div class="meta" style="margin:0 0 10px 0;">📈 Vorkuta শেয়ার: <b>${r.shares.balance}</b> <span class="meta">(আয় ${r.shares.earned} − কাটা ${r.shares.penalty})</span> · মোট জমা: ${total}টা</div>
