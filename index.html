@@ -3463,7 +3463,7 @@ async function renderMasterySubmissions(){
       <h3 style="margin-bottom:4px;">${escapeHtml(s.studentSlug)}</h3>
       <div class="meta">${new Date(s.submittedAt).toLocaleString('bn-BD')}</div>
       <a href="${escapeHtml(s.driveUrl)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="text-decoration:none; margin-top:8px;">🖼️ ছবি দেখো</a>
-      <div class="say" style="margin-top:8px;">🤖 <b>AI ফিডব্যাক:</b> ${escapeHtml(s.aiFeedback||'')}</div>
+      <div class="say" style="margin-top:8px;">🤖 <b>AI ফিডব্যাক:</b> ${fbHtml(s.aiFeedback||'')}</div>
     </div>`).join('');
   if(subs.length===0) rows = `<div class="empty-state">এখনো কেউ খাতা জমা দেয়নি।</div>`;
   app.innerHTML = `
@@ -3681,7 +3681,7 @@ window.submitMasteryUpload = async function(){
   const res = await uploadSubmissionRemote(slug, courseId, null, compressed.base64, compressed.mimeType, file.name);
   if(res && res.status === 'success'){
     document.getElementById('uploadStatus').innerHTML = `
-      <div class="say">🤖 <b>AI ফিডব্যাক:</b> ${escapeHtml(res.aiFeedback||'ফিডব্যাক পাওয়া যায়নি')}</div>
+      <div class="say">🤖 <b>AI ফিডব্যাক:</b> ${fbHtml(res.aiFeedback||'ফিডব্যাক পাওয়া যায়নি')}</div>
       <p class="hint" style="margin-top:10px;">✅ জমা হয়ে গেছে — তোমার শিক্ষকও এটা দেখতে পাবেন।</p>
     `;
   } else {
@@ -4580,7 +4580,7 @@ async function renderWrittenSubmissions(code){
           </div>
         </details>
         <a href="${escapeHtml(s.driveUrl)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="margin-bottom:8px;">🖼️ ছাত্রের খাতার ছবি দেখো</a>
-        <div class="review-ans wrong">🤖 ${marks}/${maxMarks} নম্বর (AI ${s.percent}%) — ${escapeHtml(s.aiFeedback||'')}</div>
+        <div class="review-ans wrong">🤖 ${marks}/${maxMarks} নম্বর (AI ${s.percent}%) — ${fbHtml(s.aiFeedback||'')}</div>
         <div class="row" style="margin-top:6px;">
           <input type="number" id="wmarks${idxInCache}" value="${marks}" min="0" max="${maxMarks}" step="0.5" style="margin-bottom:0;">
           <button class="btn btn-outline" onclick="saveWrittenManualScore('${s.id}',${idxInCache},'${code}',${maxMarks})">✅ নম্বর ঠিক করো</button>
@@ -4704,7 +4704,7 @@ function redrawWrittenSolve(){
       <div class="q-text">${idx+1}. ${escapeHtml(q.text||'')} <span class="q-tag">${maxMarks} নম্বর</span></div>
       ${q.imageUrl ? `<img src="${driveImg(q.imageUrl)}" style="max-width:100%; border-radius:8px; margin-bottom:10px;" alt="প্রশ্নের ছবি">`:''}
       ${done
-        ? `<div class="say">✅ জমা হয়েছে — নম্বর: ${marks}/${maxMarks}<br>${escapeHtml(done.aiFeedback||'')}</div>
+        ? `<div class="say">✅ জমা হয়েছে — নম্বর: ${marks}/${maxMarks}<br>${fbHtml(done.aiFeedback||'')}</div>
            ${!done.reviewRequested ? `<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="requestReviewForQuestion(${idx})">🚩 এই নম্বর নিয়ে রিভিউ চাও</button>` : `<p class="hint" style="margin-top:6px;">🚩 রিভিউ চাওয়া হয়েছে, শিক্ষক দেখবেন।</p>`}`
         : `<input type="file" id="wFile${idx}" accept="image/*" style="margin-bottom:8px;">
            <button class="btn btn-primary btn-block" onclick="submitWrittenQuestion(${idx})">📤 এই প্রশ্নের উত্তর জমা দাও</button>
@@ -5150,7 +5150,7 @@ function hwEntryInner(rec, opts){
     </div>`;
   const boxStyle = 'margin-top:12px; background:#F5F9FE; border-radius:8px; padding:10px 12px; font-size:13.5px; line-height:1.6;';
   const fb = rec.aiFeedback
-    ? `<div style="${boxStyle}">🤖 <b>ফিডব্যাক:</b> ${escapeHtml(rec.aiFeedback)}</div>`
+    ? `<div style="${boxStyle}">🤖 <b>ফিডব্যাক:</b> ${fbHtml(rec.aiFeedback)}</div>`
     : `<div style="${boxStyle} background:#FEF8EC;">⏳ এই মুহূর্তে ফিডব্যাক দেখা যাচ্ছে না — শিক্ষক তোমার HW দেখবেন।
          <div><button class="btn btn-outline" style="margin-top:8px; padding:7px 12px; font-size:12.5px;" onclick="recheckHw('${rec.id}')">🔁 আবার ফিডব্যাক চাও</button></div></div>`;
   return `
@@ -6490,7 +6490,7 @@ function renderPastWrittenDetail(title, subs, examQuestions){
     <div class="review-block">
       <div class="q-text" style="font-size:14px;">প্রশ্ন ${s.questionIndex+1} · ${marks}/${maxMarks} নম্বর <span class="meta">(AI ${s.percent}%)</span>
         ${s.driveUrl ? ` · <a href="${escapeHtml(s.driveUrl)}" target="_blank" rel="noopener">তোমার খাতার ছবি</a>` : ''}</div>
-      <div class="review-ans ${s.percent>=50?'right':'wrong'}">${escapeHtml(s.aiFeedback||'')}</div>
+      <div class="review-ans ${s.percent>=50?'right':'wrong'}">${fbHtml(s.aiFeedback||'')}</div>
     </div>`;
   }).join('');
   app.innerHTML = `
@@ -7175,7 +7175,7 @@ function renderPastWrittenDetail(title, subs, examQuestions){
         <div class="field-label" style="margin-top:12px;">✍️ তোমার খাতা <span class="meta">(ছবিতে চাপলে বড় হবে)</span></div>
         <img src="${driveImg(s.driveUrl)}" alt="তোমার খাতার ছবি" loading="lazy"
              style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block;">` : ''}
-      <div class="review-ans ${s.percent >= 50 ? 'right' : 'wrong'}" style="margin-top:10px;">🤖 ${escapeHtml(s.aiFeedback || '')}</div>
+      <div class="review-ans ${s.percent >= 50 ? 'right' : 'wrong'}" style="margin-top:10px;">🤖 ${fbHtml(s.aiFeedback || '')}</div>
       <div id="pastRev_${s.id}" style="margin-top:8px;">
         ${s.reviewRequested
           ? `<p class="hint" style="margin:0;">🚩 রিভিউ চাওয়া হয়েছে, শিক্ষক দেখবেন।</p>`
@@ -7983,11 +7983,11 @@ async function renderWrittenSubmissions(code){
         ${s.annotatedUrl ? `<div class="meta" style="margin:0 0 4px 0;">আপনার মার্ক করা ছবি (চাপলে বড় হবে):</div>
           <img src="${driveImg(s.annotatedUrl)}" alt="মার্ক করা ছবি" style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block; margin-bottom:8px;">` : ''}
         ${s.teacherNote ? `<div class="meta" style="margin:0 0 6px 0; white-space:pre-wrap;">📝 আপনার মন্তব্য: ${escapeHtml(s.teacherNote)}</div>` : ''}
-        <div class="review-ans ${s.aiFailed && !s.reviewResolved ? 'wrong' : 'wrong'}">${s.queued
+        <div class="review-ans ${s.aiFailed && !s.reviewResolved ? 'wrong' : (s.percent >= 50 ? 'right' : 'wrong')}">${s.queued
           ? '⏳ AI ব্যাকগ্রাউন্ডে চেক করছে — একটু পরে পেজ রিফ্রেশ করো (চাইলে আপনি নিজেও নম্বর দিতে পারেন)'
           : s.aiFailed && !s.reviewResolved
           ? '⚠️ AI চেক করতে পারেনি — আপনি নম্বর দিন'
-          : `🤖 ${marks}/${maxMarks} নম্বর (AI ${s.percent}%) — ${escapeHtml(s.aiFeedback||'')}`}</div>
+          : `🤖 ${marks}/${maxMarks} নম্বর (AI ${s.percent}%) — ${fbHtml(s.aiFeedback||'')}`}</div>
         <div class="row" style="margin-top:6px;">
           <input type="number" id="wmarks${idx}" value="${marks}" min="0" max="${maxMarks}" step="0.5" style="margin-bottom:0;">
           <button class="btn btn-outline" onclick="saveWrittenManualScore('${s.id}',${idx},'${code}',${maxMarks})">✅ শুধু নম্বর ঠিক করো</button>
@@ -7998,7 +7998,8 @@ async function renderWrittenSubmissions(code){
       <h3 style="margin-bottom:4px;">${escapeHtml(list[0].studentName)}</h3>
       <div class="meta">মোট: <b>${earnedMarks} / ${totalMarks}</b> নম্বর (${list.length}টা প্রশ্নের ভিত্তিতে)</div>
       ${finalSet.has(slug) ? `<div class="meta" style="margin-top:4px;">⏹ জমা চূড়ান্ত (${list.length}/${examQuestions.length}টা প্রশ্ন)${list.length < examQuestions.length ? ' — না-দেওয়া প্রশ্নে ০ ধরা হয়েছে' : ''}</div>` : ''}
-      ${finalSet.has(slug) ? `<button class="btn btn-outline" style="margin-top:8px;" onclick="reopenWrittenExam('${code}','${slug}')">🔓 আবার জমা দেওয়ার অনুমতি দাও</button>` : ''}
+      ${!finalSet.has(slug) ? `<div class="meta" style="margin-top:4px; color:#9B6A15;">⏳ জমা এখনো চূড়ান্ত হয়নি (${list.length}/${examQuestions.length}টা প্রশ্ন) — সময় শেষ হয়ে গেছে বা ছাত্র "জমা দাও" চাপেনি। নিচের বাটনে আবার সময় ও সুযোগ দিতে পারেন।</div>` : ''}
+      <button class="btn btn-outline" style="margin-top:8px;" onclick="reopenWrittenExam('${code}','${slug}')">🔓 আবার জমা দেওয়ার অনুমতি দাও</button>
       <div style="margin-top:8px;">${qRows}</div>
     </div>`;
   }).join('');
@@ -8138,7 +8139,7 @@ function renderPastWrittenDetail(title, subs, examQuestions){
         <div class="field-label" style="margin-top:12px;">✍️ তোমার খাতা <span class="meta">(ছবিতে চাপলে বড় হবে)</span></div>
         <img src="${driveImg(s.driveUrl)}" alt="তোমার খাতার ছবি" loading="lazy"
              style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block;">` : ''}
-      <div class="review-ans ${s.aiFailed ? '' : (s.percent >= 50 ? 'right' : 'wrong')}" style="margin-top:10px;">🤖 ${escapeHtml(s.aiFeedback || '')}</div>
+      <div class="review-ans ${s.aiFailed ? '' : (s.percent >= 50 ? 'right' : 'wrong')}" style="margin-top:10px;">🤖 ${fbHtml(s.aiFeedback || '')}</div>
       ${teacherHtml}
       ${(function(){
         if(pendAi) return '';
@@ -13274,6 +13275,33 @@ window.impBkSave = async function(){
     toast(res && res.status === 'success' ? 'সেভ হয়েছে ✅' : 'সেভ হয়নি, আবার চেষ্টা করো');
     if(res && res.status === 'success'){ const l = await postToScriptRaw('revisionOverrideList', { slug, subjects:'' }); if(l && l.status === 'success'){ r.topics = l.topics || []; rfDraw(); } }
   };
+})();
+</script>
+
+<script>
+// ===== [NEW] AI ফিডব্যাক সুন্দর করে দেখানো: লাইন ভাগ + মোটা লেবেল + গণিত (KaTeX) নিজে থেকে রেন্ডার =====
+(function(){
+  window.fbHtml = function(t){
+    const lines = String(t == null ? '' : t).split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+    const esc = x => (typeof escapeHtml === 'function' ? escapeHtml(x) : x);
+    return lines.map(l => {
+      let s = esc(l).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+      s = s.replace(/^((?:✅|⚠️|✍️|💡|🔁)[^:：]{0,40}[:：])/, '<b>$1</b>');   // লেবেলটা মোটা
+      return '<div style="margin:4px 0; line-height:1.7;">' + s + '</div>';
+    }).join('') || '';
+  };
+  // পেজের যেকোনো অংশ পরে (async) বদলালেও $...$ ঠিকমতো গণিতে রেন্ডার হবে
+  let busy = false, tmr = null;
+  function run(){
+    const root = document.getElementById('app'); if(!root || !window.renderMathInElement || busy) return;
+    const t = root.textContent || ''; if(t.indexOf('$') === -1 && t.indexOf('\\(') === -1 && t.indexOf('\\[') === -1) return;
+    busy = true; obs.disconnect();
+    try{ renderAllMath(root); }catch(e){}
+    obs.observe(root, { childList:true, subtree:true, characterData:true }); obs.takeRecords(); busy = false;
+  }
+  const obs = new MutationObserver(() => { clearTimeout(tmr); tmr = setTimeout(run, 150); });
+  function start(){ const root = document.getElementById('app'); if(!root){ setTimeout(start, 300); return; } obs.observe(root, { childList:true, subtree:true, characterData:true }); setTimeout(run, 400); setTimeout(run, 1800); }
+  start();
 })();
 </script>
 </body>
