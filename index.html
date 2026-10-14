@@ -3813,11 +3813,15 @@ function renderCouponBalance(){
   const pws = state.pendingWithdrawals || (state.pendingWithdrawal ? [state.pendingWithdrawal] : []); // [NEW]
   const unrequested = state.unrequestedBalance != null ? state.unrequestedBalance : (pws.length ? 0 : balance); // [NEW]
   const wds = (state.withdrawals || []);                // [NEW]
-  const rows = (history||[]).sort((a,b)=> b.createdAt - a.createdAt).map(h=> {
+  const __sortedHist = (history||[]).sort((a,b)=> b.createdAt - a.createdAt);
+  window.__couponHist = __sortedHist; window.__couponSlug = slug;
+  const rows = __sortedHist.map((h,hi)=> {
+    const __canRc = String(h.examCode).indexOf('CUT:') !== 0;
     const statusLabel = h.status==='settled' ? 'পরিশোধিত ✓' : (h.status==='requested' ? 'Withdraw অনুরোধ — Pending ⏳' : 'জমা আছে');
-    return `<div class="review-block">
+    return `<div class="review-block" ${__canRc ? `onclick="openCouponReceipt(${hi})" style="cursor:pointer;"` : ''}>
       <div class="q-text" style="font-size:14px;">পরীক্ষা: ${escapeHtml(labelForCouponExamCode(h.examCode))}${String(h.examCode).indexOf('CUT:') === 0 ? '' : ' · স্কোর: ' + h.percent + '%'}</div>
       <div class="review-ans ${h.status==='settled'?'right':'wrong'}">৳${h.amount} — ${statusLabel}</div>
+      ${__canRc ? `<div class="meta" style="margin-top:4px; color:var(--gold-dark,#9B6A15); font-weight:700;">🧾 কীভাবে এই টাকা হলো — চাপো</div>` : ''}
     </div>`;
   }).join('');
   const wdRows = wds.map(w=> `
@@ -4251,15 +4255,67 @@ async function submitWrittenAnswerRemote(code, slug, studentName, questionIndex,
   const res = await postToScript('submitWrittenAnswer', { code, slug, studentName, questionIndex, base64, mimeType, fileName, today: todayStr() });
   return res;
 }
+// [NEW] reopen-এর পর যে প্রশ্নের ছবি বদলানো হয়নি, আগের খসড়া জমাই থাকে — ওগুলো "জমা আছে" ধরা হয়
+function wKeepDrafts(ctx){
+  if(!ctx || !ctx.drafts) return;
+  Object.keys(ctx.drafts).forEach(k=>{
+    const i = Number(k), d = ctx.drafts[k];
+    if(!ctx.answered[i] && !(ctx.pending && ctx.pending[i])) ctx.answered[i] = { percent: d.percent, aiFeedback: d.aiFeedback, subId: d.subId, aiFailed: d.aiFailed };
+  });
+}
+function wKeptDraftCount(ctx){
+  if(!ctx || !ctx.drafts) return 0;
+  return Object.keys(ctx.drafts).filter(k=> !ctx.answered[Number(k)] && !(ctx.pending && ctx.pending[Number(k)])).length;
+}
 async function finalizeWrittenRemote(code, slug, name){
+  try{ wKeepDrafts(window.__writtenSolveCtx); }catch(e){}
   const body = { code, slug, studentName: name, today: todayStr() };
   let r = await postToScriptRaw('finalizeWrittenExam', body);
   if(!r || r.status !== 'success'){
     await new Promise(x=> setTimeout(x, 1500));
     r = await postToScriptRaw('finalizeWrittenExam', body);
   }
-  if(r && r.status === 'success') window.__lastReveal = r.reveal || null;
-  return (r && r.status === 'success') ? r : null;
+  if(!r || r.status !== 'success') return null;
+  window.__lastReveal = r.reveal || null;
+  // [NEW] পরীক্ষা চলার সময় যেগুলো আগেই চেক হয়েছে সেগুলো বাদে বাকিগুলোর জন্য অপেক্ষা — সব চেক শেষ হলে তবেই কুপন অ্যানিমেশন
+  if(r.grading){
+    const ctx = window.__writtenSolveCtx; if(ctx) ctx.grading = true;
+    try{ kickWrittenQueue(); }catch(e){}
+    let first = null, waited = 0;
+    while(waited < 900){   // সর্বোচ্চ ~১৫ মিনিট
+      let st = null;
+      try{ const x = await fetch(`${SCRIPT_URL}?action=writtenGradeStatus&code=${encodeURIComponent(code)}&slug=${encodeURIComponent(slug)}`); st = await x.json(); }catch(e){}
+      if(st && st.status === 'success'){
+        if(first === null) first = Math.max(1, st.queued);
+        const done = Math.max(0, first - st.queued), pct = Math.round(done / first * 100);
+        app.innerHTML = `${header('Written CQ পরীক্ষা')}
+          <div class="card center"><h2>খাতা জমা হয়েছে ✅</h2>
+          <p class="hint">AI বাকি খাতাগুলো চেক করছে (${st.queued}টা বাকি) — পেজ খোলা রাখো, শেষ হলেই কুপন দেখাবে।</p>
+          <div class="hp-bar-wrap" style="max-width:100%;"><div class="hp-bar" style="width:${pct}%;"></div></div></div>`;
+        if(st.queued === 0) break;
+        try{ kickWrittenQueue(); }catch(e){}
+      }
+      await new Promise(x=> setTimeout(x, 5000)); waited += 5;
+    }
+    // এখন সব চেক শেষ — আবার finalize (idempotent) করে কুপন ও reveal নেওয়া
+    const r2 = await postToScriptRaw('finalizeWrittenExam', body);
+    if(r2 && r2.status === 'success'){ r = r2; window.__lastReveal = r2.reveal || null; }
+    if(ctx) ctx.grading = false;
+  } else { try{ kickWrittenQueue(); }catch(e){} }
+  return r;
+}
+// [NEW] ব্যাকগ্রাউন্ড AI চেক চালু করা — ছাত্রকে অপেক্ষা করতে হয় না, ফল তাকে দেখানোও হয় না
+// (পেজ বন্ধ হয়ে গেলেও সার্ভারের প্রতি-মিনিটের trigger বাকিটা চেক করে)
+let __wqKicking = false;
+async function kickWrittenQueue(){
+  if(__wqKicking) return; __wqKicking = true;
+  try{
+    for(let n = 0; n < 12; n++){
+      let r = null;
+      try{ const x = await fetch(`${SCRIPT_URL}?action=processWrittenQueue&max=4`, { keepalive: false }); r = await x.json(); }catch(e){ break; }
+      if(!r || r.status !== 'success' || r.busy || !r.remaining) break;
+    }
+  } finally { __wqKicking = false; }
 }
 async function getWrittenFinalsRemote(code){
   const r = await getJson('listWrittenFinals', { code });
@@ -4603,7 +4659,8 @@ window.startWrittenExam = async function(creds){
   }
   const isFinal = finalSlugs.some(x=> cands.indexOf(x) !== -1 || x === slug);
   const answered = {};
-  mine.forEach(s=>{ answered[s.questionIndex] = { percent: s.percent, aiFeedback: s.aiFeedback }; });
+  const drafts = {};
+  mine.forEach(s=>{ if(s.draft) drafts[s.questionIndex] = { driveUrl: s.driveUrl, percent: s.percent, aiFeedback: s.aiFeedback, aiFailed: !!s.aiFailed, subId: s.id }; else answered[s.questionIndex] = { percent: s.percent, aiFeedback: s.aiFeedback }; });   // [NEW] খসড়া (চূড়ান্ত হয়নি) জমা লক নয়
   if(Object.keys(answered).length >= q.questions.length || isFinal){
     let totalMarks = 0, earnedMarks = 0;
     q.questions.forEach((qq,i)=>{
@@ -4622,7 +4679,7 @@ window.startWrittenExam = async function(creds){
     if(!t || t.status !== 'success' || !t.startedAt){ toast('টাইমার চালু করা যায়নি, আবার চেষ্টা করো'); return; }
     timer = { endAt: Number(t.startedAt) + Number(q.timeLimit) * 60000, offset: Number(t.now) - Date.now() };
   }
-  const ctx0 = { exam: q, slug, name, answered, timer };
+  const ctx0 = { exam: q, slug, name, answered, timer, drafts };
   window.__writtenSolveCtx = ctx0;
   wActiveSave({ code, slug, name, pass });      // [NEW] অ্যাপ বন্ধ হলেও ফিরে আসার জন্য
   await Promise.race([wLoadPending(ctx0), new Promise(r=> setTimeout(r, 2500))]);   // [NEW] আগে বেছে রাখা ছবি ফেরত আনা (আটকে গেলে ২.৫ সেকেন্ড পর এগিয়ে যায়)
@@ -4855,7 +4912,7 @@ window.submitStudentLogin = async function(){
   toast('যাচাই করা হচ্ছে...');
   const res = await postToScript('studentLogin', { slug, password: passInput });
   if(res && res.status === 'success'){
-    setLoggedStudent({ slug: res.slug||slug, name: res.name||slugInput, studentCode: res.studentCode||'' });
+    setLoggedStudent({ slug: res.slug||slug, name: res.name||slugInput, studentCode: res.studentCode||'', stok: res.stok||'' });
     toast(`স্বাগতম, ${res.name||slug}!`);
     playSfx('combo');
     go('studentDashboard');
@@ -4884,7 +4941,7 @@ window.submitStudentRegister = async function(){
   toast('অ্যাকাউন্ট তৈরি হচ্ছে...');
   const res = await postToScript('studentSignUp', { name, slug, password: pass, regCode });
   if(res && res.status === 'success'){
-    setLoggedStudent({ slug, name, studentCode: res.studentCode||'' });
+    setLoggedStudent({ slug, name, studentCode: res.studentCode||'', stok: res.stok||'' });
     toast('🎉 অভিনন্দন! অ্যাকাউন্ট সফলভাবে তৈরি হয়েছে');
     playSfx('victory');
     go('studentDashboard');
@@ -6240,14 +6297,27 @@ async function postToScriptRaw(action, params){
   const ctl = (SLOW_AI_ACTIONS.indexOf(action) !== -1 && window.AbortController) ? new AbortController() : null;
   const tm = ctl ? setTimeout(() => ctl.abort(), 100000) : null;   // ১০০ সেকেন্ডে সাড়া না এলে থামিয়ে ছাত্রকে জানানো হয়
   try{
+    // [NEW] রিভিশন/প্ল্যান অ্যাকশনে ছাত্রের stok (বা শিক্ষক লগইন থাকলে tkey) নিজে থেকে যায় — সার্ভার যাচাই করে ছাত্র শুধু নিজের ডেটা পাবে
+    let extra = {};
+    if(/^(revision|plan)/.test(action)){
+      try{
+        const tch = getLoggedTeacher(), stu = getLoggedStudent();
+        if(tch) extra.tkey = TEACHER_PASSWORD;
+        if(stu && stu.stok) extra.stok = stu.stok;
+      }catch(e){}
+    }
     const r = await fetch(SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action, ...params }),
+      body: JSON.stringify({ action, ...extra, ...params }),
       signal: ctl ? ctl.signal : undefined
     });
     const text = await r.text();
-    try{ const o = JSON.parse(text); if(o && o.vkEarned > 0) setTimeout(() => { try{ toast('📈 Vorkuta: +' + o.vkEarned + ' শেয়ার'); }catch(x){} }, 400); return o; }catch(e){ return { status:'error', message:'bad_response' }; }
+    try{ const o = JSON.parse(text);
+      if(o && o.message === 'bad_token' && !getLoggedTeacher()){   // আগের লগইনে stok ছিল না / মেলেনি → আবার লগইন
+        if(!window.__badTokShown){ window.__badTokShown = true; try{ clearLoggedStudent(); toast('নিরাপত্তার জন্য আবার লগইন করো 🔐'); go('studentAuth'); }catch(x){} setTimeout(()=>{ window.__badTokShown = false; }, 4000); }
+        return o;
+      } if(o && o.vkEarned > 0) setTimeout(() => { try{ toast('📈 Vorkuta: +' + o.vkEarned + ' শেয়ার'); }catch(x){} }, 400); return o; }catch(e){ return { status:'error', message:'bad_response' }; }
   }catch(e){
     return { status:'error', message: (e && e.name === 'AbortError') ? 'timeout' : 'network' };
   }finally{ if(tm) clearTimeout(tm); }
@@ -6859,6 +6929,7 @@ function render(){
   else if(s==='dailyHwDayDetail') renderDailyHwDayDetail(state.date);
   else if(s==='dailyHwManage') renderDailyHwManage();
   else if(s==='writtenSolve') renderWrittenSolve(state.exam, state.slug, state.name);
+  else if(s==='revFlow') renderRevFlow();
   else if(s==='writtenResult') renderWrittenResult(state.earnedMarks, state.totalMarks, state.couponAmount, state.title, state.pendingCount, state.unanswered);
   else if(s==='doubtEntry') renderDoubtEntry();
   else if(s==='pastExams') renderPastExams();
@@ -7193,17 +7264,20 @@ function updateWrittenFinalBar(){
   }
   const todo = exam.questions.map((q, i)=> i).filter(i=> !answered[i]);
   const ready = todo.filter(i=> pending[i]).length;
-  const ok = todo.length > 0 && ready >= 1;
-  const partial = ok && ready < todo.length;
-  const hintTxt = ready === 0
-    ? `${ready} / ${todo.length}টা প্রশ্নের ছবি বাছা হয়েছে — অন্তত ১টার ছবি বাছলে জমা দেওয়া যাবে`
+  const kept = todo.filter(i=> !pending[i] && ctx.drafts && ctx.drafts[i]).length;   // reopen-এর আগের জমা, বদলানো হয়নি
+  const have = ready + kept;
+  const ok = todo.length > 0 && have >= 1;
+  const partial = ok && have < todo.length;
+  const keptTxt = kept ? ` (এর মধ্যে ${kept}টা আগের জমা করা খাতাই থাকছে)` : '';
+  const hintTxt = have === 0
+    ? `${have} / ${todo.length}টা প্রশ্নের ছবি বাছা হয়েছে — অন্তত ১টার ছবি বাছলে জমা দেওয়া যাবে`
     : partial
-      ? `${ready} / ${todo.length}টা প্রশ্নের ছবি বাছা হয়েছে — ⚠️ বাকি ${todo.length - ready}টা জমা না দিলে ওগুলোতে ০ ধরা হবে, আর জমা দেওয়ার পর সেগুলো দেওয়া যাবে না`
-      : `${ready} / ${todo.length}টা প্রশ্নের ছবি বাছা হয়েছে`;
+      ? `${have} / ${todo.length}টা প্রশ্নের ছবি আছে${keptTxt} — ⚠️ বাকি ${todo.length - have}টা জমা না দিলে ওগুলোতে ০ ধরা হবে, আর জমা দেওয়ার পর সেগুলো দেওয়া যাবে না`
+      : `${have} / ${todo.length}টা প্রশ্নের ছবি আছে${keptTxt}`;
   el.innerHTML = `
     <div class="card center">
       <p class="hint">${hintTxt}</p>
-      <button class="btn btn-primary btn-block" ${ok ? '' : 'disabled'} onclick="submitAllWritten()">📤 ${ok ? ready + 'টা' : 'সব'} উত্তর জমা দাও (AI চেক শুরু হবে)</button>
+      <button class="btn btn-primary btn-block" ${ok ? '' : 'disabled'} onclick="submitAllWritten()">📤 ${ok ? have + 'টা' : 'সব'} উত্তর জমা দাও</button>
       ${ctx.lastError ? `<p class="hint" style="color:var(--red); margin-top:10px;">${ctx.lastError}</p>` : ''}
     </div>`;
 }
@@ -7301,7 +7375,11 @@ async function wBuildComposite(p){
 }
 function wPartsHtml(idx){
   const ctx = window.__writtenSolveCtx, p = ctx && ctx.pending && ctx.pending[idx];
-  if(!p || !p.parts || !p.parts.length) return '';
+  if(!p || !p.parts || !p.parts.length){
+    const d = ctx && ctx.drafts && ctx.drafts[idx];
+    if(d && d.driveUrl) return `<div style="background:#E8F6EF; border-radius:8px; padding:8px 12px; font-size:13.5px; margin-top:4px;">✅ আগে জমা দেওয়া খাতা — বদলাতে না চাইলে কিছু করা লাগবে না, এটাই থাকবে।<br><span class="meta">বদলাতে চাইলে উপরে নতুন ছবি বাছো।</span></div><img src="${driveImg(d.driveUrl)}" alt="আগে জমা দেওয়া খাতা" style="width:60%; min-width:140px; border-radius:8px; border:1px solid var(--paper-edge); display:block; margin-top:6px;">`;
+    return '';
+  }
   return `<div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:4px;">` + p.parts.map((pt, k)=> `
     <div style="position:relative; width:30%; min-width:92px;">
       <img src="${pt.preview}" alt="পেজ ${k + 1}" style="width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block;">
@@ -7348,6 +7426,41 @@ function wResumeCardHtml(){
   </div>`;
 }
 
+// [NEW] ছবি বাছার ৩.৫ সেকেন্ড পর নিজে থেকেই সার্ভারে খসড়া হিসেবে যায় ও AI ব্যাকগ্রাউন্ডে চেক শুরু করে।
+// ছবি বদলালে নতুনটা আসে (পুরোনোটা সার্ভারে superseded), মুছলে সার্ভারের খসড়াও বাদ।
+function wScheduleUpload(idx){
+  const ctx = window.__writtenSolveCtx; if(!ctx) return;
+  ctx.upT = ctx.upT || {};
+  clearTimeout(ctx.upT[idx]);
+  const p = ctx.pending && ctx.pending[idx];
+  ctx.touched = ctx.touched || {}; ctx.touched[idx] = true;
+  if(ctx.drafts) delete ctx.drafts[idx];   // বদলানো প্রশ্নের পুরোনো খসড়া আর প্রযোজ্য নয়
+  if(p){ p.ver = (p.ver || 0) + 1; p.synced = false; }
+  ctx.upT[idx] = setTimeout(()=> { wDoUpload(idx); }, 3500);
+}
+async function wDoUpload(idx){
+  const ctx = window.__writtenSolveCtx; if(!ctx || ctx.grading || !ctx.exam) return;
+  ctx.upBusy = ctx.upBusy || {}; ctx.upAgain = ctx.upAgain || {}; ctx.drafted = ctx.drafted || {};
+  if(ctx.upBusy[idx]){ ctx.upAgain[idx] = true; return; }
+  ctx.upBusy[idx] = true;
+  try{
+    const p = ctx.pending && ctx.pending[idx];
+    if(!p){
+      if(ctx.drafted[idx] || (ctx.touched && ctx.touched[idx])){ const d = await postToScriptRaw('discardWrittenByQ', { code: ctx.exam.code, slug: ctx.slug, questionIndex: idx }); if(d && d.status === 'success') delete ctx.drafted[idx]; }
+    } else if(!p.synced){
+      const v = p.ver;
+      const res = await submitWrittenAnswerRemote(ctx.exam.code, ctx.slug, ctx.name, idx, p.base64, p.mimeType, p.fileName);
+      if(res && res.status === 'success'){
+        ctx.drafted[idx] = res.subId;
+        if(p.ver === v) p.synced = true; else ctx.upAgain[idx] = true;
+        try{ kickWrittenQueue(); }catch(e){}
+      }
+    }
+  }catch(e){}
+  ctx.upBusy[idx] = false;
+  if(ctx.upAgain[idx]){ ctx.upAgain[idx] = false; wDoUpload(idx); }
+}
+
 window.pickWrittenImage = async function(idx){
   const ctx = window.__writtenSolveCtx;
   const input = document.getElementById('wFile' + idx);
@@ -7368,6 +7481,7 @@ window.pickWrittenImage = async function(idx){
     await wBuildComposite(cur);
     ctx.pending[idx] = cur;
     wSavePending(ctx);
+    wScheduleUpload(idx);
   }catch(e){
     cur.parts.length = before;
     if(before){ try{ await wBuildComposite(cur); ctx.pending[idx] = cur; }catch(x){} } else { delete ctx.pending[idx]; }
@@ -7383,6 +7497,7 @@ window.removeWrittenPart = async function(idx, k){
   p.parts.splice(k, 1);
   if(!p.parts.length) delete ctx.pending[idx]; else { try{ await wBuildComposite(p); }catch(e){} }
   wSavePending(ctx);
+  wScheduleUpload(idx);
   const prev = document.getElementById('wPrev' + idx); if(prev) prev.innerHTML = wPartsHtml(idx);
   updateWrittenFinalBar();
 };
@@ -7391,16 +7506,16 @@ function paintWrittenGrading(exam, order, status){
   const done = order.filter(i=> status[i] === 'done').length;
   const pct = order.length ? Math.round((done / order.length) * 100) : 0;
   const icon = { wait: '⏳', run: '🔍', done: '✅', fail: '❌' };
-  const label = { wait: 'অপেক্ষায়', run: 'AI চেক করছে...', done: 'চেক হয়েছে', fail: 'চেক করা যায়নি' };
+  const label = { wait: 'অপেক্ষায়', run: 'জমা হচ্ছে...', done: 'জমা হয়েছে', fail: 'জমা হয়নি' };
   app.innerHTML = `
     ${header('Written CQ পরীক্ষা')}
     <div class="card center">
       <h2>${escapeHtml(exam.title)}</h2>
-      <p class="hint">AI এক এক করে তোমার খাতা চেক করছে — পেজ বন্ধ কোরো না, একটু অপেক্ষা করো।</p>
+      <p class="hint">তোমার খাতা জমা নেওয়া হচ্ছে — পেজ বন্ধ কোরো না। AI চেক পরে ব্যাকগ্রাউন্ডে হবে।</p>
       <div class="hp-bar-wrap" style="max-width:100%; height:10px; background:#E3E8F1; border-color:#E3E8F1;">
         <div class="hp-bar-fill" style="width:${pct}%;"></div>
       </div>
-      <div class="meta" style="margin-top:6px;">${done} / ${order.length} চেক হয়েছে</div>
+      <div class="meta" style="margin-top:6px;">${done} / ${order.length} জমা হয়েছে</div>
     </div>
     <div class="card">
       ${order.map(i=> `<div class="review-block" style="display:flex; justify-content:space-between; gap:10px;">
@@ -7815,10 +7930,18 @@ async function renderWrittenSubmissions(code){
   window.__writtenExamCode = code;
   const isPend = s => (s.reviewRequested || s.aiFailed) && !s.reviewResolved;
 
-  const bySlug = {};
-  subs.forEach(s=>{ (bySlug[s.slug] = bySlug[s.slug] || []).push(s); });
-  const pendTotal = subs.filter(isPend).length;
-  const aiPendCount = subs.filter(s => s.aiFailed && !s.reviewResolved).length;
+  // [FIX] একই ছাত্র একই প্রশ্নে একাধিকবার জমা দিলে শুধু সর্বশেষটা গোনা হয় (subs নতুন-আগে সাজানো)
+  const bySlug = {}, seenQT = {};
+  subs.forEach(s=>{
+    const k = s.slug + '|' + s.questionIndex;
+    if(seenQT[k]) return;
+    seenQT[k] = 1;
+    (bySlug[s.slug] = bySlug[s.slug] || []).push(s);
+  });
+  const latestSubs = [].concat.apply([], Object.keys(bySlug).map(k=> bySlug[k]));
+  const pendTotal = latestSubs.filter(isPend).length;
+  const aiPendCount = latestSubs.filter(s => s.aiFailed && !s.reviewResolved).length;
+  const queuedTotal = latestSubs.filter(s => s.queued).length;
   const slugs = Object.keys(bySlug).filter(sl => !only || bySlug[sl].some(isPend));
 
   let rows = slugs.map(slug=>{
@@ -7826,13 +7949,9 @@ async function renderWrittenSubmissions(code){
     let totalMarks = 0, earnedMarks = 0;
     list.forEach(s=>{
       const mm = Number((examQuestions[s.questionIndex]||{}).marks) || 5;
-      totalMarks += mm; earnedMarks += percentToMarks(s.percent, mm);
+      totalMarks += mm; if(!s.queued) earnedMarks += percentToMarks(s.percent, mm);
     });
     const shown = only ? list.filter(isPend) : list;
-    // এই ছাত্রের সব সম্ভাব্য slug (আলাদা slug-এ চূড়ান্ত হয়ে থাকলেও যেন ধরা পড়ে)
-    const nmKey = slugify(list[0].studentName || '');
-    const myFinals = finalList.filter(sl => sl === slug || (nmKey && slugify((window.__writtenFinalNames || {})[sl] || '') === nmKey));
-    const reopenSlugs = Array.from(new Set([slug].concat(myFinals))).join(',');
     const qRows = shown.map(s=>{
       const idx = window.__writtenSubsCache.indexOf(s);
       const q = examQuestions[s.questionIndex] || {};
@@ -7864,7 +7983,9 @@ async function renderWrittenSubmissions(code){
         ${s.annotatedUrl ? `<div class="meta" style="margin:0 0 4px 0;">আপনার মার্ক করা ছবি (চাপলে বড় হবে):</div>
           <img src="${driveImg(s.annotatedUrl)}" alt="মার্ক করা ছবি" style="max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); display:block; margin-bottom:8px;">` : ''}
         ${s.teacherNote ? `<div class="meta" style="margin:0 0 6px 0; white-space:pre-wrap;">📝 আপনার মন্তব্য: ${escapeHtml(s.teacherNote)}</div>` : ''}
-        <div class="review-ans ${s.aiFailed && !s.reviewResolved ? 'wrong' : 'wrong'}">${s.aiFailed && !s.reviewResolved
+        <div class="review-ans ${s.aiFailed && !s.reviewResolved ? 'wrong' : 'wrong'}">${s.queued
+          ? '⏳ AI ব্যাকগ্রাউন্ডে চেক করছে — একটু পরে পেজ রিফ্রেশ করো (চাইলে আপনি নিজেও নম্বর দিতে পারেন)'
+          : s.aiFailed && !s.reviewResolved
           ? '⚠️ AI চেক করতে পারেনি — আপনি নম্বর দিন'
           : `🤖 ${marks}/${maxMarks} নম্বর (AI ${s.percent}%) — ${escapeHtml(s.aiFeedback||'')}`}</div>
         <div class="row" style="margin-top:6px;">
@@ -7876,15 +7997,13 @@ async function renderWrittenSubmissions(code){
     return `<div class="exam-item">
       <h3 style="margin-bottom:4px;">${escapeHtml(list[0].studentName)}</h3>
       <div class="meta">মোট: <b>${earnedMarks} / ${totalMarks}</b> নম্বর (${list.length}টা প্রশ্নের ভিত্তিতে)</div>
-      ${myFinals.length ? `<div class="meta" style="margin-top:4px;">⏹ জমা চূড়ান্ত (${new Set(list.map(x=>x.questionIndex)).size}/${examQuestions.length}টা প্রশ্ন)${new Set(list.map(x=>x.questionIndex)).size < examQuestions.length ? ' — না-দেওয়া প্রশ্নে ০ ধরা হয়েছে' : ''}</div>` : ''}
-      <button class="btn btn-outline" style="margin-top:8px;" onclick="reopenWrittenExam('${code}','${reopenSlugs}')">🔓 আবার জমা দেওয়ার অনুমতি দাও</button>
+      ${finalSet.has(slug) ? `<div class="meta" style="margin-top:4px;">⏹ জমা চূড়ান্ত (${list.length}/${examQuestions.length}টা প্রশ্ন)${list.length < examQuestions.length ? ' — না-দেওয়া প্রশ্নে ০ ধরা হয়েছে' : ''}</div>` : ''}
+      ${finalSet.has(slug) ? `<button class="btn btn-outline" style="margin-top:8px;" onclick="reopenWrittenExam('${code}','${slug}')">🔓 আবার জমা দেওয়ার অনুমতি দাও</button>` : ''}
       <div style="margin-top:8px;">${qRows}</div>
     </div>`;
   }).join('');
   // খাতা ছাড়াই জমা (সময় শেষ ইত্যাদি) হয়ে যাওয়া ছাত্র — আগে লিস্টে আসত না, তাই অনুমতি দেওয়া যেত না
-  const shownFinalSet = new Set();
-  slugs.forEach(sl => { const nk = slugify((bySlug[sl][0] || {}).studentName || ''); finalList.forEach(f => { if(f === sl || (nk && slugify((window.__writtenFinalNames || {})[f] || '') === nk)) shownFinalSet.add(f); }); });
-  const noKhata = only ? [] : finalList.filter(sl => !bySlug[sl] && !shownFinalSet.has(sl));
+  const noKhata = only ? [] : finalList.filter(sl => !bySlug[sl]);
   const finNames = window.__writtenFinalNames || {};
   rows += noKhata.map(sl => `<div class="exam-item" style="border-left:4px solid #E0A93B;">
       <h3 style="margin-bottom:4px;">${escapeHtml(finNames[sl] || sl)}</h3>
@@ -7897,7 +8016,7 @@ async function renderWrittenSubmissions(code){
     ${header('জমা দেওয়া খাতা')}
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
-        <div class="meta" style="margin:0;">Pending (রিভিউ / AI-ব্যর্থ): <b>${pendTotal}</b>টা</div>
+        <div class="meta" style="margin:0;">Pending (রিভিউ / AI-ব্যর্থ): <b>${pendTotal}</b>টা${queuedTotal ? ` · ⏳ AI চেক চলছে: <b>${queuedTotal}</b>টা` : ''}</div>
         <button class="info-btn" onclick="go('writtenSubmissions',{code:'${code}', onlyPending:${!only}})">${only ? '📋 সব দেখাও' : '🚩 শুধু Pending দেখাও'}</button>
       </div>
       ${aiPendCount ? `<button id="aiRecheckBtn" class="btn btn-primary btn-block" style="margin-bottom:10px;" onclick="aiRecheckPending('${code}')">🤖 AI-ব্যর্থ ${aiPendCount}টা খাতা AI দিয়ে চেক করো</button><div id="aiRecheckStatus" style="margin-bottom:10px;"></div>` : ''}
@@ -7908,16 +8027,10 @@ async function renderWrittenSubmissions(code){
   `;
 }
 window.reopenWrittenExam = async function(code, slug){
-  if(!confirm('এই ছাত্রকে বাকি প্রশ্ন আবার জমা দেওয়ার অনুমতি দেবে? (এখনকার অসম্পূর্ণ কুপন মুছে যাবে, সব জমা হলে নতুন করে হিসাব হবে।)')) return;
-  let r = null;
-  const slugList = String(slug).split(',').filter(Boolean);
-  for(const sl of slugList){
-    const rr = await postToScriptRaw('reopenWrittenExam', { code, slug: sl });
-    if(rr && rr.status === 'success'){ r = rr; }
-    else if(!r){ r = rr; }
-  }
+  if(!confirm('এই ছাত্রকে আবার জমা দেওয়ার অনুমতি দেবে? আগের জমা করা খাতাগুলো থেকে যাবে — ছাত্র যে প্রশ্নগুলোর ছবি বদলাবে শুধু সেগুলো নতুন করে চেক হবে। এখনকার কুপন মুছে যাবে, আবার জমা চূড়ান্ত হলে নতুন করে হিসাব হবে।')) return;
+  const r = await postToScriptRaw('reopenWrittenExam', { code, slug });
   if(r && r.status === 'success'){
-    toast('✅ অনুমতি দেওয়া হয়েছে — ছাত্র এখন বাকি প্রশ্ন জমা দিতে পারবে');
+    toast('✅ অনুমতি দেওয়া হয়েছে — ছাত্র এখন যেকোনো প্রশ্নের ছবি বদলে আবার জমা দিতে পারবে');
     go('writtenSubmissions', { code: code, onlyPending: !!(state && state.onlyPending) });
   } else {
     toast((r && r.message) ? r.message : 'অনুমতি দেওয়া যায়নি, আবার চেষ্টা করো');
@@ -7987,6 +8100,10 @@ window.requestPastReview = async function(subId){
 // ---------- ছাত্র: Past Exams > Written ----------
 function renderPastWrittenDetail(title, subs, examQuestions){
   examQuestions = examQuestions || [];
+  // [NEW] AI এখনো চেক করেনি এমন (queued) খাতা — নম্বর দেখানো হয় না, শুধু "চেক চলছে"
+  const __queuedQ = {}; (subs || []).forEach(x=>{ if(x.queued) __queuedQ[x.questionIndex] = 1; });
+  const __queuedN = Object.keys(__queuedQ).length;
+  subs = (subs || []).filter(x=> !x.queued);
   window.__pastWrittenCtx = { title: title, subs: subs, examQuestions: examQuestions };
   const rows = (subs || []).map(s=>{
     const q = examQuestions[s.questionIndex] || {};
@@ -8038,13 +8155,14 @@ function renderPastWrittenDetail(title, subs, examQuestions){
   const totalAll = examQuestions.reduce((t,q)=> t + (Number(q.marks) || 5), 0);
   const pendChk = (subs||[]).filter(x=> x.aiFailed && !x.reviewResolved).length;
   const earnedAll = Object.keys(seenQ).reduce((t,k)=>{ const x = seenQ[k]; if(x.aiFailed && !x.reviewResolved) return t; return t + percentToMarks(x.percent, Number((examQuestions[k]||{}).marks) || 5); }, 0);
-  const missedRows = examQuestions.map((q,i)=> seenQ[i] ? '' : `<div class="exam-item"><div class="row-top"><div class="q-text" style="font-size:14.5px;">প্রশ্ন ${i+1}</div><div style="text-align:end;"><div class="score-big score-fail" style="font-size:17px;">0/${Number(q.marks) || 5}</div><div class="meta" style="margin-top:0;">জমা দেওয়া হয়নি</div></div></div></div>`).join('');
+  const missedRows = examQuestions.map((q,i)=> (seenQ[i] || __queuedQ[i]) ? '' : `<div class="exam-item"><div class="row-top"><div class="q-text" style="font-size:14.5px;">প্রশ্ন ${i+1}</div><div style="text-align:end;"><div class="score-big score-fail" style="font-size:17px;">0/${Number(q.marks) || 5}</div><div class="meta" style="margin-top:0;">জমা দেওয়া হয়নি</div></div></div></div>`).join('');
   const totalBox = (subs && subs.length) ? `<div style="background:#EAF2FF; border:1.5px solid #BBD3F5; border-radius:10px; padding:10px 12px; margin:6px 0 12px 0; text-align:center; font-size:16px;">মোট: <b>${earnedAll}${totalAll ? ' / ' + totalAll : ''}</b> নম্বর <span class="meta">(${Object.keys(seenQ).length}${examQuestions.length ? '/' + examQuestions.length : ''}টা প্রশ্ন জমা)</span>${pendChk ? `<div class="meta" style="color:#9B6A15;">⏳ ${pendChk}টা প্রশ্ন শিক্ষক চেক করবেন — তখন মোট বদলাবে</div>` : ''}</div>` : '';
   app.innerHTML = `
     ${header('Past Exams')}
     <div class="card">
       <h2>${escapeHtml(title)}</h2>
       ${totalBox}
+      ${__queuedN ? `<div class="meta" style="color:#9B6A15; font-weight:700; margin:6px 0;">⏳ ${__queuedN}টা প্রশ্ন AI এখনো চেক করছে — একটু পরে রিফ্রেশ করো।</div>` : ''}
       <p class="hint">প্রতিটা প্রশ্নের নম্বর, তোমার খাতা আর AI-র মন্তব্য নিচে দেখো। নম্বর নিয়ে দ্বিমত থাকলে রিভিউ চাও — শিক্ষক নিজে দেখে ঠিক করে দেবেন।</p>
     </div>
     ${rows ? (rows + missedRows) : `<div class="card"><div class="empty-state">কোনো উত্তর পাওয়া যায়নি।</div></div>`}
@@ -8061,8 +8179,9 @@ window.submitAllWritten = async function(opts){
   ctx.pending = ctx.pending || {};
   const unanswered = exam.questions.map((q, i)=> i).filter(i=> !ctx.answered[i]);
   const order = unanswered.filter(i=> ctx.pending[i]);
-  if(!order.length){ toast('অন্তত ১টা প্রশ্নের ছবি বাছো'); return; }
-  const leftOut = unanswered.length - order.length;
+  const keptN = wKeptDraftCount(ctx);
+  if(!order.length && !keptN){ toast('অন্তত ১টা প্রশ্নের ছবি বাছো'); return; }
+  const leftOut = unanswered.length - order.length - keptN;
   const confirmMsg = leftOut > 0
     ? `${order.length}টা উত্তর জমা দেবে? বাকি ${leftOut}টা প্রশ্নে ০ ধরা হবে, আর জমা দেওয়ার পর কোনো প্রশ্নই আর জমা দিতে পারবে না (শিক্ষক অনুমতি না দিলে)। নিশ্চিত?`
     : `${order.length}টা উত্তর জমা দেবে? জমা দেওয়ার পর আর বদলানো যাবে না।`;
@@ -8070,7 +8189,7 @@ window.submitAllWritten = async function(opts){
 
   ctx.grading = true;
   ctx.lastError = '';
-  window.onbeforeunload = function(){ return 'AI চেক চলছে, এখন বের হলে মাঝপথে থেমে যাবে।'; };
+  window.onbeforeunload = function(){ return 'খাতা জমা হচ্ছে, এখন বের হলে মাঝপথে থেমে যাবে।'; };
 
   const status = {};
   order.forEach(i=> status[i] = 'wait');
@@ -8081,14 +8200,14 @@ window.submitAllWritten = async function(opts){
     status[i] = 'run';
     paintWrittenGrading(exam, order, status);
     const p = ctx.pending[i];
-    let res = await submitWrittenAnswerRemote(exam.code, slug, name, i, p.base64, p.mimeType, p.fileName);
+    let res = (p.synced && (ctx.drafted || {})[i]) ? { status:'success', subId: ctx.drafted[i], queued:true } : await submitWrittenAnswerRemote(exam.code, slug, name, i, p.base64, p.mimeType, p.fileName);
     if(!res || res.status !== 'success'){
       await new Promise(r=> setTimeout(r, 1500));
       res = await submitWrittenAnswerRemote(exam.code, slug, name, i, p.base64, p.mimeType, p.fileName);
     }
     if(res && res.status === 'success'){
-      ctx.answered[i] = { percent: res.percent, aiFeedback: res.aiFeedback, subId: res.subId, aiFailed: !!res.aiFailed };
-      delete ctx.pending[i]; wSavePending(ctx);
+      ctx.answered[i] = { percent: res.percent, aiFeedback: res.aiFeedback, subId: res.subId, aiFailed: !!res.aiFailed, queued: !!res.queued };
+      delete ctx.pending[i]; if(ctx.drafts) delete ctx.drafts[i]; wSavePending(ctx);
       status[i] = 'done';
       if(res.allDone) last = res;
     } else {
@@ -8135,11 +8254,11 @@ function renderWrittenResult(earnedMarks, totalMarks, couponAmount, title, pendi
     <div class="card center">
       <h2>${escapeHtml(title)}</h2>
       <p class="hint">${unanswered > 0 ? `জমা হয়েছে ✅ — ${unanswered}টা প্রশ্ন জমা দাওনি, সেগুলোতে ০ ধরা হয়েছে। আর নতুন করে জমা দেওয়া যাবে না (শিক্ষক অনুমতি দিলে ছাড়া)।` : 'সব প্রশ্ন জমা হয়েছে ✅'}</p>
-      <div class="stamp ${passed ? '' : 'fail'}">${earnedMarks}/${totalMarks}</div>
-      <p class="hint" style="margin-top:10px;">এটা তোমার সব প্রশ্নের মোট নম্বর।</p>
+      <div class="stamp">✅</div>
+      <p class="hint" style="margin-top:10px;">তোমার খাতা জমা হয়েছে ✅ নম্বর ও AI-র মন্তব্য "Past Exams"-এ গিয়ে দেখো।</p>
       ${pendingCount > 0 ? `<div style="margin-top:10px; background:#FEF8EC; border:1.5px solid #F8DA9D; border-radius:10px; padding:10px 12px; font-size:13.5px; text-align:start;">⏳ <b>${pendingCount}টা প্রশ্ন</b> AI এই মুহূর্তে চেক করতে পারেনি — শিক্ষক নিজে দেখে নম্বর দেবেন। তাই মোট নম্বর ও কুপন পরে বদলাতে পারে। "Past Exams"-এ গিয়ে পরে দেখো।</div>` : ''}
       
-      <p class="hint" style="margin-top:10px;">কোন প্রশ্নে কত নম্বর পেয়েছো আর মন্তব্য কী — "Past Exams"-এ গিয়ে দেখো। নম্বর নিয়ে দ্বিমত থাকলে সেখান থেকেই "🚩 রিভিউ চাও" চাপতে পারবে।</p>
+      <p class="hint" style="margin-top:10px;">নম্বর নিয়ে দ্বিমত থাকলে চেক শেষ হওয়ার পর সেখান থেকেই "🚩 রিভিউ চাও" চাপতে পারবে।</p>
       ${getLoggedStudent() ? `<button class="btn btn-gold btn-block" style="margin-top:6px;" onclick="go('pastExams')">📜 Past Exams-এ বিস্তারিত দেখো</button>` : ''}
     </div>
     <div class="center"><button class="btn btn-primary" onclick="go('landing')">মূল পাতায় যাও</button></div>
@@ -8744,6 +8863,7 @@ window.doSmartSearch = async function(){
         <input type="number" id="revGoal" min="5" value="${goal}">
         </details>
         <button class="btn btn-primary btn-block" onclick="revStart()">▶️ শুরু করো</button>
+        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('revFlow')">🗺️ আমার রিভিশন ফ্লো — দেখো, বদলাও, AI-র সাথে সাজাও</button>
       </div>
       <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>
       ${creditFooter()}`;
@@ -11024,7 +11144,7 @@ window.doSmartSearch = async function(){
     const r = await postToScriptRaw('pwrReset', { slug, code, password:p1 }); // [FIX]
     b.disabled = false;
     if(r && r.status === 'success'){
-      setLoggedStudent({ slug:r.slug || slug, name:r.name || slug, studentCode:r.studentCode || '' });
+      setLoggedStudent({ slug:r.slug || slug, name:r.name || slug, studentCode:r.studentCode || '', stok:r.stok || '' });
       studentAuthTab = 'login'; window.__fgRequested = false; toast('✅ নতুন পাসওয়ার্ড সেট হয়েছে! স্বাগতম, ' + (r.name || slug)); go('studentDashboard');
     } else if(r && r.message === 'wrong_code') toast(`❌ কোড ভুল — আর ${r.left}বার চেষ্টা করতে পারবে`);
     else if(r && r.message === 'too_many') toast('❌ অনেকবার ভুল হয়েছে, কোডটা বাতিল। শিক্ষকের কাছে নতুন কোড চাও');
@@ -12317,7 +12437,16 @@ window.impBkSave = async function(){
   .rv-total .n{ font-size:44px; font-weight:800; color:var(--gold); }
   .rv-fb{ margin-top:16px; opacity:0; transition:opacity .7s; } .rv-fb.in{ opacity:1; }
   .rv-fb button{ font-size:17px; padding:11px 22px; margin:6px; border-radius:12px; border:0; cursor:pointer; font-weight:700; }
-  .rv-skip{ position:fixed; top:12px; right:14px; font-size:12.5px; opacity:.7; cursor:pointer; text-decoration:underline; z-index:100000; }
+
+  .rc-paper{ background:#FFFDF5; color:#2B2A26; width:min(92vw,400px); margin:18px auto; border-radius:6px; padding:18px 16px 16px; font-family:'Courier New',ui-monospace,monospace; box-shadow:0 8px 30px rgba(0,0,0,.35); position:relative; }
+  .rc-paper:before,.rc-paper:after{ content:''; position:absolute; left:0; right:0; height:8px; background:radial-gradient(circle at 6px 0,transparent 5px,#FFFDF5 5.5px) 0 0/12px 8px repeat-x; }
+  .rc-paper:before{ top:-7px; transform:rotate(180deg); } .rc-paper:after{ bottom:-7px; }
+  .rc-head{ text-align:center; font-weight:800; font-size:17px; } .rc-title{ text-align:center; margin-top:4px; font-size:14px; } .rc-when{ text-align:center; font-size:12px; opacity:.65; }
+  .rc-sep{ border-top:1.5px dashed #B9B39F; margin:10px 0; } .rc-sub{ font-weight:700; font-size:13px; margin:2px 0 6px; }
+  .rc-row{ display:flex; justify-content:space-between; gap:10px; font-size:13.5px; padding:2px 0; } .rc-row b{ text-align:right; font-weight:700; }
+  .rc-pos b{ color:#2F7D5A; } .rc-neg b{ color:#BF3A2C; } .rc-strong{ font-weight:800; } .rc-total{ font-size:16px; font-weight:800; } .rc-total b{ color:#2F7D5A; }
+  .rc-foot{ margin-top:10px; font-size:11.5px; opacity:.6; text-align:center; font-family:inherit; }
+    .rv-skip{ position:fixed; top:12px; right:14px; font-size:12.5px; opacity:.7; cursor:pointer; text-decoration:underline; z-index:100000; }
   `;
   document.head.appendChild(st);
   const bnD = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
@@ -12372,8 +12501,92 @@ window.impBkSave = async function(){
     await sleep(500);
     await count(document.getElementById('rvN'), rv.total, money);
     await sleep(1400); if(!alive()) return;
+    if(rv.__replay){
+      const fb = document.getElementById('rvFb');
+      if(fb) fb.innerHTML = `<button class="btn btn-gold btn-block" onclick="rvReplayDone()">🧾 রসিদ দেখো</button>`;
+    }
     document.getElementById('rvFb').classList.add('in');
     ['rvSkip','rvSkip2'].forEach(id => { const e = document.getElementById(id); if(e) e.style.display = 'none'; });
+  };
+
+  // ---- [NEW] ব্যালেন্সের ইতিহাসে ক্লিক → অ্যানিমেশন রিপ্লে → রসিদের কপি ----
+  window.rvReplayDone = function(){
+    const ov = document.getElementById('rvOv'); if(ov) ov.remove();
+    const cb = window.__rvAfter; window.__rvAfter = null; if(cb) cb();
+  };
+  const rcMoney = n => (Number(n) < 0 ? '−' : '') + '৳' + bnD(Math.abs(Math.round(Number(n) || 0)));
+  const rcNum = n => bnD(String(Math.round((Number(n) || 0) * 10) / 10));
+  function rcBuild(d, h){
+    // d = সার্ভারের রসিদ ডেটা, h = ইতিহাসের সারি
+    const lines = [], html = [];
+    const line = (l, r, cls) => { lines.push(l + (r ? '  ' + r : '')); html.push(`<div class="rc-row ${cls || ''}"><span>${l}</span><b>${r || ''}</b></div>`); };
+    const sep = () => { lines.push('--------------------------'); html.push('<div class="rc-sep"></div>'); };
+    const title = d.title || (typeof labelForCouponExamCode === 'function' ? labelForCouponExamCode(h.examCode) : h.examCode);
+    lines.push('🧾 Treat Coupon রসিদ'); lines.push(title);
+    const when = h.createdAt ? (typeof fmtBnDate === 'function' ? fmtBnDate(h.createdAt) : '') : '';
+    if(when) lines.push(when);
+    sep();
+    if(d.items && d.items.length){
+      html.push('<div class="rc-sub">✍️ CQ — প্রশ্ন অনুযায়ী নম্বর</div>');
+      lines.push('CQ — প্রশ্ন অনুযায়ী নম্বর');
+      let tm = 0, em = 0;
+      d.items.forEach(it => {
+        tm += it.max; if(it.answered && !it.pending) em += it.marks;
+        const val = !it.answered ? 'জমা দাওনি — ০/' + rcNum(it.max) : (it.pending ? 'শিক্ষক চেক করবেন' : rcNum(it.marks) + '/' + rcNum(it.max) + ' (' + bnD(it.percent) + '%)');
+        line('প্রশ্ন ' + bnD(it.no), val);
+      });
+      line('মোট নম্বর', rcNum(em) + '/' + rcNum(tm) + (tm ? ' (' + bnD(Math.round(em / tm * 100)) + '%)' : ''), 'rc-strong');
+      sep();
+    }
+    const s = d.snap;
+    if(s){
+      html.push('<div class="rc-sub">💰 কুপনের হিসাব</div>'); lines.push('কুপনের হিসাব');
+      line('📝 MCQ' + (s.mcq && s.mcq.percent ? ' (গড় ' + bnD(s.mcq.percent) + '%)' : ''), '+' + rcMoney(s.mcq ? s.mcq.amount : 0), 'rc-pos');
+      line('✍️ CQ' + (s.cq && s.cq.percent ? ' (' + bnD(s.cq.percent) + '%)' : ''), '+' + rcMoney(s.cq ? s.cq.amount : 0), 'rc-pos');
+      if(s.missCut) line('📅 মিস দিনের কাট', rcMoney(-s.missCut), 'rc-neg');
+      if(s.apiBill > 0) line('🤖 AI API বিল', rcMoney(-s.apiBill), 'rc-neg');
+      sep();
+      line('মোট কুপন', rcMoney(s.total), 'rc-total');
+    } else {
+      line('এই পরীক্ষার কুপন' + (h.percent ? ' (স্কোর ' + bnD(h.percent) + '%)' : ''), rcMoney(h.amount), 'rc-total');
+    }
+    sep();
+    const st = h.status === 'settled' ? 'পরিশোধিত ✓' : (h.status === 'requested' ? 'Withdraw অনুরোধ — Pending ⏳' : 'জমা আছে');
+    line('অবস্থা', st);
+    return { html: html.join(''), text: lines.join('\n'), title: title, when: when };
+  }
+  window.showCouponReceipt = function(d, h){
+    const old = document.getElementById('rcOv'); if(old) old.remove();
+    const b = rcBuild(d, h);
+    window.__rcText = b.text;
+    const ov = document.createElement('div'); ov.id = 'rcOv'; ov.className = 'rv-ov'; ov.style.alignItems = 'flex-start'; ov.style.overflowY = 'auto';
+    ov.innerHTML = `<div class="rc-paper">
+      <div class="rc-head">🧾 Treat Coupon রসিদ</div>
+      <div class="rc-title">${escapeHtml(b.title)}</div>
+      ${b.when ? `<div class="rc-when">${escapeHtml(b.when)}</div>` : ''}
+      <div class="rc-sep"></div>${b.html}
+      <div class="rc-foot">এই রসিদটা শুধু তোমার বোঝার জন্য — টাকা Withdraw/শপের নিয়ম আগের মতোই।</div>
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button class="btn btn-outline" style="flex:1;" onclick="copyCouponReceipt()">📋 কপি করো</button>
+        <button class="btn btn-primary" style="flex:1;" onclick="document.getElementById('rcOv').remove()">ঠিক আছে</button>
+      </div></div>`;
+    document.body.appendChild(ov);
+  };
+  window.copyCouponReceipt = async function(){
+    try{ await navigator.clipboard.writeText(window.__rcText || ''); toast('রসিদ কপি হয়েছে ✅'); }
+    catch(e){ const t = document.createElement('textarea'); t.value = window.__rcText || ''; document.body.appendChild(t); t.select(); try{ document.execCommand('copy'); toast('রসিদ কপি হয়েছে ✅'); }catch(x){ toast('কপি করা যায়নি'); } t.remove(); }
+  };
+  window.openCouponReceipt = async function(hi){
+    const h = (window.__couponHist || [])[hi]; if(!h) return;
+    toast('হিসাব আনা হচ্ছে...');
+    const d = await getJson('getCouponReceipt', { slug: window.__couponSlug, code: h.examCode });
+    if(!d || d.status !== 'success'){ toast('এখন হিসাব আনা যায়নি, আবার চেষ্টা করো'); return; }
+    if(d.snap){
+      window.__rvAfter = () => window.showCouponReceipt(d, h);
+      window.startCouponReveal(Object.assign({}, d.snap, { __replay: true }));
+    } else {
+      window.showCouponReceipt(d, h);
+    }
   };
 
   window.rvFeel = function(kind){
@@ -12909,6 +13122,157 @@ window.impBkSave = async function(){
       <div class="card">${rows || '<div class="empty-state">এই ধরনের কিছু এখনো জমা পড়েনি।</div>'}</div>
       <div class="center"><a class="link-back" onclick="go('teacherTracker')">← সব ছাত্রের তালিকায় ফিরে যাও</a></div>
       ${creditFooter()}`;
+  };
+})();
+</script>
+
+<script>
+// ===== [NEW] ছাত্রের নিজের রিভিশন ফ্লো + AI সহায়ক =====
+(function(){
+  const bn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  const LV = { weak:{ic:'🔴', lb:'দুর্বল', col:'#C0392B', iv:3}, medium:{ic:'🟡', lb:'মাঝারি', col:'#D49A1B', iv:10}, easy:{ic:'🟢', lb:'সহজ', col:'#2E8B57', iv:30}, 'new':{ic:'⚪', lb:'নতুন', col:'#8A93A3', iv:14} };
+  const DAY = 86400000;
+  const R = () => window.__rf;
+  const slugOf = () => { const s = getLoggedStudent(); return s && s.slug; };
+
+  function orderTopics(T){
+    const w = { weak:0, medium:1, 'new':2, easy:3 };
+    return T.slice().sort((a, b) =>
+      ((a.skip ? 1 : 0) - (b.skip ? 1 : 0)) ||
+      ((b.due ? 1 : 0) - (a.due ? 1 : 0)) ||
+      ((a.rank || 1e9) - (b.rank || 1e9)) ||
+      ((w[a.level] ?? 4) - (w[b.level] ?? 4)) ||
+      String(a.topic).localeCompare(String(b.topic)));
+  }
+  window.renderRevFlow = async function(){
+    const stud = getLoggedStudent(); if(!stud){ go('studentAuth'); return; }
+    if(!R()) window.__rf = { topics:[], chat:[], busy:false, subj:'' };
+    app.innerHTML = header('আমার রিভিশন ফ্লো') + `<div class="card center">লোড হচ্ছে...</div>`;
+    const res = await postToScriptRaw('revisionOverrideList', { slug:stud.slug, subjects:'' });
+    if(!res || res.status !== 'success'){ app.innerHTML = header('আমার রিভিশন ফ্লো') + `<div class="card center">লোড করা যায়নি। <button class="btn btn-outline" onclick="renderRevFlow()">আবার চেষ্টা করো</button></div>`; return; }
+    R().topics = res.topics || []; R().stats = res.stats || { days:0, avg:0 };
+    rfDraw();
+  };
+  function rfSubjLabel(k){ return (typeof NOTES_SUBJECTS !== 'undefined' && NOTES_SUBJECTS[k]) ? NOTES_SUBJECTS[k].label : (k || 'অন্যান্য'); }
+  function rfWhen(t){
+    if(t.skip) return '⛔ ফ্লো-তে আসবে না';
+    if(t.focus) return '🎯 ফোকাসে আছে — এখন due';
+    if(!t.lastTs) return '⏰ এখনো revise হয়নি';
+    const ago = Math.floor((Date.now() - t.lastTs) / DAY), left = Math.ceil((t.lastTs + LV[t.level].iv * DAY - Date.now()) / DAY);
+    return 'শেষ revise: ' + (ago <= 0 ? 'আজ' : bn(ago) + ' দিন আগে') + ' · ' + (left <= 0 ? '⏰ এখন due' : 'পরের ~' + bn(left) + ' দিন পরে');
+  }
+  function rfDraw(){
+    const r = R(); if(!r) return;
+    const T = r.topics, act = T.filter(t => !t.skip), due = act.filter(t => t.due).length;
+    const cnt = { weak:0, medium:0, easy:0, 'new':0 }; act.forEach(t => { cnt[t.level] = (cnt[t.level] || 0) + 1; });
+    const subs = Array.from(new Set(T.map(t => t.subject || ''))).filter(Boolean);
+    const ordered = orderTopics(T).filter(t => !r.subj || t.subject === r.subj);
+    r.shown = ordered;
+    const chatHtml = r.chat.length ? r.chat.map((m, i) => rfMsgHtml(m, i)).join('') : `<div class="meta" style="margin:4px 0;">যেমন বলতে পারো: <i>"আমি Vector আর Ideal gas ফুল রিভিশন দিতে চাই"</i> — AI তোমার তালিকা থেকে টপিক খুঁজে সাজিয়ে দেবে, দরকারে প্রশ্নও করবে।</div>`;
+    const chips = r.chat.length ? (r.chat[r.chat.length - 1].chips || []) : ['📚 একটা অধ্যায় ফুল রিভিশন দিতে চাই', '🔥 দুর্বল টপিকগুলো আগে দাও', '🧭 আমার ফ্লো দেখে কী বদলানো উচিত বলো'];
+    app.innerHTML = `${header('আমার রিভিশন ফ্লো')}
+      <div class="card">
+        <h2 style="margin-top:0;">🗺️ আমার ফ্লো</h2>
+        <p class="hint">এখানে তোমার রিভিশনে কোন টপিক কোন ক্রমে আর কত ঘন ঘন আসবে সেটা দেখতে ও নিজের মতো বদলাতে পারবে। বদলালে তোমার অটো রিভিশনেও এই ক্রমেই আসবে।</p>
+        <div class="meta"><b>${bn(T.length)}</b>টা টপিক · 🔴${bn(cnt.weak)} 🟡${bn(cnt.medium)} 🟢${bn(cnt.easy)} ⚪${bn(cnt['new'])}${T.length > act.length ? ' · ⛔' + bn(T.length - act.length) : ''} · ⏰ এখন due: <b>${bn(due)}</b>টা</div>
+      </div>
+      <div class="card" style="border:1.5px solid var(--gold);">
+        <h3 style="margin-top:0;">🤖 AI সহায়ক</h3>
+        <div id="rfChat" style="max-height:340px; overflow-y:auto; padding:2px;">${chatHtml}${r.busy ? '<div class="meta">AI ভাবছে...</div>' : ''}</div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px; margin:8px 0;">${chips.map((c, i) => `<button class="btn btn-outline" style="padding:4px 10px; font-size:12.5px;" onclick="rfChip(${i})">${escapeHtml(c)}</button>`).join('')}</div>
+        <div style="display:flex; gap:8px;"><input type="text" id="rfIn" placeholder="AI-কে বলো কী চাও..." style="margin:0; flex:1;" onkeydown="if(event.key==='Enter') rfSend()"><button class="btn btn-primary" ${r.busy ? 'disabled' : ''} onclick="rfSend()">পাঠাও</button></div>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0;">📋 টপিকের ক্রম ও স্তর</h3>
+        <p class="hint" style="margin:0 0 8px 0;">▲▼ দিয়ে ক্রম বদলাও। যেগুলো এখন due সেগুলো এই ক্রমে আসবে। স্তর বদলালে কত দিন পরপর ফিরে আসবে সেটাও বদলায় (🔴 ৩ দিন · 🟡 ১০ দিন · 🟢 ৩০ দিন)।</p>
+        ${subs.length > 1 ? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;"><button class="btn ${!r.subj ? 'btn-primary' : 'btn-outline'}" style="padding:3px 10px; font-size:12.5px;" onclick="rfSubj('')">সব</button>${subs.map(s => `<button class="btn ${r.subj === s ? 'btn-primary' : 'btn-outline'}" style="padding:3px 10px; font-size:12.5px;" onclick="rfSubj('${s}')">${escapeHtml(rfSubjLabel(s))}</button>`).join('')}</div>` : ''}
+        ${ordered.length ? ordered.map((t, i) => `<div class="exam-item" style="${t.skip ? 'opacity:.6;' : ''} border-left:4px solid ${t.skip ? '#bbb' : LV[t.level].col};">
+          <div class="row-top"><div style="min-width:0;">
+            <b>${t.skip ? '' : bn(i + 1) + '. '}${escapeHtml(t.topic)}</b>${t.rank ? ' <span title="ক্রম ঠিক করা আছে">📌</span>' : ''}${t.focus ? ' <span title="ফোকাস">🎯</span>' : ''}
+            <div class="meta">${escapeHtml(rfSubjLabel(t.subject))} · ${LV[t.level].ic} ${LV[t.level].lb}${t.ov ? ' (তুমি ঠিক করেছো)' : ' (অটো)'} · ভুল ${bn(t.bad)} / আংশিক ${bn(t.part)} / ঠিক ${bn(t.ok)}</div>
+            <div class="meta">${rfWhen(t)}</div></div>
+            ${t.skip ? '' : `<div style="display:flex; flex-direction:column; gap:4px;"><button class="btn btn-outline" style="padding:2px 10px;" onclick="rfMove(${i},-1)">▲</button><button class="btn btn-outline" style="padding:2px 10px;" onclick="rfMove(${i},1)">▼</button></div>`}</div>
+          <select onchange="rfLevel(${i}, this.value)" style="margin:8px 0 0 0;">
+            <option value="" ${!t.ov ? 'selected' : ''}>🤖 অটো</option>
+            <option value="weak" ${t.ov === 'weak' ? 'selected' : ''}>🔴 দুর্বল (ঘন ঘন)</option>
+            <option value="medium" ${t.ov === 'medium' ? 'selected' : ''}>🟡 মাঝারি</option>
+            <option value="easy" ${t.ov === 'easy' ? 'selected' : ''}>🟢 সহজ (কম আসবে)</option>
+            <option value="skip" ${t.ov === 'skip' ? 'selected' : ''}>⛔ আর লাগবে না</option></select>
+        </div>`).join('') : '<div class="empty-state">কোনো টপিক নেই।</div>'}
+        ${T.some(t => t.rank) ? `<div class="center" style="margin-top:8px;"><a class="link-back" onclick="rfResetOrder()">📌 আমার ঠিক-করা ক্রম মুছে অটো ক্রমে ফেরো</a></div>` : ''}
+      </div>
+      <div class="center"><a class="link-back" onclick="go('revision')">← রিভিশনে ফিরে যাও</a></div>
+      ${creditFooter()}`;
+    const box = document.getElementById('rfChat'); if(box) box.scrollTop = box.scrollHeight;
+  }
+  function rfMsgHtml(m, i){
+    if(m.role === 'me') return `<div style="text-align:end; margin:6px 0;"><span style="display:inline-block; background:#EAF2FF; border-radius:12px 12px 2px 12px; padding:7px 11px; max-width:85%; text-align:start;">${escapeHtml(m.text)}</span></div>`;
+    const plan = m.plan ? `<div style="margin-top:8px; background:#fff; border:1.5px dashed var(--gold); border-radius:10px; padding:8px 10px;">
+        <div style="font-weight:700;">📝 ${escapeHtml(m.plan.title)}</div>
+        <div class="meta" style="margin:4px 0;">${m.plan.pin.length ? 'এই ক্রমে আগে আসবে: ' : 'বদলাবে:'}</div>
+        <div style="font-size:13px; line-height:1.7;">${(m.plan.preview || []).map((p, k) => `${m.plan.pin.indexOf(p.tk) !== -1 ? bn(m.plan.pin.indexOf(p.tk) + 1) + '. ' : '• '}${escapeHtml(p.topic)} <span class="meta">(${p.level === 'skip' ? '⛔' : (LV[p.level] ? LV[p.level].ic : '🤖 অটো')})</span>`).join('<br>')}</div>
+        ${m.applied ? `<div class="meta" style="margin-top:6px; color:#2E8B57; font-weight:700;">✅ প্রয়োগ হয়েছে</div>` : m.dismissed ? `<div class="meta" style="margin-top:6px;">বাদ দেওয়া হয়েছে</div>` : `<div style="display:flex; gap:8px; margin-top:8px;"><button class="btn btn-primary" style="flex:1;" onclick="rfApply(${i})">✅ প্রয়োগ করো</button><button class="btn btn-outline" onclick="rfDismiss(${i})">❌ থাক</button></div>`}
+      </div>` : '';
+    return `<div style="margin:6px 0;"><span style="display:inline-block; background:#FFF8E6; border-radius:12px 12px 12px 2px; padding:7px 11px; max-width:92%;">🤖 ${escapeHtml(m.text)}${plan}</span></div>`;
+  }
+  window.rfSubj = function(s){ R().subj = s; rfDraw(); };
+  window.rfChip = function(i){
+    const r = R(), chips = r.chat.length ? (r.chat[r.chat.length - 1].chips || []) : ['📚 একটা অধ্যায় ফুল রিভিশন দিতে চাই', '🔥 দুর্বল টপিকগুলো আগে দাও', '🧭 আমার ফ্লো দেখে কী বদলানো উচিত বলো'];
+    if(chips[i]) rfSendText(chips[i].replace(/^[^\p{L}\p{N}]+/u, ''));
+  };
+  window.rfSend = function(){ const el = document.getElementById('rfIn'); const t = el ? el.value.trim() : ''; if(t) rfSendText(t); };
+  async function rfSendText(text){
+    const r = R(), slug = slugOf(); if(!r || !slug || r.busy) return;
+    const history = r.chat.slice(-8).map(m => ({ role: m.role === 'me' ? 'me' : 'ai', text: m.text }));
+    r.chat.push({ role:'me', text }); r.busy = true; rfDraw();
+    const res = await postToScriptRaw('revisionFlowAi', { slug, message:text, history:JSON.stringify(history) });
+    r.busy = false;
+    if(res && res.status === 'success') r.chat.push({ role:'ai', text:res.reply, chips:res.chips || [], plan:res.plan || null });
+    else r.chat.push({ role:'ai', text:'এই মুহূর্তে AI-র সাথে কথা বলা যাচ্ছে না। একটু পরে আবার চেষ্টা করো — ততক্ষণ নিচের তালিকা থেকে নিজেই বদলাতে পারো।', chips:[] });
+    rfDraw();
+  }
+  window.rfDismiss = function(i){ const m = R().chat[i]; if(m){ m.dismissed = true; rfDraw(); } };
+  window.rfApply = async function(i){
+    const r = R(), m = r.chat[i], slug = slugOf(); if(!m || !m.plan || !slug || m.applied) return;
+    const pl = m.plan, pinned = pl.pin.filter(tk => pl.levels[tk] !== 'skip');
+    const cur = orderTopics(r.topics).filter(t => !t.skip && pl.levels[t.tk] !== 'skip').map(t => t.tk);
+    const order = pinned.concat(cur.filter(tk => pinned.indexOf(tk) === -1));
+    toast('প্রয়োগ হচ্ছে...');
+    const res = await postToScriptRaw('revisionFlowApply', { slug, plan:JSON.stringify({ order, levels:pl.levels, focus:pl.focus.length ? pl.focus : pinned }) });
+    if(!res || res.status !== 'success'){ toast('প্রয়োগ করা যায়নি, আবার চেষ্টা করো'); return; }
+    m.applied = true; toast('তোমার ফ্লো বদলে গেছে ✅');
+    const l = await postToScriptRaw('revisionOverrideList', { slug, subjects:'' });
+    if(l && l.status === 'success') r.topics = l.topics || [];
+    r.chat.push({ role:'ai', text:'হয়ে গেছে! নিচের তালিকায় নতুন ক্রম দেখো, আর অটো রিভিশনেও এই ক্রমেই আসবে। আরও কিছু বদলাতে চাইলে বলো।', chips:[] });
+    rfDraw();
+  };
+  async function rfSaveOrder(){
+    const slug = slugOf(); if(!slug) return;
+    const order = (R().shownAll || []).filter(t => !t.skip).map(t => t.tk);
+    const res = await postToScriptRaw('revisionFlowApply', { slug, plan:JSON.stringify({ order }) });
+    if(!res || res.status !== 'success') toast('ক্রম সেভ হয়নি');
+  }
+  window.rfMove = function(i, dir){
+    const r = R(), list = orderTopics(r.topics), shown = r.shown || list;
+    const a = shown[i], b = shown[i + dir]; if(!a || !b || b.skip) return;
+    const ia = list.indexOf(a), ib = list.indexOf(b);
+    [list[ia], list[ib]] = [list[ib], list[ia]];
+    list.filter(t => !t.skip).forEach((t, k) => { t.rank = k + 1; });
+    r.topics = list; r.shownAll = list; rfDraw(); rfSaveOrder();
+  };
+  window.rfResetOrder = async function(){
+    const slug = slugOf(); if(!slug) return;
+    R().topics.forEach(t => { t.rank = 0; }); rfDraw();
+    const res = await postToScriptRaw('revisionFlowApply', { slug, plan:JSON.stringify({ order:[] }) });
+    toast(res && res.status === 'success' ? 'অটো ক্রমে ফেরানো হয়েছে' : 'হয়নি, আবার চেষ্টা করো');
+  };
+  window.rfLevel = async function(i, level){
+    const r = R(), t = (r.shown || [])[i], slug = slugOf(); if(!t || !slug) return;
+    t.ov = level; t.skip = level === 'skip'; if(level && level !== 'skip') t.level = level;
+    rfDraw();
+    const res = await postToScriptRaw('revisionFlowApply', { slug, plan:JSON.stringify({ levels:{ [t.tk]: level } }) });
+    toast(res && res.status === 'success' ? 'সেভ হয়েছে ✅' : 'সেভ হয়নি, আবার চেষ্টা করো');
+    if(res && res.status === 'success'){ const l = await postToScriptRaw('revisionOverrideList', { slug, subjects:'' }); if(l && l.status === 'success'){ r.topics = l.topics || []; rfDraw(); } }
   };
 })();
 </script>
