@@ -1,8 +1,9 @@
 // Service Worker for পরীক্ষার খাতা PWA
 // v2: HTML pages are now NETWORK-FIRST, so a new version pushed to GitHub shows up right away
 // (v1 was cache-first and kept showing the old app until the 2nd reload).
-// Bump CACHE_NAME (v3, v4...) whenever you change sw.js / icons to force a clean cache.
-const CACHE_NAME = 'tuition-app-v2';
+// v3: added notificationclick so tapping a chat/study notification opens or focuses the app.
+// Bump CACHE_NAME (v4, v5...) whenever you change sw.js / icons to force a clean cache.
+const CACHE_NAME = 'tuition-app-v3';
 const PRECACHE_ASSETS = [
   './',
   './index.html',
@@ -65,4 +66,20 @@ self.addEventListener('fetch', event => {
       return cached || refresh;
     })
   );
+});
+
+// Tapping a notification: focus the already-open app, otherwise open it.
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const data = event.notification.data || {};
+  const target = new URL(data.url || './', self.registration.scope).href;
+  event.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of wins) {
+      if (c.url.indexOf(self.registration.scope) === 0) {
+        try { await c.focus(); return; } catch (e) {}
+      }
+    }
+    return self.clients.openWindow(target);
+  })());
 });
