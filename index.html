@@ -2995,6 +2995,32 @@ body.dark .toast{ background:#F8FAFC; color:#0F172A; }
 body.dark .info-btn{ color:#CBD5E1; border-color:#334155; }
 body.dark a.link-back{ color:#94A3B8; }
 
+/* ===== ডার্ক মোড রানটাইম ফিক্স ===== */
+body.dark .dk-lite{ background:#1E293B !important; color:#E2E8F0 !important; border-color:#334155 !important; }
+body.dark .dk-lite .meta, body.dark .dk-lite .hint{ color:#94A3B8 !important; }
+/* ===== Treat কার্ড ===== */
+.treat-card{ position:relative; width:100%; max-width:340px; aspect-ratio:1.586/1; margin:6px auto 12px; border-radius:20px; padding:16px 20px; color:#fff; text-align:start; overflow:hidden; display:flex; flex-direction:column; justify-content:space-between;
+  background:linear-gradient(135deg,#141B2E 0%,#24407A 52%,#D9A441 135%); box-shadow:0 18px 34px -14px rgba(20,27,46,.75), inset 0 1px 0 rgba(255,255,255,.18); }
+.treat-glow{ position:absolute; right:-40px; top:-50px; width:190px; height:190px; border-radius:50%; background:radial-gradient(circle,rgba(255,255,255,.26),transparent 68%); pointer-events:none; }
+.treat-top{ display:flex; justify-content:space-between; align-items:center; position:relative; }
+.treat-brand{ font-weight:800; letter-spacing:2px; font-size:12.5px; font-family:var(--font-mono); }
+.treat-chip{ width:42px; height:32px; border-radius:7px; background:linear-gradient(135deg,#F3D78A,#C99A2E); display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:2px; padding:4px; box-shadow:inset 0 0 0 1px rgba(0,0,0,.18); position:relative; }
+.treat-chip i{ border:1px solid rgba(90,60,0,.35); border-radius:2px; }
+.treat-number{ font-family:var(--font-mono); font-size:17px; letter-spacing:2px; font-weight:700; text-shadow:0 1px 2px rgba(0,0,0,.35); position:relative; }
+.treat-mid{ display:flex; justify-content:space-between; align-items:flex-end; position:relative; }
+.treat-lbl{ font-size:9.5px; letter-spacing:1.2px; opacity:.78; text-transform:uppercase; }
+.treat-bal{ font-size:30px; font-weight:800; line-height:1.1; font-family:var(--font-mono); text-shadow:0 2px 6px rgba(0,0,0,.35); }
+.treat-logo{ text-align:end; font-size:11px; line-height:1.15; opacity:.92; }
+.treat-logo b{ color:#F3D78A; font-size:15px; }
+.treat-bottom{ display:flex; justify-content:space-between; align-items:flex-end; position:relative; }
+.treat-name{ font-size:13.5px; font-weight:700; letter-spacing:.5px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* ===== ভয়েস বোতাম ===== */
+#voiceFab{ position:fixed; right:14px; bottom:86px; z-index:84; width:50px; height:50px; border-radius:50%; border:none; font-size:22px; cursor:pointer; color:#fff;
+  background:linear-gradient(135deg,#4F46E5,#7C3AED); box-shadow:0 6px 18px -4px rgba(79,70,229,.6); display:flex; align-items:center; justify-content:center; }
+#voiceFab.listening{ background:#EF4444; animation:voicePulse 1.2s infinite ease-in-out; }
+@media (min-width:769px){ #voiceFab{ bottom:24px; } }
+body.deep-work-active #voiceFab{ display:none; }
+
 </style>
 
 
@@ -4027,6 +4053,10 @@ async function renderTeacherDashboard(){
       </div>
       <div class="row" style="margin-top:10px;">
         <button class="btn btn-outline btn-block" onclick="go('dailyHwManage')">📅 Daily HW জমা দেখো</button>
+        <button class="btn btn-gold btn-block" onclick="go('communityLounge')">💬 স্টাডি আড্ডা · পোস্ট · চ্যাট</button>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn btn-outline btn-block" onclick="go('hwCutManage')">🛡️ HW মিসের কাটা</button>
       </div>
     </div>
     <div class="card">
@@ -5193,6 +5223,8 @@ function labelForCouponExamCode(examCode){
     const [y, m] = monthKey.split('-');
     return `${BN_MONTHS[Number(m)-1] || m} ${y} (মাসিক রিওয়ার্ড)`;
   }
+  if(String(examCode) === 'CUT:HW:AUTO') return '📚 HW/রিভিশন মিসের কাট (গত ৩০ দিনের হিসাব)';
+  if(String(examCode).indexOf('CUT:HW:') === 0) return '📚 HW মিসের কাট (' + String(examCode).slice(7) + ')';
   if(String(examCode).indexOf('CUT:') === 0) return 'কাট (মিস দিন / API বিল)';
   if(String(examCode).indexOf('PERIOD:') === 0){
     const p = String(examCode).slice(7).split('~'); // from~to~ts
@@ -5869,7 +5901,7 @@ async function getMyDailyHomeworkRemote(slug, month){
 async function listAllDailyHomeworkOrNull(){ // [NEW] ব্যর্থ হলে null (ফাঁকা লিস্ট নয়)
   try{
     const ctl = new AbortController(); const to = setTimeout(()=> ctl.abort(), 30000);
-    const r = await fetch(`${SCRIPT_URL}?action=listAllDailyHomework`, { signal: ctl.signal });
+    const r = await fetch(`${SCRIPT_URL}?action=listAllDailyHomework&_t=${Date.now()}`, { signal: ctl.signal, cache: 'no-store' });
     clearTimeout(to);
     const j = await r.json();
     if(j && j.status === 'success') return j.data || [];
@@ -7547,10 +7579,10 @@ function renderStudentAuth(){
         <input type="text" id="regSlug" placeholder="যেমন: rahim25">
         <label class="field-label">পাসওয়ার্ড</label>
         <input type="password" id="regPass" placeholder="কমপক্ষে ৪ সংখ্যার পাসওয়ার্ড">
-        <label class="field-label">🔑 শিক্ষকের দেওয়া রেজিস্ট্রেশন কোড</label>
-        <input type="text" id="regCodeInput" placeholder="যেমন: TUT-A89K2" style="text-transform:uppercase; font-family:var(--font-mono); font-weight:700; letter-spacing:1px;">
+        <label class="field-label">🔑 রেজিস্ট্রেশন কোড (শিক্ষকের কোড বা বন্ধুর রেফার কোড)</label>
+        <input type="text" id="regCodeInput" placeholder="TUT-A89K2 বা FR-K7M2P" style="text-transform:uppercase; font-family:var(--font-mono); font-weight:700; letter-spacing:1px;">
         <div style="background:#FEF6E8; border-radius:8px; padding:10px 12px; margin-bottom:14px; font-size:12.5px; color:#7B4F06; line-height:1.4;">
-          ⚠️ <b>শিক্ষকের অনুমতি প্রয়োজন:</b> অ্যাকাউন্ট তৈরি করতে আপনার শিক্ষকের কাছ থেকে একটি ইউনিক কোড (যেমন: TUT-XXXXX) সংগ্রহ করুন।
+          🤝 <b>বন্ধুর রেফার কোড (FR-…)</b> দিলে সীমিত অ্যাকাউন্ট খুলবে — শুধু স্টাডি আড্ডা, চ্যাট ও ফ্রি প্র্যাকটিস।<br>⚠️ <b>শিক্ষকের অনুমতি প্রয়োজন:</b> অ্যাকাউন্ট তৈরি করতে আপনার শিক্ষকের কাছ থেকে একটি ইউনিক কোড (যেমন: TUT-XXXXX) সংগ্রহ করুন।
         </div>
         <button class="btn btn-gold btn-block" onclick="submitStudentRegister()">🌟 অ্যাকাউন্ট তৈরি ও প্রবেশ</button>
         <p class="hint center" style="margin-top:16px;">ইতিমধ্যে অ্যাকাউন্ট আছে? <a class="link-back" onclick="studentAuthTab='login'; renderStudentAuth();">লগইন করো</a></p>
@@ -7596,6 +7628,20 @@ window.submitStudentRegister = async function(){
   }
   const slug = slugify(slugInput);
   toast('অ্যাকাউন্ট তৈরি হচ্ছে...');
+  if(regCode.indexOf('FR-') === 0){   // [NEW] বন্ধুর রেফার কোড → সীমিত অ্যাকাউন্ট
+    const fr = await postToScriptRaw('trkFriendSignUp', { name, slug, password: pass, code: regCode });
+    if(fr && fr.status === 'success'){
+      setLoggedStudent({ slug, name, studentCode: '', stok: fr.stok || '' });
+      toast('🎉 স্বাগতম! বন্ধুর রেফারে সীমিত অ্যাকাউন্ট তৈরি হয়েছে');
+      playSfx('victory'); go('studentDashboard');
+    } else if(fr && fr.message === 'invalid_reg_code') toast('❌ রেফার কোডটি সঠিক নয়');
+    else if(fr && fr.message === 'code_revoked') toast('❌ এই রেফার কোড বন্ধ করা হয়েছে');
+    else if(fr && fr.message === 'already_registered') toast('❌ এই ইউজারনেমে আগেই একাউন্ট রয়েছে, লগইন করুন');
+    else if(fr && fr.message === 'weak_password') toast('পাসওয়ার্ড কমপক্ষে ৪ অক্ষরের হতে হবে');
+    else if(fr && fr.message === 'invalid_slug') toast('❌ এই ইউজারনেম ব্যবহার করা যাবে না, অন্য একটা দাও');
+    else toast('রেজিস্ট্রেশন ব্যর্থ হয়েছে! আবার চেষ্টা করুন');
+    return;
+  }
   const res = await postToScript('studentSignUp', { name, slug, password: pass, regCode });
   if(res && res.status === 'success'){
     setLoggedStudent({ slug, name, studentCode: res.studentCode||'', stok: res.stok||'' });
@@ -7776,6 +7822,7 @@ async function renderStudentDashboard(){
       </div>
         <div class="row" style="margin-top:10px;">
           <button class="btn btn-gold btn-block" onclick="go('communityLounge')">💬 স্টাডি আড্ডা · চ্যাট</button>
+          <button class="btn btn-outline btn-block" onclick="vkOpenReferral()">🤝 বন্ধুকে রেফার করো</button>
           <button class="btn btn-outline btn-block" onclick="go('progressHub')">📈 আমার অগ্রগতি</button>
         </div>
       </div>
@@ -8108,7 +8155,8 @@ async function renderDailyHwManage(){
   app.innerHTML = `${header('Daily HW জমা')}<div class="card center">লোড হচ্ছে...</div>`;
   const __all = await listAllDailyHomeworkOrNull();
   if(__all === null){
-    app.innerHTML = `${header('Daily HW জমা')}<div class="card center"><h2>লোড করা যায়নি</h2><p class="hint">ইন্টারনেট বা সার্ভার ধীর থাকতে পারে। HW মুছে যায়নি।</p><button class="btn btn-primary" onclick="renderDailyHwManage()">🔁 আবার চেষ্টা করো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>`;
+    app.innerHTML = `${header('Daily HW জমা')}<div class="card center"><h2>লোড করা যায়নি</h2><p class="hint">ইন্টারনেট বা সার্ভার ধীর থাকতে পারে। HW মুছে যায়নি।</p><button class="btn btn-primary" onclick="renderDailyHwManage()">🔁 আবার চেষ্টা করো</button></div><div class="card" id="hwTodayBox"></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>`;
+    try{ window.trkLoadHwToday && trkLoadHwToday(); }catch(e){}
     return;
   }
   window.__hwTeacherAll = __all;
@@ -8117,8 +8165,9 @@ async function renderDailyHwManage(){
   const studs = [...new Set(window.__hwTeacherAll.map(x=> x.studentName || x.slug))];
   app.innerHTML = `
     ${header('Daily HW জমা')}
+    <div class="card" id="hwTodayBox"><p class="hint">আজকের জমা লোড হচ্ছে...</p></div>
     <div class="card">
-      <h2>📅 স্টুডেন্টদের HW</h2>
+      <h2>📅 স্টুডেন্টদের HW (শুধু Daily HW)</h2>
       <button class="btn btn-gold btn-block" style="margin-bottom:12px;" onclick="go('assignAnswersT')">📥 অ্যাসাইন করা HW-র সমাধান দেখো</button>
       <p class="hint">মোট <b>${window.__hwTeacherAll.length}</b>টি HW জমা · সবচেয়ে নতুন আগে</p>
       <label class="field-label">স্টুডেন্ট ফিল্টার</label>
@@ -8137,6 +8186,7 @@ async function renderDailyHwManage(){
     ${creditFooter()}
   `;
   drawHwTeacherList();
+  try{ window.trkLoadHwToday && trkLoadHwToday(); }catch(e){}
 }
 async function renderAssignAnswersT(){
   app.innerHTML = `${header('অ্যাসাইন করা HW')}<div class="card center">লোড হচ্ছে...</div>`;
@@ -9520,6 +9570,8 @@ function render(){
   else if(s==='teacherDashboard') renderTeacherDashboard();
   else if(s==='teacherTracker') renderTeacherTracker();
   else if(s==='teacherTrackerStudent') renderTeacherTrackerStudent(state.slug, state.name, state.kind);
+  else if(s==='myTeacherFb') renderMyTeacherFb();
+  else if(s==='hwCutManage') renderHwCutManage();
   else if(s==='teacherNewExam') renderTeacherNewExam(state.editingExam);
   else if(s==='teacherResults') renderTeacherResults(state.code);
   else if(s==='studentEntry') renderStudentEntry();
@@ -13386,6 +13438,7 @@ window.doSmartSearch = async function(){
       <div class="card"><h2>📚 আমার HW</h2>
         <p class="hint">শিক্ষক যে HW দিয়েছেন আর তুমি নিজে যা জমা দিয়েছো — সব এক জায়গায়, বিষয় অনুযায়ী। নিজের HW জমা দিলে AI নিজেই বিষয় › অধ্যায় › টপিক ঠিক করবে, তোমাকে টপিক লিখতে হবে না।</p>
         <div class="row"><button class="btn btn-gold btn-block" onclick="go('hwSubmit2')">➕ নিজের HW জমা দাও</button><button class="btn btn-outline btn-block" onclick="go('myCal')">📅 ক্যালেন্ডার</button></div>
+        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('myTeacherFb')">💬 শিক্ষকের মন্তব্য</button>
         ${pend ? `<p class="hint" style="margin-top:8px;color:var(--red);">শিক্ষকের দেওয়া ${pend}টা HW বাকি আছে।</p>` : ''}</div>
       ${cards || `<div class="card"><div class="empty-state">এখনো কোনো HW নেই। 🎉</div></div>`}
       <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>${creditFooter()}`;
@@ -15745,47 +15798,279 @@ window.impBkSave = async function(){
       ${creditFooter()}`;
   };
 
+  // ===== [NEW] ট্র্যাকার: সাজানো কার্ড · তারিখ/অধ্যায় অনুযায়ী গ্রুপ · শিক্ষকের নিজের মন্তব্য · আজকের HW প্যানেল =====
+  function trkInjectCss(){
+    if(document.getElementById('trkCss')) return;
+    const st = document.createElement('style'); st.id = 'trkCss';
+    st.textContent = `
+.trk-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 4px;}
+.trk-tile{border:1.5px solid var(--paper-edge);border-radius:12px;padding:10px 4px;text-align:center;background:#fff;cursor:pointer;font-family:inherit;color:inherit;}
+.trk-tile b{display:block;font-size:20px;line-height:1.25;}
+.trk-tile span{font-size:12px;color:var(--pencil);}
+.trk-tile.on{border-color:var(--ink);background:var(--ink);color:#fff;}
+.trk-tile.on span{color:#dfe6f3;}
+.trk-seg{display:flex;gap:6px;margin:10px 0 0;}
+.trk-seg button{flex:1;padding:8px 6px;font-size:13px;border-radius:9px;border:1px solid var(--paper-edge);background:#fff;cursor:pointer;font-family:inherit;color:inherit;}
+.trk-seg button.on{background:#EEF3F8;border-color:var(--ink);font-weight:700;}
+.trk-day{display:flex;align-items:center;gap:8px;margin:16px 0 8px;font-weight:700;font-size:14px;}
+.trk-day:after{content:'';flex:1;height:1px;background:var(--paper-edge);}
+.trk-day small{font-weight:500;color:var(--pencil);}
+.trk-item{border:1px solid var(--paper-edge);border-left:5px solid #94A3B8;border-radius:10px;padding:11px 13px;margin-bottom:10px;background:#fff;}
+.trk-item.k-cq{border-left-color:#3B82F6;}
+.trk-item.k-hw{border-left-color:#2F7D5A;}
+.trk-item.k-rev{border-left-color:#8B5CF6;}
+.trk-title{font-weight:700;font-size:14.5px;line-height:1.45;}
+.trk-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center;font-size:12px;color:var(--pencil);}
+.trk-chip{padding:2px 8px;border-radius:999px;background:#EEF3F8;font-size:12px;color:inherit;}
+.trk-score{padding:2px 9px;border-radius:999px;font-weight:700;font-size:12.5px;}
+.trk-s-hi{background:#E8F6EF;color:#1E6B47;}
+.trk-s-mid{background:#FFF3D6;color:#7B5A10;}
+.trk-s-lo{background:#FDE8E6;color:#A12B20;}
+.trk-q{margin-top:6px;font-size:13px;line-height:1.55;color:var(--pencil);}
+.trk-item details{margin-top:8px;}
+.trk-item summary{cursor:pointer;font-size:13px;font-weight:600;}
+.trk-ai{margin-top:6px;background:#F5F9FE;border-radius:8px;padding:9px 11px;white-space:pre-wrap;font-size:13.5px;line-height:1.6;}
+.trk-note{margin-top:8px;font-size:12.5px;color:var(--pencil);line-height:1.5;}
+.trk-fb{margin-top:10px;padding-top:10px;border-top:1px dashed var(--paper-edge);}
+.trk-fb-saved{background:#FFF8E6;border:1px solid #E9B949;border-radius:8px;padding:9px 11px;font-size:13.5px;line-height:1.6;white-space:pre-wrap;color:#4A3504;}
+.trk-fb textarea{width:100%;min-height:78px;box-sizing:border-box;margin-top:6px;}
+.trk-qp{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.trk-qp button{border:1px solid var(--paper-edge);background:#fff;border-radius:999px;padding:4px 10px;font-size:12px;cursor:pointer;font-family:inherit;color:inherit;}
+.trk-grp{border:1px solid var(--paper-edge);border-radius:12px;margin-bottom:12px;background:#FCFDFE;overflow:hidden;}
+.trk-grp>summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;justify-content:space-between;gap:10px;align-items:center;font-weight:700;font-size:14.5px;}
+.trk-grp>summary::-webkit-details-marker{display:none;}
+.trk-grp>summary small{font-weight:500;color:var(--pencil);}
+.trk-grp-body{padding:0 12px 4px;}
+body.dark .trk-tile,body.dark .trk-seg button,body.dark .trk-item,body.dark .trk-qp button,body.dark .trk-grp{background:#1E293B;color:#E2E8F0;}
+body.dark .trk-seg button.on{background:#2B3A55;}
+body.dark .trk-chip{background:#2B3A55;}
+body.dark .trk-ai{background:#1B2A44;}
+body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
+`;
+    document.head.appendChild(st);
+  }
+
+  const KMAP = { cq:{ ic:'✍️', lb:'CQ' }, hw:{ ic:'📚', lb:'HW' }, rev:{ ic:'🔁', lb:'রিভিশন' } };
+  const QP = ['👍 খুব ভালো হয়েছে', '✍️ স্টেপগুলো আরও পরিষ্কার লেখো', '🔁 আবার চেষ্টা করো', '📖 থিওরিটা আবার পড়ো', '⚠️ ইউনিট/চিহ্নে ভুল আছে', '📸 খাতার ছবি আরও পরিষ্কার দাও'];
+  const bnN = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  function pctOf(it){ const v = (it.percent !== null && it.percent !== undefined) ? it.percent : it.pct; return (v === null || v === undefined || v === '') ? null : Number(v); }
+  function scoreCls(p){ return p >= 80 ? 'trk-s-hi' : (p >= 50 ? 'trk-s-mid' : 'trk-s-lo'); }
+  function scoreChip(it){
+    if(it.kind === 'cq' && it.aiFailed) return '<span class="trk-chip">⏳ AI চেক করেনি</span>';
+    if(it.kind === 'cq') return `<span class="trk-score ${scoreCls(it.percent)}">${it.marks}/${it.max} · ${it.percent}%</span>`;
+    const p = pctOf(it);
+    if(p !== null && !isNaN(p)) return `<span class="trk-score ${scoreCls(p)}">${p}%</span>`;
+    if(it.status) return `<span class="trk-chip">${escapeHtml(it.status)}</span>`;
+    if(it.detail) return `<span class="trk-chip">${escapeHtml(String(it.detail).replace(/<[^>]*>/g, ''))}</span>`;
+    return '';
+  }
+  function addDays(ds, n){ const x = new Date(ds + 'T12:00:00'); x.setDate(x.getDate() + n); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); }
+  function dayLabel(d){
+    const t = window.__trkToday || todayStr();
+    if(d === t) return 'আজ';
+    if(d === addDays(t, -1)) return 'গতকাল';
+    return bnDate(d) || 'তারিখ নেই';
+  }
+  // একই প্রশ্ন একই দিনে একই ফলাফলে দুবার জমা হলে একটা কার্ডে (×২) দেখাই
+  function dedupe(list){
+    const seen = {}, out = [];
+    list.forEach(it => {
+      const k = [it.slug || '', it.kind, it.title, it.date, pctOf(it), it.detail || '', it.status || ''].join('|');
+      if(seen[k] !== undefined){ out[seen[k]].dupN = (out[seen[k]].dupN || 1) + 1; return; }
+      seen[k] = out.length; out.push(Object.assign({}, it));
+    });
+    return out;
+  }
+
+  // ---- শিক্ষকের মন্তব্য ----
+  async function trkTeacherPost(action, params){
+    try{
+      const r = await fetch(SCRIPT_URL, { method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action: action, tkey: TEACHER_PASSWORD }, params)) });
+      return JSON.parse(await r.text());
+    }catch(e){ return { status:'error', message:'network' }; }
+  }
+  function fbHtml(it, idx){
+    if(!it.fkey) return '';
+    const has = it.tfb && it.tfb.note;
+    return `<div class="trk-fb" id="trkfb_${idx}">
+      ${has ? `<div class="trk-fb-saved">💬 <b>শিক্ষকের মন্তব্য:</b> ${escapeHtml(it.tfb.note)}</div>` : ''}
+      <button type="button" class="btn btn-outline" style="margin-top:${has ? 6 : 0}px; padding:6px 12px; font-size:12.5px;" onclick="trkFbOpen(${idx})">${has ? '✏️ মন্তব্য বদলাও' : '💬 নিজে মন্তব্য লেখো'}</button>
+      <div id="trkfbEd_${idx}" style="display:none;"></div></div>`;
+  }
+  window.trkFbOpen = function(idx){
+    const it = (window.__trkItems || [])[idx]; if(!it) return;
+    const box = document.getElementById('trkfbEd_' + idx); if(!box) return;
+    if(box.style.display !== 'none'){ box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    const has = it.tfb && it.tfb.note;
+    box.innerHTML = `<div class="trk-qp">${QP.map((t, i) => `<button type="button" onclick="trkFbQuick(${idx},${i})">${t}</button>`).join('')}</div>
+      <textarea id="trkfbTa_${idx}" placeholder="এই ছাত্রের জন্য মন্তব্য লেখো…">${escapeHtml(has ? it.tfb.note : '')}</textarea>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <button type="button" class="btn btn-primary" style="padding:8px 16px;" onclick="trkFbSave(${idx})">💾 সেভ করো</button>
+        ${has ? `<button type="button" class="btn btn-outline" style="padding:8px 14px;" onclick="trkFbDel(${idx})">🗑 মুছে দাও</button>` : ''}
+      </div>
+      <div class="trk-note">ছাত্র নিজের HW পাতার "💬 শিক্ষকের মন্তব্য" থেকে এটা দেখতে পাবে।</div>`;
+  };
+  window.trkFbQuick = function(idx, i){
+    const ta = document.getElementById('trkfbTa_' + idx); if(!ta) return;
+    ta.value = (ta.value ? ta.value.replace(/\s+$/, '') + '\n' : '') + QP[i]; ta.focus();
+  };
+  async function trkFbDo(idx, note){
+    const it = (window.__trkItems || [])[idx]; if(!it) return;
+    toast('সেভ হচ্ছে...');
+    const res = await trkTeacherPost('trkFbSave', { fkey: it.fkey, slug: it.slug || '', title: it.title || '', note: note });
+    if(!res || res.status !== 'success'){ toast('সেভ হয়নি — নতুন Code.gs ডিপ্লয় করেছো তো? আবার চেষ্টা করো'); return; }
+    it.tfb = note ? { note: note, at: res.at || '' } : null;
+    const el = document.getElementById('trkfb_' + idx);
+    if(el) el.outerHTML = fbHtml(it, idx);
+    toast(note ? '✅ মন্তব্য সেভ হয়েছে' : 'মন্তব্য মুছে ফেলা হয়েছে');
+  }
+  window.trkFbSave = function(idx){
+    const ta = document.getElementById('trkfbTa_' + idx); const v = ta ? ta.value.trim() : '';
+    if(!v){ toast('আগে কিছু লেখো'); return; }
+    trkFbDo(idx, v);
+  };
+  window.trkFbDel = function(idx){ if(confirm('এই মন্তব্য মুছে ফেলবে?')) trkFbDo(idx, ''); };
+
+  // ---- একটা কার্ড ----
+  function trkCard(it, idx, opts){
+    opts = opts || {};
+    const k = KMAP[it.kind] || { ic:'•' };
+    const nm = (opts.showName && it.name) ? `<span class="trk-chip" style="background:#E8EEFB; font-weight:700;">👤 ${escapeHtml(it.name)}</span>` : '';
+    const dup = it.dupN > 1 ? `<span class="trk-chip">🔁 ${bnN(it.dupN)} বার জমা</span>` : '';
+    const img = it.url ? `<a class="trk-chip" href="${escapeHtml(it.url)}" target="_blank" rel="noopener" style="text-decoration:none;">🖼 খাতা/ছবি দেখো</a>` : '';
+    const q = it.qText ? `<details><summary>❓ প্রশ্ন দেখো</summary><div class="trk-q">${escapeHtml(it.qText)}</div></details>` : '';
+    const ai = it.feedback ? `<details><summary>🤖 AI-র মন্তব্য দেখো</summary><div class="trk-ai">${escapeHtml(it.feedback)}</div></details>` : '';
+    const rr = it.reviewReq ? `<div class="trk-note" style="color:#7B5A10;">🚩 ছাত্র রিভিউ চেয়েছে${it.reason ? ': ' + escapeHtml(it.reason) : ''}${it.resolved ? ' · ✅ নিষ্পত্তি হয়েছে' : ''}${it.tnote ? '<br>💬 শিক্ষকের উত্তর: ' + escapeHtml(it.tnote) : ''}</div>` : '';
+    const nr = it.noReply ? `<div class="trk-note">ℹ️ এই দিনের শুধু সংখ্যা জমা আছে — AI-র উত্তর/খাতার ছবি সেভ হয়নি।</div>` : '';
+    return `<div class="trk-item k-${it.kind}" id="trkc_${idx}">
+      <div class="trk-title">${k.ic} ${escapeHtml(it.title || '')}</div>
+      <div class="trk-chips">${nm}${it.tag ? `<span class="trk-chip">${escapeHtml(it.tag)}</span>` : ''}<span>${dayLabel(it.date)}</span>${scoreChip(it)}${dup}${img}</div>
+      ${q}${ai}${rr}${nr}${fbHtml(it, idx)}
+    </div>`;
+  }
+  function byDate(items, opts){
+    let html = '', cur = null, n = 0;
+    const counts = {}; items.forEach(it => { counts[it.date] = (counts[it.date] || 0) + 1; });
+    items.forEach((it, idx) => {
+      if(it.date !== cur){ cur = it.date; html += `<div class="trk-day">${dayLabel(cur)} <small>${bnN(counts[cur])}টা</small></div>`; }
+      html += trkCard(it, idx, opts); n++;
+    });
+    return html;
+  }
+  function groupName(it){
+    let g = String(it.title || '');
+    if(it.kind === 'hw' && g.indexOf(' › ') !== -1) g = g.split(' › ')[0];
+    else if(it.kind === 'cq' && g.indexOf(' — ') !== -1) g = g.split(' — ')[0];
+    else if(it.kind === 'rev' && g.indexOf(':') !== -1) g = g.split(':')[0];
+    return g || 'অন্যান্য';
+  }
+  function byGroup(items){
+    const G = {}, order = [];
+    items.forEach((it, idx) => {
+      const key = it.kind + '|' + groupName(it);
+      if(!G[key]){ G[key] = { kind: it.kind, name: groupName(it), list: [], last: 0 }; order.push(key); }
+      G[key].list.push({ it: it, idx: idx }); G[key].last = Math.max(G[key].last, it.ts || 0);
+    });
+    order.sort((a, b) => G[b].last - G[a].last);
+    return order.map((key, gi) => {
+      const g = G[key], ps = g.list.map(x => pctOf(x.it)).filter(p => p !== null && !isNaN(p));
+      const avg = ps.length ? Math.round(ps.reduce((a, b) => a + b, 0) / ps.length) : null;
+      const k = KMAP[g.kind] || { ic:'•' };
+      return `<details class="trk-grp" ${order.length <= 3 ? 'open' : ''}>
+        <summary><span>${k.ic} ${escapeHtml(g.name)} <small>· ${bnN(g.list.length)}টা</small></span>${avg !== null ? `<span class="trk-score ${scoreCls(avg)}">গড় ${avg}%</span>` : ''}</summary>
+        <div class="trk-grp-body">${g.list.map(x => trkCard(x.it, x.idx)).join('')}</div></details>`;
+    }).join('');
+  }
+
+  // ---- শিক্ষক: ছাত্রের বিস্তারিত (নতুন সাজানো) ----
+  window.trkSetView = function(v){ window.__trkView = v; if(window.__trkStu){ window.__trkStu.view = v; trkDrawStudent(); } };
+  function trkDrawStudent(){
+    const S = window.__trkStu; if(!S) return;
+    const r = S.r, nm = S.name, kind = S.kind, view = S.view;
+    const total = r.counts.cq + r.counts.hw + r.counts.rev;
+    const go2 = k => `go('teacherTrackerStudent',{slug:'${escapeHtml(S.slug)}', name:'${escapeHtml(nm).replace(/'/g, '')}', kind:'${k}'})`;
+    const tile = (k, ic, label, n) => `<button type="button" class="trk-tile ${kind === k ? 'on' : ''}" onclick="${go2(k)}"><b>${bnN(n)}</b><span>${ic} ${label}</span></button>`;
+    const items = dedupe(r.items.map(x => Object.assign({}, x, { slug: S.slug, name: nm })));
+    window.__trkItems = items;
+    const body = !items.length ? '<div class="card"><div class="empty-state">এই ধরনের কিছু এখনো জমা পড়েনি।</div></div>'
+      : (view === 'group' ? byGroup(items) : byDate(items));
+    app.innerHTML = `
+      ${header('ছাত্র ট্র্যাকার')}
+      <div style="margin:0 0 12px 0;"><button type="button" class="btn btn-outline" style="padding:8px 14px; font-size:13.5px;" onclick="go('teacherTracker')">← সব ছাত্রের তালিকা</button></div>
+      <div class="card">
+        <h2 style="margin-bottom:4px;">${escapeHtml(nm)}</h2>
+        <div class="meta" style="margin:0;">📈 Vorkuta শেয়ার: <b>${r.shares.balance}</b> <span class="meta">(আয় ${r.shares.earned} − কাটা ${r.shares.penalty})</span></div>
+        <div class="trk-tiles">${tile('all', '📦', 'সব', total)}${tile('cq', '✍️', 'CQ', r.counts.cq)}${tile('hw', '📚', 'HW', r.counts.hw)}${tile('rev', '🔁', 'রিভিশন', r.counts.rev)}</div>
+        <div class="trk-seg"><button type="button" class="${view === 'date' ? 'on' : ''}" onclick="trkSetView('date')">📅 তারিখ অনুযায়ী</button><button type="button" class="${view === 'group' ? 'on' : ''}" onclick="trkSetView('group')">🗂 অধ্যায়/প্রশ্ন অনুযায়ী</button></div>
+      </div>
+      ${body}
+      <div class="center"><a class="link-back" onclick="go('teacherTracker')">← সব ছাত্রের তালিকায় ফিরে যাও</a></div>
+      ${creditFooter()}`;
+  }
   window.renderTeacherTrackerStudent = async function(slug, name, kind){
-    kind = kind || 'all';
+    kind = kind || 'all'; trkInjectCss();
     app.innerHTML = `${header('ছাত্র ট্র্যাকার')}<div class="card center">${escapeHtml(name || '')} — লোড হচ্ছে...</div>`;
     const r = await getJson('trkDetail', { slug: slug, kind: kind });
     if(!r || r.status !== 'success'){
       app.innerHTML = `${header('ছাত্র ট্র্যাকার')}<div class="card center"><p class="hint" style="color:var(--red);">লোড করা যায়নি।</p></div><div class="center"><a class="link-back" onclick="go('teacherTracker')">← ফিরে যাও</a></div>`;
       return;
     }
-    const nm = r.name || name || slug;
-    const tab = (k, label, n)=> `<button class="btn ${kind === k ? 'btn-primary' : 'btn-outline'}" style="padding:8px 12px; font-size:13px;" onclick="go('teacherTrackerStudent',{slug:'${escapeHtml(slug)}', name:'${escapeHtml(nm).replace(/'/g, '')}', kind:'${k}'})">${label}${n !== null ? ' (' + n + ')' : ''}</button>`;
-    const total = r.counts.cq + r.counts.hw + r.counts.rev;
-    const rows = r.items.map(it=>{
-      let res = '';
-      if(it.kind === 'cq') res = it.aiFailed ? '⏳ AI চেক করেনি' : `<b>${it.marks}/${it.max}</b> নম্বর <span class="meta">(${it.percent}%)</span>`;
-      else if(it.kind === 'hw') res = (it.percent !== null && it.percent !== undefined) ? `<b>${it.percent}%</b>` : escapeHtml(it.status || 'জমা হয়েছে');
-      else res = escapeHtml(it.detail || '');
-      const icon = it.kind === 'cq' ? '✍️' : (it.kind === 'hw' ? '📚' : '🔁');
-      if(it.rawDetail) res = it.detail || '';   // সার্ভার থেকে আসা সাজানো টেক্সট (শুধু % বোল্ড)
-      const qBox = it.qText ? `<div class="meta" style="margin:6px 0 0 0;">❓ ${escapeHtml(it.qText)}</div>` : '';
-      const fbBox = it.feedback ? `<details style="margin-top:6px;"><summary style="cursor:pointer; font-size:13px; font-weight:600;">🤖 AI-র মন্তব্য দেখো</summary><div class="say" style="margin-top:6px; white-space:pre-wrap; font-size:13.5px; line-height:1.55;">${escapeHtml(it.feedback)}</div></details>` : '';
-      const revBox = it.reviewReq ? `<div class="meta" style="margin:6px 0 0 0; color:#7B5A10;">🚩 ছাত্র রিভিউ চেয়েছে${it.reason ? ': ' + escapeHtml(it.reason) : ''}${it.resolved ? ' · ✅ নিষ্পত্তি হয়েছে' : ''}${it.tnote ? '<br>💬 শিক্ষকের উত্তর: ' + escapeHtml(it.tnote) : ''}</div>` : '';
-      const noRp = it.noReply ? `<div class="meta" style="margin:6px 0 0 0;">ℹ️ এই রেকর্ডে AI-র উত্তর/খাতার ছবি সেভ ছিল না (এখন থেকে নতুন CQ প্র্যাকটিসে সেভ হবে)</div>` : '';
-      return `<div class="review-block">
-        <div class="q-text" style="font-size:14px;">${icon} ${escapeHtml(it.title || '')} ${it.tag ? `<span class="q-tag">${escapeHtml(it.tag)}</span>` : ''}</div>
-        <div class="meta" style="margin:2px 0 0 0;">${bnDate(it.date)} · ${res}${it.url ? ` · <a href="${escapeHtml(it.url)}" target="_blank" rel="noopener">খাতা/ছবি দেখো</a>` : ''}</div>
-        ${qBox}${fbBox}${revBox}${noRp}
-      </div>`;
-    }).join('');
-    app.innerHTML = `
-      ${header('ছাত্র ট্র্যাকার')}
-      <div style="margin:0 0 12px 0;"><button type="button" class="btn btn-outline" style="padding:8px 14px; font-size:13.5px;" onclick="go('teacherTracker')">← সব ছাত্রের তালিকা</button></div>
-      <div class="card">
-        <h2>${escapeHtml(nm)}</h2>
-        <div class="meta" style="margin:0 0 10px 0;">📈 Vorkuta শেয়ার: <b>${r.shares.balance}</b> <span class="meta">(আয় ${r.shares.earned} − কাটা ${r.shares.penalty})</span> · মোট জমা: ${total}টা</div>
-        <div style="display:flex; flex-wrap:wrap; gap:8px;">
-          ${tab('all', 'সব', total)}${tab('cq', '✍️ CQ', r.counts.cq)}${tab('hw', '📚 HW', r.counts.hw)}${tab('rev', '🔁 রিভিশন', r.counts.rev)}
-        </div>
-      </div>
-      <div class="card">${rows || '<div class="empty-state">এই ধরনের কিছু এখনো জমা পড়েনি।</div>'}</div>
-      <div class="center"><a class="link-back" onclick="go('teacherTracker')">← সব ছাত্রের তালিকায় ফিরে যাও</a></div>
-      ${creditFooter()}`;
+    window.__trkToday = todayStr();
+    window.__trkStu = { slug: slug, name: r.name || name || slug, kind: kind, r: r, view: window.__trkView || 'date' };
+    trkDrawStudent();
+  };
+
+  // ---- শিক্ষক: Daily HW পেজের ওপরে "আজকের HW" প্যানেল (অ্যাসাইন করা + নিজের Daily HW একসাথে) ----
+  window.trkLoadHwToday = async function(){
+    trkInjectCss();
+    const box = document.getElementById('hwTodayBox'); if(!box) return;
+    box.innerHTML = '<p class="hint">আজকের জমা লোড হচ্ছে...</p>';
+    const r = await trkTeacherPost('trkHwFeed', { today: todayStr() });
+    const b2 = document.getElementById('hwTodayBox'); if(!b2) return;
+    if(!r || r.status !== 'success'){
+      b2.innerHTML = `<h2>📅 আজকের HW</h2><p class="hint" style="color:var(--red);">লোড করা যায়নি — নতুন Code.gs ডিপ্লয় করেছো তো?</p><button type="button" class="btn btn-outline" onclick="trkLoadHwToday()">🔄 আবার চেষ্টা করো</button>`;
+      return;
+    }
+    window.__trkFeed = r; window.__trkToday = r.today;
+    if(!window.__trkFeedRange) window.__trkFeedRange = 'today';
+    trkDrawHwToday();
+  };
+  window.trkSetFeedRange = function(v){ window.__trkFeedRange = v; trkDrawHwToday(); };
+  function trkDrawHwToday(){
+    const r = window.__trkFeed, box = document.getElementById('hwTodayBox'); if(!r || !box) return;
+    const rng = window.__trkFeedRange || 'today', from7 = addDays(r.today, -6);
+    let items = r.items.filter(it => rng === 'today' ? it.date === r.today : (rng === 'week' ? it.date >= from7 : true));
+    items = dedupe(items); window.__trkItems = items;
+    const chip = (s, ok) => `<span class="trk-chip" style="${ok ? 'background:#E8F6EF; color:#1E6B47; font-weight:700;' : ''}">${ok ? '✅' : '⏳'} ${escapeHtml(s.name)}${s.n > 1 ? ' ×' + bnN(s.n) : ''}</span>`;
+    const seg = (v, label) => `<button type="button" class="${rng === v ? 'on' : ''}" onclick="trkSetFeedRange('${v}')">${label}</button>`;
+    box.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;"><h2 style="margin:0;">📅 আজকের HW</h2><button type="button" class="btn btn-outline" style="padding:6px 12px; font-size:13px;" onclick="trkLoadHwToday()">🔄 রিফ্রেশ</button></div>
+      <p class="hint" style="margin:8px 0;">অ্যাসাইন করা HW আর নিজের Daily HW — দুটোই এখানে আসে। ✅ ${bnN(r.done.length)} জন জমা দিয়েছে · ⏳ ${bnN(r.missing.length)} জন এখনো দেয়নি</p>
+      <div class="trk-chips" style="margin-top:0;">${r.done.map(s => chip(s, true)).join('')}${r.missing.map(s => chip(s, false)).join('')}</div>
+      <div class="trk-seg">${seg('today', 'আজ')}${seg('week', 'গত ৭ দিন')}${seg('all', 'সব (সর্বশেষ ' + bnN(r.items.length) + 'টা)')}</div>
+      ${items.length ? byDate(items, { showName: true }) : '<div class="empty-state" style="margin-top:12px;">এই সময়ে কেউ HW জমা দেয়নি।</div>'}`;
+  }
+
+  // ---- ছাত্র: শিক্ষকের দেওয়া মন্তব্য দেখা ----
+  window.renderMyTeacherFb = async function(){
+    const stud = getLoggedStudent(); if(!stud){ go('studentAuth'); return; }
+    trkInjectCss();
+    app.innerHTML = `${header('শিক্ষকের মন্তব্য')}<div class="card center">লোড হচ্ছে...</div>`;
+    const res = await postToScriptRaw('trkFbMine', { slug: stud.slug, stok: stud.stok || '' });
+    if(!res || res.status !== 'success'){
+      app.innerHTML = `${header('শিক্ষকের মন্তব্য')}<div class="card center"><p class="hint" style="color:var(--red);">লোড করা যায়নি, একটু পরে আবার চেষ্টা করো।</p></div><div class="center"><a class="link-back" onclick="go('hwHub')">← HW-তে ফিরে যাও</a></div>`;
+      return;
+    }
+    window.__trkToday = todayStr();
+    const rows = (res.items || []).map(it => `<div class="trk-item k-${it.kind}">
+      <div class="trk-title">${(KMAP[it.kind] || { ic:'•' }).ic} ${escapeHtml(it.title || '')}</div>
+      <div class="trk-chips">${it.tag ? `<span class="trk-chip">${escapeHtml(it.tag)}</span>` : ''}<span>${dayLabel(it.date)}</span></div>
+      <div class="trk-fb-saved" style="margin-top:8px;">💬 ${escapeHtml(it.note)}</div></div>`).join('');
+    app.innerHTML = `${header('শিক্ষকের মন্তব্য')}
+      <div class="card"><h2>💬 শিক্ষকের মন্তব্য</h2><p class="hint">শিক্ষক তোমার HW, CQ বা রিভিশনে নিজে যা লিখেছেন সব এখানে (নতুন আগে)।</p></div>
+      ${rows || '<div class="card"><div class="empty-state">এখনো কোনো মন্তব্য নেই।</div></div>'}
+      <div class="center"><a class="link-back" onclick="go('hwHub')">← HW-তে ফিরে যাও</a></div>${creditFooter()}`;
   };
 })();
 </script>
@@ -16785,7 +17070,7 @@ let currentActiveStoryId = null;
 let storyTimer = null;
 
 function renderStoriesCarouselHtml(){
-  const stories = getStudyStories();
+  const stories = (window.getVisibleStories_ ? getVisibleStories_() : getStudyStories());
   const stud = getLoggedStudent();
   const isTeacher = !!currentTeacher;
   const myAvatar = isTeacher ? '👨‍🏫' : (stud ? '🎓' : '🧑‍🎓');
@@ -16821,7 +17106,7 @@ function renderStoriesCarouselHtml(){
 }
 
 window.openStoryViewer = function(storyId){
-  const stories = getStudyStories();
+  const stories = (window.getVisibleStories_ ? getVisibleStories_() : getStudyStories());
   const index = stories.findIndex(s => s.id === storyId);
   if(index === -1) return;
   const story = stories[index];
@@ -16913,7 +17198,7 @@ window.closeStoryViewer = function(){
 };
 
 window.nextStory = function(currentIndex){
-  const stories = getStudyStories();
+  const stories = (window.getVisibleStories_ ? getVisibleStories_() : getStudyStories());
   if(currentIndex < stories.length - 1){
     openStoryViewer(stories[currentIndex + 1].id);
   } else {
@@ -16922,7 +17207,7 @@ window.nextStory = function(currentIndex){
 };
 
 window.prevStory = function(currentIndex){
-  const stories = getStudyStories();
+  const stories = (window.getVisibleStories_ ? getVisibleStories_() : getStudyStories());
   if(currentIndex > 0){
     openStoryViewer(stories[currentIndex - 1].id);
   }
@@ -18377,7 +18662,7 @@ function renderCommunityLounge(){
     ${renderCommunityFeedComponent()}
 
     <div class="center" style="margin-top:16px;">
-      <a class="link-back" onclick="go(getLoggedStudent()?'studentDashboard':'landing')">← ফিরে যাও</a>
+      <a class="link-back" onclick="go(currentTeacher?'teacherDashboard':(getLoggedStudent()?'studentDashboard':'landing'))">← ফিরে যাও</a>
     </div>
     ${creditFooter()}
   `;
@@ -21564,7 +21849,7 @@ window.initActiveChatsFirestoreSync = function(){
 
 function getChatListContentHtml(stud, isTeacher){
   const me = getCurrentUserIdentity();
-  const allConvs = getActiveConversations();
+  const allConvs = (window.vkFilterConvs ? vkFilterConvs(getActiveConversations()) : getActiveConversations());
 
   const activeConvs = allConvs.filter(c => !c.isArchived);
   const archivedConvs = allConvs.filter(c => !!c.isArchived);
@@ -21866,7 +22151,10 @@ window.openNewChatPickerModal = async function(){
   Object.values(allProfiles).forEach(p => { if(p && p.slug) peersMap[p.slug] = { ...p }; });
   try{ (await fbListUserProfiles(80)).forEach(p => { peersMap[p.slug] = { ...(peersMap[p.slug] || {}), ...p }; }); }catch(e){}
   Object.values(peersMap).forEach(p => { p.role = p.role || (p.isTeacher ? 'teacher' : 'student'); p.badge = p.badge || (p.isTeacher ? 'verified_teacher' : (p.isVerified ? 'verified_private' : 'public_student')); });
-  const availablePeers = Object.values(peersMap).filter(p => p.slug !== me.slug);
+  let availablePeers = Object.values(peersMap).filter(p => p.slug !== me.slug);
+  if(window.vkPrivacyActive && vkPrivacyActive()){
+    availablePeers = vkPickerPeers(availablePeers);
+  }
 
   const old = document.getElementById('newChatPickerModalOverlay');
   if(old) old.remove();
@@ -21926,7 +22214,7 @@ window.openNewChatPickerModal = async function(){
         </div>
 
         <!-- Custom Username Direct Connect -->
-        <div style="margin-top:16px; padding-top:12px; border-top:1px dashed var(--paper-edge);">
+        <div style="margin-top:16px; padding-top:12px; border-top:1px dashed var(--paper-edge); ${window.vkPrivacyActive && vkPrivacyActive() ? 'display:none;' : ''}">
           <div style="font-size:12px; font-weight:600; color:var(--ink); margin-bottom:6px;">💡 নির্দিষ্ট কোনো শিক্ষার্থীর ইউজারনেম দিয়ে চ্যাট করতে চান?</div>
           <div style="display:flex; gap:6px;">
             <input type="text" id="customPeerSlugInput" placeholder="যেমন: student_sakib" style="margin-bottom:0; font-size:12.5px; padding:7px 10px; border-radius:8px; flex:1;">
@@ -21966,7 +22254,7 @@ window.openChatInboxModal = function(){
   // If community is accessible, redirecting to the dedicated Chat List view is the best experience,
   // but we also keep this quick floating modal for access from dashboard hero buttons!
   const me = getCurrentUserIdentity();
-  const allConvs = getActiveConversations();
+  const allConvs = (window.vkFilterConvs ? vkFilterConvs(getActiveConversations()) : getActiveConversations());
 
   const old = document.getElementById('chatInboxModalOverlay');
   if(old) old.remove();
@@ -25650,6 +25938,583 @@ window.showAndroidChromeInstallGuide = function(){
   window.installPwa = async function(){ if(deferredPwaPrompt) return _ip(); showAndroidChromeInstallGuide(); };
 })();
 
+// ============================================================================
+// ১) ডার্ক মোডে পড়া যায় না এমন রং ঠিক করা  ২) Treat কার্ড (ভিসা কার্ড স্টাইল)  ৩) ভয়েস কমান্ড
+// ============================================================================
+
+// ---------- ১) ডার্ক মোড: হালকা ইনলাইন ব্যাকগ্রাউন্ড ও গাঢ় লেখা রানটাইমে ঠিক করা ----------
+(function(){
+  function parse(str){ const m = String(str||'').match(/rgba?\(([^)]+)\)/); if(!m) return null; const p = m[1].split(',').map(s => parseFloat(s)); return { r:p[0], g:p[1], b:p[2], a: p.length > 3 ? p[3] : 1 }; }
+  function lum(c){ return (0.2126*c.r + 0.7152*c.g + 0.0722*c.b) / 255; }
+  function effBgLum(el){
+    for(let n = el.parentElement; n; n = n.parentElement){
+      const c = parse(getComputedStyle(n).backgroundColor);
+      if(c && c.a > 0.6) return lum(c);
+    }
+    return 0.1; // body গাঢ়
+  }
+  function restoreLight(){
+    document.querySelectorAll('[data-dk-orig]').forEach(el => { el.style.color = el.getAttribute('data-dk-orig') === '-' ? '' : el.getAttribute('data-dk-orig'); el.removeAttribute('data-dk-orig'); });
+    document.querySelectorAll('.dk-lite').forEach(el => el.classList.remove('dk-lite'));
+  }
+  window.fixDarkColors = function(){
+    if(!document.body.classList.contains('dark')){ restoreLight(); return; }
+    const roots = document.querySelectorAll('#app, body > div[class*="overlay"], body > div[id*="Overlay"], .lib-panel, #directChatDrawer');
+    const els = [];
+    roots.forEach(r => { els.push(r); r.querySelectorAll('*').forEach(e => els.push(e)); });
+    // পাস ১: হালকা ব্যাকগ্রাউন্ড → গাঢ়
+    els.forEach(el => {
+      if(el.tagName === 'IMG' || el.tagName === 'SVG' || el.tagName === 'VIDEO') return;
+      const bg = parse(getComputedStyle(el).backgroundColor);
+      if(bg && bg.a > 0.6 && lum(bg) > 0.8) el.classList.add('dk-lite');
+    });
+    // পাস ২: গাঢ় লেখা গাঢ় জমিনে → হালকা করা
+    els.forEach(el => {
+      let hasText = false;
+      for(const n of el.childNodes){ if(n.nodeType === 3 && n.nodeValue.trim()){ hasText = true; break; } }
+      if(!hasText) return;
+      const cs = getComputedStyle(el), c = parse(cs.color);
+      if(!c || lum(c) >= 0.42) return;
+      const own = parse(cs.backgroundColor);
+      const bl = (own && own.a > 0.6) ? lum(own) : effBgLum(el);
+      if(bl > 0.4) return;
+      if(!el.hasAttribute('data-dk-orig')) el.setAttribute('data-dk-orig', el.style.color || '-');
+      const mix = v => Math.round(v + (255 - v) * 0.62);
+      el.style.setProperty('color', `rgb(${mix(c.r)},${mix(c.g)},${mix(c.b)})`, 'important');
+    });
+  };
+  let t = null, last = 0;
+  function schedule(){
+    if(!document.body.classList.contains('dark')) return;
+    const wait = Math.max(120, 450 - (Date.now() - last));
+    clearTimeout(t); t = setTimeout(() => { last = Date.now(); try{ fixDarkColors(); }catch(e){} }, wait);
+  }
+  new MutationObserver(schedule).observe(document.body, { childList:true, subtree:true });
+  const _tdm = window.toggleDarkMode;
+  window.toggleDarkMode = function(){ const r = _tdm.apply(this, arguments); setTimeout(() => { try{ fixDarkColors(); }catch(e){} }, 60); return r; };
+  setTimeout(() => { try{ fixDarkColors(); }catch(e){} }, 400);
+})();
+
+// ---------- ২) Treat কার্ড ----------
+function treatCardNumber(slug){
+  let h = 7; const s = String(slug || 'student');
+  for(let i = 0; i < s.length; i++) h = (h * 131 + s.charCodeAt(i)) % 99991;
+  return String(1000 + (h % 9000));
+}
+window.treatCardHtml = function(name, balance, slug){
+  const last4 = treatCardNumber(slug);
+  const bnNum = String(Number(balance) || 0).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  return `
+    <div class="treat-card" title="তোমার Treat Coupon কার্ড">
+      <div class="treat-glow"></div>
+      <div class="treat-top">
+        <div class="treat-brand">🎁 TREAT CARD</div>
+        <svg class="treat-wave" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="2" stroke-linecap="round"><path d="M8 8c2 2.5 2 5.5 0 8"/><path d="M12 5c3.5 4 3.5 10 0 14"/><path d="M16 3c5 5.5 5 12.5 0 18"/></svg>
+      </div>
+      <div class="treat-chip"><i></i><i></i><i></i><i></i></div>
+      <div class="treat-number">••••&nbsp;&nbsp;••••&nbsp;&nbsp;••••&nbsp;&nbsp;${last4}</div>
+      <div class="treat-mid">
+        <div><div class="treat-lbl">ব্যালেন্স</div><div class="treat-bal">৳ ${bnNum}</div></div>
+        <div class="treat-logo">পরীক্ষার<br><b>খাতা</b></div>
+      </div>
+      <div class="treat-bottom">
+        <div><div class="treat-lbl">কার্ডধারী</div><div class="treat-name">${escapeHtml(name || '')}</div></div>
+        <div style="text-align:end;"><div class="treat-lbl">ধরন</div><div class="treat-name">REWARD</div></div>
+      </div>
+    </div>`;
+};
+(function(){
+  const _rcb = renderCouponBalance;
+  renderCouponBalance = function(){
+    _rcb.apply(this, arguments);
+    try{
+      const st = document.querySelector('#app .stamp');
+      if(st && state && state.screen === 'couponBalance'){
+        st.outerHTML = treatCardHtml(state.name, state.balance, state.slug);
+      }
+    }catch(e){ console.warn('treat card', e); }
+  };
+})();
+
+// ---------- ৩) ভয়েস কমান্ড (পুরো অ্যাপ বলে চালানো) ----------
+const VOICE_CMDS = [
+  { label:'ড্যাশবোর্ড / হোম', k:['ড্যাশবোর্ড','হোম','মূল পাতা','প্রথম পাতা','dashboard','home'], run:() => go(getLoggedStudent() ? 'studentDashboard' : 'landing') },
+  { label:'স্টাডি', k:['স্টাডি হাব','পড়াশোনা','স্টাডি','study'], run:() => go('studyHub') },
+  { label:'পরীক্ষা', k:['পরীক্ষা হাব','পরীক্ষা','exam'], run:() => go('examHub') },
+  { label:'প্র্যাকটিস', k:['প্র্যাকটিস','অনুশীলন','practice'], run:() => go('practiceList') },
+  { label:'লিখিত / সৃজনশীল', k:['লিখিত পরীক্ষা','সৃজনশীল পরীক্ষা','লিখিত','সৃজনশীল','সিকিউ','written'], run:() => go('writtenEntry') },
+  { label:'আগের পরীক্ষা', k:['আগের পরীক্ষা','পাস্ট','past exam'], run:() => go('pastExams') },
+  { label:'রিওয়ার্ড', k:['রিওয়ার্ড','পুরস্কার','reward'], run:() => go('rewardHub') },
+  { label:'Treat কুপন', k:['ট্রিট','কুপন','কার্ড','coupon'], run:() => openMyCoupons('couponBalance') },
+  { label:'শপ', k:['শপ','দোকান','shop'], run:() => openMyCoupons('shopList') },
+  { label:'Vorkuta শেয়ার', k:['ভরকুটা','ভোরকুটা','শেয়ার','vorkuta'], run:() => go('vorkuta') },
+  { label:'ক্যালেন্ডার / উপস্থিতি', k:['ক্যালেন্ডার','উপস্থিতি','হাজিরা','calendar'], run:() => go('myCal') },
+  { label:'ভুল খাতা', k:['ভুল খাতা','ভুলের খাতা','mistake'], run:() => go('mistakeBook') },
+  { label:'আমার অগ্রগতি', k:['অগ্রগতি','প্রোগ্রেস','progress'], run:() => go('progressHub') },
+  { label:'ডাউট জিজ্ঞেস', k:['ডাউট','প্রশ্ন জিজ্ঞেস','doubt'], run:() => go('doubtEntry') },
+  { label:'স্টাডি আড্ডা', k:['আড্ডা','কমিউনিটি','সোশ্যাল','community'], run:() => go('communityLounge') },
+  { label:'চ্যাট / মেসেজ', k:['চ্যাট','মেসেজ','chat'], run:() => { go('communityLounge'); setTimeout(() => { try{ setCommunityViewMode('chats'); }catch(e){} }, 150); } },
+  { label:'গুরুত্বপূর্ণ টপিক', k:['টপিক','গুরুত্বপূর্ণ','topic'], run:() => go('topicsSubject') },
+  { label:'ক্লাস নোট', k:['নোট','স্লাইড','note'], run:() => go('notesGate') },
+  { label:'প্রশ্নোত্তর', k:['প্রশ্নোত্তর','সাধারণ জিজ্ঞাসা','faq'], run:() => go('faqList') },
+  { label:'শিক্ষক প্যানেল', k:['শিক্ষক','টিচার','teacher'], run:() => go(typeof currentTeacher !== 'undefined' && currentTeacher ? 'teacherDashboard' : 'teacherGate') },
+  { label:'ডার্ক / লাইট মোড', k:['ডার্ক','নাইট মোড','লাইট মোড','থিম','dark','theme'], run:() => toggleDarkMode() },
+  { label:'ডিপ ওয়ার্ক (ফোকাস)', k:['ডিপ ওয়ার্ক','ফোকাস','টাইমার','focus'], run:() => { const s = getLoggedStudent(); openDeepWorkModal(s ? s.slug : ''); } },
+  { label:'পেছনে যাও', k:['পেছনে','পিছনে','ফিরে যাও','back'], run:() => { if(typeof uniBackGo === 'function') uniBackGo(); else go('landing'); } },
+  { label:'পড়ে শোনাও', k:['পড়ে শোনাও','পড়ো','read aloud'], run:() => { const t = (document.getElementById('app') || {}).innerText || ''; if(typeof toggleReadAloud === 'function') toggleReadAloud(t.slice(0, 1800)); } },
+  { label:'লগআউট', k:['লগআউট','লগ আউট','বের হও','logout'], run:() => { if(confirm('লগআউট করতে চাও?')){ if(getLoggedStudent()) studentLogout(); else { currentTeacher = null; go('landing'); } } } },
+  { label:'কী কী বলতে পারি', k:['সাহায্য','কমান্ড','কী কী','help'], run:() => openVoiceHelp() }
+];
+// পরীক্ষা চলার সময়: অপশন বলা
+const VOICE_EXAM_OPTS = [
+  { keys:['১','এক','ক','অপশন ক','a','one','1'], ch:'1' }, { keys:['২','দুই','খ','অপশন খ','b','two','2'], ch:'2' },
+  { keys:['৩','তিন','গ','অপশন গ','c','three','3'], ch:'3' }, { keys:['৪','চার','ঘ','অপশন ঘ','d','four','4'], ch:'4' }
+];
+function vcNorm(s){
+  return String(s || '').toLowerCase().replace(/[.,!?।;:'"“”‘’()\-]/g, ' ')
+    .replace(/\b(খোলো|খুলো|দেখাও|দেখাও|যাও|চালু|করো|কর|দাও|চাই|যেতে|আমাকে|আমার|এ|তে|-এ)\b/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function vcKey(ch){ window.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true })); }
+window.handleVoiceText = function(raw){
+  const t = vcNorm(raw);
+  if(!t) return false;
+  // পরীক্ষার মধ্যে
+  if(state && state.screen === 'studentExam'){
+    const hit = VOICE_EXAM_OPTS.find(o => o.keys.some(k => t === k || t === 'অপশন ' + k || t === 'option ' + k));
+    if(hit){ vcKey(hit.ch); return true; }
+    if(/^(পরের|পরবর্তী|next)/.test(t)){ vcKey('Enter'); return true; }
+    if(/^(আগের|previous|back)/.test(t)){ vcKey('ArrowLeft'); return true; }
+    if(/জমা/.test(t)){ if(confirm('খাতা জমা দেবে?')) submitExam(false); return true; }
+  }
+  // সবচেয়ে লম্বা কিওয়ার্ড মিললে সেটাই
+  let best = null, bestLen = 0;
+  VOICE_CMDS.forEach(c => c.k.forEach(k => { const kk = k.toLowerCase(); if(t.includes(kk) && kk.length > bestLen){ best = c; bestLen = kk.length; } }));
+  if(best){ try{ best.run(); }catch(e){ console.warn(e); toast('এই কাজটা এখন করা গেল না'); } toast('🎙️ ' + best.label); return true; }
+  return false;
+};
+window.openVoiceHelp = function(){
+  const old = document.getElementById('voiceHelpOverlay'); if(old){ old.remove(); return; }
+  const ov = document.createElement('div'); ov.id = 'voiceHelpOverlay'; ov.className = 'about-overlay';
+  ov.onclick = e => { if(e.target === ov) ov.remove(); };
+  ov.innerHTML = `<div class="about-card" style="max-width:420px; text-align:start; max-height:84vh; overflow:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;"><h3 style="margin:0;">🎙️ ভয়েস কমান্ড</h3><button class="info-btn" onclick="document.getElementById('voiceHelpOverlay').remove()">✕</button></div>
+    <p class="hint">🎙️ বোতাম চেপে বাংলায় বলো। যেমন: <b>"পরীক্ষা"</b>, <b>"ভুল খাতা"</b>, <b>"চ্যাট"</b>। কোনো লেখার ঘরে ক্লিক করে 🎙️ চাপলে যা বলবে সেটা সেই ঘরে লেখা হবে।</p>
+    <p class="hint"><b>পরীক্ষার সময়:</b> "ক", "খ", "গ", "ঘ" (বা এক-দুই-তিন-চার) বললে অপশন বাছা হবে; "পরের" বললে পরের প্রশ্ন; "জমা" বললে জমা (নিশ্চিত করতে হবে)।</p>
+    <div style="display:flex; flex-wrap:wrap; gap:6px;">${VOICE_CMDS.map(c => `<span class="q-tag" style="font-size:12px; padding:4px 9px;">${escapeHtml(c.label)}: ${escapeHtml(c.k[0])}</span>`).join('')}</div>
+  </div>`;
+  document.body.appendChild(ov);
+};
+
+let __vcRec = null, __vcOn = false, __vcField = null, __vcFieldAt = 0;
+document.addEventListener('focusin', e => {
+  const t = e.target;
+  if(t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && !/^(password|file|checkbox|radio|button|submit|range|color)$/i.test(t.type || 'text')))){ __vcField = t; __vcFieldAt = Date.now(); }
+});
+function vcSetUi(on){
+  __vcOn = on;
+  const b = document.getElementById('voiceFab'); if(b){ b.classList.toggle('listening', on); b.innerHTML = on ? '🔴' : '🎙️'; }
+}
+window.voiceToggle = function(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ toast('ভয়েস কমান্ডের জন্য Google Chrome ব্যবহার করো'); return; }
+  if(__vcOn && __vcRec){ try{ __vcRec.stop(); }catch(e){} vcSetUi(false); return; }
+  const dictate = __vcField && document.body.contains(__vcField) && (Date.now() - __vcFieldAt < 20000) ? __vcField : null;
+  try{
+    __vcRec = new SR(); __vcRec.lang = 'bn-BD'; __vcRec.continuous = false; __vcRec.interimResults = false; __vcRec.maxAlternatives = 3;
+    __vcRec.onstart = () => { vcSetUi(true); toast(dictate ? '🎙️ বলো — লেখা হবে...' : '🎙️ বলো — কমান্ড শুনছি...'); };
+    __vcRec.onerror = ev => { vcSetUi(false); toast(ev.error === 'not-allowed' ? 'মাইক্রোফোনের অনুমতি দাও' : 'ভয়েস বুঝতে পারিনি, আবার বলো'); };
+    __vcRec.onend = () => vcSetUi(false);
+    __vcRec.onresult = ev => {
+      const alts = []; for(let i = 0; i < ev.results[0].length; i++) alts.push(ev.results[0][i].transcript);
+      if(dictate){
+        dictate.value = (dictate.value ? dictate.value + ' ' : '') + alts[0];
+        dictate.dispatchEvent(new Event('input', { bubbles:true })); dictate.focus();
+        toast('✍️ লেখা হয়েছে'); return;
+      }
+      for(const a of alts){ if(handleVoiceText(a)) return; }
+      toast('বুঝিনি: "' + alts[0] + '" — "সাহায্য" বললে কমান্ড দেখাবে');
+    };
+    __vcRec.start();
+  }catch(e){ vcSetUi(false); toast('ভয়েস চালু করা গেল না'); }
+};
+(function(){
+  function mount(){
+    if(document.getElementById('voiceFab')) return;
+    const b = document.createElement('button');
+    b.id = 'voiceFab'; b.type = 'button'; b.title = 'ভয়েস কমান্ড'; b.innerHTML = '🎙️';
+    b.onpointerdown = e => e.preventDefault();   // লেখার ঘরের ফোকাস না হারাতে
+    b.onclick = voiceToggle;
+    b.oncontextmenu = e => { e.preventDefault(); openVoiceHelp(); };
+    document.body.appendChild(b);
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
+})();
+
 </script>
+<script id="vk-chat-v12">
+// ============================================================================
+// [NEW] চ্যাট নোটিফিকেশন · ২ দিন নিষ্ক্রিয়তার অটো-ওয়ার্নিং · ছাত্রদের একে অপরকে না দেখানো
+// ============================================================================
+(function(){
+  // ছাত্ররা এখন একে অপরকে দেখতে পাবে না। পরে সোশ্যাল চালু করতে শুধু এটা false করো।
+  const STUDENT_PRIVACY_MODE = true;
+  const WARN_AFTER_DAYS = 2;            // শেষ HW/রিভিশনের পর ২ দিনের বেশি গেলে ওয়ার্নিং (সার্ভারের VK_IDLE_WARN_DAYS-এর সাথে মিলিয়ে রাখো)
+  const TEACHER_SLUG = 'teacher_' + slugify(CREATOR_NAME);
+
+  const privacyActive = () => STUDENT_PRIVACY_MODE && !currentTeacher;
+  const isTeacherSlug = s => { s = String(s || ''); return s.indexOf('teacher_') === 0 || s === slugify(CREATOR_NAME); };
+  window.vkPrivacyActive = privacyActive;
+  window.vkTeacherSlug = () => TEACHER_SLUG;
+
+  function visible(it){
+    if(!privacyActive()) return true;
+    if(!it) return false;
+    if(it.isTeacher) return true;
+    const me = getCurrentUserIdentity();
+    if(!me) return false;
+    if((it.authorSlug && it.authorSlug === me.slug) || (it.authorName && it.authorName === me.name)) return true;
+    return getCircle().list.some(x => (it.authorSlug && it.authorSlug === x.slug) || (it.authorName && it.authorName === x.name));
+  }
+  // ---- ১) ফিড/স্টোরি/কমেন্টে ছাত্র শুধু শিক্ষকের আর নিজের জিনিস দেখবে ----
+  window.fetchCommunityPosts = fetchCommunityPosts = function(){
+    const all = getCommunityPosts();
+    if(!privacyActive()) return all;
+    return all.filter(visible).map(p => Object.assign({}, p, { comments: (p.comments || []).filter(visible) }));
+  };
+  window.getVisibleStories_ = function(){ return getStudyStories().filter(visible); };
+
+  window.vkFilterConvs = function(list){
+    if(!privacyActive()) return list;
+    return list.filter(c => c.peerRole === 'teacher' || c.peerBadge === 'verified_teacher' || isTeacherSlug(c.peerSlug) || inCircle(c.peerSlug));
+  };
+  // অন্য ছাত্রের প্রোফাইল খোলা বন্ধ
+  const _prof = window.openUserProfileModal;
+  window.openUserProfileModal = function(targetSlug, fallbackName){
+    if(privacyActive()){
+      const me = getCurrentUserIdentity();
+      const ok = !targetSlug || targetSlug === me.slug || isTeacherSlug(targetSlug) || fallbackName === CREATOR_NAME || inCircle(targetSlug);
+      if(!ok){ toast('এখন শুধু শিক্ষক আর নিজের গ্রুপের সাথে যোগাযোগ করা যায় 🙂'); return; }
+    }
+    return _prof.apply(this, arguments);
+  };
+  // অন্য ছাত্রের সাথে চ্যাট খোলা বন্ধ
+  const _chatOpen = window.openDirectChat;
+  window.openDirectChat = function(peerSlug, peerName, peerAvatar, peerRole){
+    if(privacyActive() && !(isTeacherSlug(peerSlug) || peerRole === 'teacher' || inCircle(peerSlug))){
+      toast('এখন শুধু শিক্ষক আর নিজের গ্রুপের সাথে চ্যাট করা যায় 🙂'); return;
+    }
+    try{ const me = getCurrentUserIdentity(); if(peerSlug){ const p = [me.slug, peerSlug].sort(); markSeen('chat__' + p[0] + '__' + p[1], Date.now()); } }catch(e){}
+    return _chatOpen.apply(this, arguments);
+  };
+
+  // ---- ২) নতুন মেসেজের নোটিফিকেশন (অ্যাপ খোলা/ব্যাকগ্রাউন্ডে থাকলে) ----
+  let _unsub = null, _slug = '', _seen = {}, _hasStore = false, _unread = 0;
+  const _baseTitle = document.title;
+  const seenKey = () => 'vk_chat_seen_' + _slug;
+  function saveSeen(){ try{ localStorage.setItem(seenKey(), JSON.stringify(_seen)); }catch(e){} }
+  function markSeen(chatId, ts){ if(!_slug) return; _seen[chatId] = Math.max(_seen[chatId] || 0, ts || Date.now()); saveSeen(); }
+  function showSystemNotification(title, body, chatId){
+    try{
+      if(!('Notification' in window) || Notification.permission !== 'granted') return;
+      const opts = { body: body, icon: './icon-192.png', badge: './icon.svg', tag: 'chat-' + chatId, renotify: true, data: { url: './' } };
+      if('serviceWorker' in navigator && navigator.serviceWorker.controller){
+        navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts)).catch(() => { new Notification(title, opts); });
+      } else { new Notification(title, opts); }
+    }catch(e){}
+  }
+  function bumpTitle(n){
+    _unread += n;
+    if(document.visibilityState !== 'visible') document.title = '(' + _unread + ') ' + _baseTitle;
+  }
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible'){ _unread = 0; document.title = _baseTitle; } });
+
+  async function startChatNotifier(){
+    let me; try{ me = getCurrentUserIdentity(); }catch(e){ return; }
+    if(!me || !me.slug || me.role === 'guest' || _slug === me.slug) return;
+    if(_unsub){ try{ _unsub(); }catch(e){} _unsub = null; }
+    _slug = me.slug;
+    try{ const raw = localStorage.getItem(seenKey()); _hasStore = raw !== null; _seen = raw ? (JSON.parse(raw) || {}) : {}; }catch(e){ _seen = {}; _hasStore = false; }
+    try{ await fbReady(); }catch(e){}
+    if(typeof firestoreDb === 'undefined' || !firestoreDb) { _slug = ''; return; }
+    let firstRun = true;
+    _unsub = firestoreDb.collection('personal_chats').where('participantSlugs', 'array-contains', me.slug).limit(80).onSnapshot(async (snap) => {
+      const incoming = [];
+      snap.forEach(doc => {
+        const c = doc.data() || {}, at = c.lastMessageAt || 0, id = c.chatId || doc.id;
+        if(!at) return;
+        if(c.lastSenderSlug === me.slug){ _seen[id] = Math.max(_seen[id] || 0, at); return; }
+        const openNow = (typeof activeDirectChatInfo !== 'undefined') && activeDirectChatInfo && activeDirectChatInfo.chatId === id && document.visibilityState === 'visible';
+        if(openNow){ _seen[id] = Math.max(_seen[id] || 0, at); return; }
+        if(at > (_seen[id] || 0)) incoming.push({ id: id, c: c, at: at });
+      });
+      const baseline = firstRun && !_hasStore;   // নতুন ডিভাইসে পুরনো সব মেসেজের নোটিফিকেশন নয়
+      firstRun = false;
+      if(baseline){ incoming.forEach(x => { _seen[x.id] = x.at; }); _hasStore = true; saveSeen(); return; }
+      if(!incoming.length){ saveSeen(); return; }
+      incoming.sort((a, b) => b.at - a.at);
+      if(incoming.length > 1){
+        toast('💬 ' + incoming.length + 'টি চ্যাটে নতুন মেসেজ আছে');
+        showSystemNotification('নতুন মেসেজ', incoming.length + 'টি চ্যাটে নতুন মেসেজ এসেছে', 'multi');
+      }else{
+        const x = incoming[0], peer = (x.c.participantSlugs || []).find(s => s !== me.slug);
+        let prev = x.c.lastMessage || '';
+        try{ if(prev.indexOf('enc:v') === 0) prev = await decryptChatPayload(prev, x.id, me.slug, peer); }catch(e){ prev = ''; }
+        prev = String(prev || '💬 নতুন মেসেজ').slice(0, 90);
+        const who = x.c.lastSender || 'নতুন মেসেজ';
+        toast('💬 ' + who + ': ' + prev);
+        showSystemNotification(who, prev, x.id);
+      }
+      bumpTitle(incoming.length);
+      incoming.forEach(x => { _seen[x.id] = x.at; });
+      saveSeen();
+    }, (err) => console.warn('chat notifier error:', err));
+  }
+  window.startChatNotifier = startChatNotifier;
+
+  // ছাত্র শিক্ষককে মেসেজ দিলে শিক্ষকের ইমেইলে খবর যায়
+  const _send = window.fbSendChatMessage;
+  window.fbSendChatMessage = async function(chatId, messageObj, meta){
+    const id = await _send.apply(this, arguments);
+    try{
+      if(id && !currentTeacher && messageObj && !messageObj.isAuto){
+        const stud = getLoggedStudent(), peer = (meta && meta.peerSlug) || '';
+        if(stud && stud.slug && stud.stok && isTeacherSlug(peer)){
+          fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'trkChatNotify', slug: stud.slug, stok: stud.stok, text: messageObj.text || '' }) }).catch(() => {});
+        }
+      }
+    }catch(e){}
+    return id;
+  };
+
+  // ---- ৩) ২ দিনের বেশি HW/রিভিশন না করলে চ্যাটে নরম ওয়ার্নিং ----
+  const WARN_VARIANTS = [
+    (n, d) => `🔔 অটো-রিমাইন্ডার\n${n}, কেমন আছো? 😊 গত ${d} দিন ধরে তোমার HW বা রিভিশনের কিছু জমা দেখছি না। কোনো সমস্যা বা ব্যস্ততা থাকলে এখানেই আমাকে বলো। আজ মাত্র ১০ মিনিটের একটা রিভিশন দিয়েই আবার শুরু করে ফেলো — আমি তোমার পাশে আছি 💪`,
+    (n, d) => `🔔 অটো-রিমাইন্ডার\nপ্রিয় ${n}, ${d} দিন হয়ে গেল পড়ার রেকর্ডে তোমাকে দেখছি না। একটু থেমে যাওয়া কোনো দোষের না, কিন্তু ছন্দ ধরে রাখাটাই আসল। আজ ছোট একটা HW বা রিভিশন জমা দাও, তাহলেই আবার ট্র্যাকে ফিরে আসবে 🌱`,
+    (n, d) => `🔔 অটো-রিমাইন্ডার\n${n}, তোমার ওপর আমার ভরসা আছে। গত ${d} দিনে HW/রিভিশন বাদ পড়েছে। সমস্যাটা কী, আমাকে জানাও — মিলে সমাধান করব। আজকের ছোট একটা টাস্ক দিয়েই আবার শুরু হোক ✨`,
+    (n, d) => `🔔 অটো-রিমাইন্ডার\nহ্যালো ${n}! 👋 ${d} দিন ধরে HW বা রিভিশন জমা পড়েনি। একদিনে সব পুষিয়ে নিতে হবে না। আজ শুধু একটা প্রশ্ন করলেও চলবে। কঠিন লাগলে আমাকে লিখো, সাহায্য করব 🤝`,
+    (n, d) => `🔔 অটো-রিমাইন্ডার\n${n}, একটু খেয়াল করিয়ে দিচ্ছি: ${d} দিন ধরে তোমার পড়ার কাজ জমা নেই। ছোট ছোট কাজ রোজ করলেই বড় ফল আসে। আজই একটা HW বা রিভিশন দিয়ে আবার শুরু করো, আমি অপেক্ষায় আছি 😊`
+  ];
+  function hashStr(s){ let h = 0; for(let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
+
+  async function sendIdleWarning(slug, name, silentDays){
+    try{
+      await fbReady(); if(typeof firestoreDb === 'undefined' || !firestoreDb || typeof fbSendChatMessage !== 'function') return false;
+      const bucket = Math.floor(Date.now() / 86400000 / 2);          // ৪৮ ঘণ্টায় সর্বোচ্চ ১টা ওয়ার্নিং
+      const msgId = 'warn_' + slug + '_' + bucket;
+      const ex = await firestoreDb.collection('chat_messages').doc(msgId).get();
+      if(ex.exists) return false;
+      const parts = [TEACHER_SLUG, slug].sort(), chatId = 'chat__' + parts[0] + '__' + parts[1];
+      const text = WARN_VARIANTS[(hashStr(slug) + bucket) % WARN_VARIANTS.length](name || 'বন্ধু', silentDays) + '\n\n💸 মনে করিয়ে দিই: মাসে যত দিন HW/রিভিশন বাদ যায়, সেই অনুপাতে Treat-এর আয় করা টাকা থেকে কাটা যায় (সর্বোচ্চ অর্ধেক পর্যন্ত)। আজই একটা কাজ জমা দিলে আর বাড়তি কাটা পড়বে না।';
+      const msg = { id: msgId, text: text, senderSlug: TEACHER_SLUG, senderName: CREATOR_NAME, senderAvatar: '👨‍🏫', senderBadge: 'verified_teacher',
+        timestamp: Date.now(), status: 'sent', isAuto: true, participantSlugs: [TEACHER_SLUG, slug] };
+      const meta = { peerSlug: slug, peerName: name || slug, peerAvatar: '🧑‍🎓', peerRole: 'student',
+        participants: [ { slug: TEACHER_SLUG, name: CREATOR_NAME, avatar: '👨‍🏫', badge: 'verified_teacher' }, { slug: slug, name: name || slug, avatar: '🧑‍🎓', badge: 'student' } ] };
+      return !!(await window.fbSendChatMessage(chatId, msg, meta));
+    }catch(e){ console.warn('idle warning failed', e); return false; }
+  }
+  // ছাত্র অ্যাপ খুললে নিজের অবস্থা দেখে
+  async function studentIdleCheck(){
+    try{
+      const stud = getLoggedStudent(); if(!stud || !stud.slug || !stud.stok || currentTeacher) return;
+      const k = 'vk_idle_chk_' + todayStr(); if(sessionStorage.getItem(k)) return; sessionStorage.setItem(k, '1');
+      const r = JSON.parse(await (await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'trkMyIdle', slug: stud.slug, stok: stud.stok, today: todayStr() }) })).text());
+      if(r && r.status === 'success' && r.last && r.silentDays > WARN_AFTER_DAYS) await sendIdleWarning(stud.slug, stud.name, r.silentDays);
+    }catch(e){}
+  }
+  // শিক্ষক প্যানেল খুললে যারা অ্যাপ খোলেনি তাদের জন্যও পাঠানো হয় (৩০ মিনিটে ১ বার)
+  async function teacherIdleSweep(){
+    try{
+      if(!currentTeacher) return;
+      const last = Number(localStorage.getItem('vk_idle_sweep_ts') || 0); if(Date.now() - last < 30 * 60000) return;
+      localStorage.setItem('vk_idle_sweep_ts', String(Date.now()));
+      const r = JSON.parse(await (await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'trkIdleList', tkey: TEACHER_PASSWORD, today: todayStr() }) })).text());
+      if(!r || r.status !== 'success') return;
+      let sent = 0;
+      for(const s of (r.list || [])){ if(await sendIdleWarning(s.slug, s.name, s.silentDays)) sent++; }
+      if(sent) toast('⚠️ ' + sent + ' জন ছাত্রকে চ্যাটে নরম ওয়ার্নিং পাঠানো হয়েছে');
+    }catch(e){}
+  }
+
+
+  // ---- ৪) বন্ধু-রেফার গ্রুপ (রেফারার + তার আনা বন্ধুরা একে অপরকে দেখবে) ----
+  const CIRCLE_KEY = 'vk_circle_v1';
+  function getCircle(){
+    try{ const c = JSON.parse(localStorage.getItem(CIRCLE_KEY) || 'null'); const me = getCurrentUserIdentity(); if(c && me && c.me === me.slug) return c; }catch(e){}
+    return { me: '', list: [], at: 0, friend: false, refBy: '' };
+  }
+  function inCircle(slug){ return !!slug && getCircle().list.some(x => x.slug === slug); }
+  window.vkGetCircle = getCircle;
+  async function refreshCircle(force){
+    try{
+      const stud = getLoggedStudent(); if(!stud || !stud.stok || currentTeacher) return;
+      const c = getCircle(); if(!force && c.me === stud.slug && Date.now() - c.at < 10 * 60000) return;
+      const r = JSON.parse(await (await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'trkMyCircle', slug: stud.slug, stok: stud.stok }) })).text());
+      if(!r || r.status !== 'success') return;
+      const next = { me: stud.slug, list: r.circle || [], at: Date.now(), friend: !!r.friend, refBy: r.refBy || '' };
+      const changed = JSON.stringify(next.list) !== JSON.stringify(c.list) || c.me !== stud.slug;
+      localStorage.setItem(CIRCLE_KEY, JSON.stringify(next));
+      if(!next.friend && !stud.studentCode){ localStorage.setItem('vk_notfriend_' + stud.slug, '1'); if(document.getElementById('vkFriendDash')){ go('studentDashboard'); return; } }
+      if(changed && (document.getElementById('communityFeedStream') || document.getElementById('communityChatListContainer')) && typeof renderCommunityLounge === 'function') renderCommunityLounge();
+    }catch(e){}
+  }
+  window.vkPickerPeers = function(all){
+    const circle = getCircle().list;
+    let out = all.filter(p => p.role === 'teacher' || String(p.slug).indexOf('teacher_') === 0 || circle.some(x => x.slug === p.slug));
+    if(!out.some(p => p.role === 'teacher' || String(p.slug).indexOf('teacher_') === 0))
+      out.unshift({ slug: TEACHER_SLUG, name: CREATOR_NAME, role: 'teacher', badge: 'verified_teacher', avatar: '👨‍🏫', institution: 'কোর্স শিক্ষক' });
+    circle.forEach(x => { if(!out.some(p => p.slug === x.slug)) out.push({ slug: x.slug, name: x.name, role: 'student', avatar: '🧑‍🎓', institution: x.role === 'friend' ? '🤝 বন্ধু' : '🎓 রেফারার' }); });
+    return out;
+  };
+
+  // ---- ৫) সীমিত (বন্ধু) অ্যাকাউন্ট: studentCode ফাঁকা = বন্ধু ----
+  const isFriendStud = s => !!(s && s.slug && !s.studentCode && localStorage.getItem('vk_notfriend_' + s.slug) !== '1');   // সার্ভার 'friend:false' বললে (পুরনো ফাঁকা-কোডের প্রাইভেট ছাত্র) আর বন্ধু ধরা হয় না
+  const FRIEND_DENY = /^(studyHub|examHub|rewardHub|progressHub|vorkuta|hwHub|hwSubmit2|dailyHw|myCal|revision|plan|mastery|notes|written|mistake|doubt|couponShop|withdraw)/i;
+  function renderFriendDashboard(){
+    const stud = getLoggedStudent(), c = getCircle();
+    app.innerHTML = `
+      ${header('আমার ড্যাশবোর্ড')}
+      <div class="card" id="vkFriendDash">
+        <h2>স্বাগতম, ${escapeHtml(stud.name)} 👋</h2>
+        <p class="hint">তুমি বন্ধুর রেফারে যোগ দিয়েছো${c.refBy ? ' (' + escapeHtml(c.refBy) + ')' : ''} — এটা সীমিত অ্যাকাউন্ট। এখানে স্টাডি আড্ডা, চ্যাট আর ফ্রি প্র্যাকটিস পাবে।</p>
+      </div>
+      <div class="card">
+        <button class="btn btn-gold btn-block" onclick="go('communityLounge')">💬 স্টাডি আড্ডা · চ্যাট</button>
+        <button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="go('practiceList')">📝 ফ্রি প্র্যাকটিস পরীক্ষা</button>
+        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="studentLogout()">🚪 লগআউট</button>
+      </div>
+      ${creditFooter()}`;
+    refreshCircle();
+  }
+  const _dash = renderStudentDashboard;
+  renderStudentDashboard = function(){
+    const s = getLoggedStudent();
+    if(s && isFriendStud(s) && !currentTeacher) return renderFriendDashboard();
+    return _dash.apply(this, arguments);
+  };
+
+  // ---- ৬) প্রাইভেট ছাত্রের রেফার কোড ----
+  window.vkOpenReferral = async function(){
+    const stud = getLoggedStudent(); if(!stud || !stud.stok){ toast('আবার লগইন করো'); return; }
+    toast('কোড আনা হচ্ছে...');
+    let r = null;
+    try{ r = JSON.parse(await (await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'trkMyRefCode', slug: stud.slug, stok: stud.stok }) })).text()); }catch(e){}
+    if(!r || r.status !== 'success'){ toast('কোড আনা যায়নি, একটু পরে আবার চেষ্টা করো'); return; }
+    const msg = 'আমি এই স্টাডি অ্যাপটা ব্যবহার করছি। সাইন আপ করতে "নতুন একাউন্ট" ট্যাবে রেজিস্ট্রেশন কোডের ঘরে এই কোডটা দাও: ' + r.code + '\n' + location.origin + location.pathname;
+    const old = document.getElementById('vkRefOverlay'); if(old) old.remove();
+    const ov = document.createElement('div'); ov.id = 'vkRefOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    ov.onclick = e => { if(e.target === ov) ov.remove(); };
+    ov.innerHTML = `<div class="card" style="max-width:420px;width:100%;margin:0;">
+      <h2>🤝 বন্ধুকে রেফার করো</h2>
+      <p class="hint">এই কোড দিয়ে তোমার বন্ধুরা সীমিত অ্যাকাউন্ট খুলতে পারবে (স্টাডি আড্ডা, চ্যাট ও ফ্রি প্র্যাকটিস)। তুমি আর তোমার আনা বন্ধুরা একে অপরকে দেখতে পাবে। যত বন্ধু ইচ্ছা আনতে পারো।</p>
+      <div style="font-family:var(--font-mono);font-size:26px;font-weight:800;letter-spacing:2px;text-align:center;background:#FEF6E8;border-radius:10px;padding:14px;margin:10px 0;">${escapeHtml(r.code)}</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-gold btn-block" id="vkRefCopy">📋 কপি</button>
+        <button class="btn btn-primary btn-block" id="vkRefShare">📤 শেয়ার</button>
+      </div>
+      <div class="center" style="margin-top:12px;"><a class="link-back" onclick="document.getElementById('vkRefOverlay').remove()">বন্ধ করো</a></div></div>`;
+    document.body.appendChild(ov);
+    document.getElementById('vkRefCopy').onclick = async () => { try{ await navigator.clipboard.writeText(msg); toast('✅ কপি হয়েছে'); }catch(e){ toast('কপি করা যায়নি'); } };
+    document.getElementById('vkRefShare').onclick = async () => { try{ if(navigator.share){ await navigator.share({ text: msg }); } else { await navigator.clipboard.writeText(msg); toast('✅ কপি হয়েছে'); } }catch(e){} };
+  };
+
+  // ---- go() জুড়ে হুক: নোটিফায়ার চালু, লগইন-পরবর্তী চেক, পারমিশন চাওয়া ----
+  const _go = go;
+  go = function(screen, data){
+    try{   // [NEW] সীমিত (বন্ধু) অ্যাকাউন্টে প্রাইভেট ব্যাচের স্ক্রিন বন্ধ
+      if(!currentTeacher && isFriendStud(getLoggedStudent()) && FRIEND_DENY.test(String(screen))){
+        toast('🔒 এটা শুধু প্রাইভেট ব্যাচের ছাত্রদের জন্য'); return _go.call(this, 'studentDashboard');
+      }
+    }catch(e){}
+    const r = _go.apply(this, arguments);
+    try{
+      refreshCircle();
+      startChatNotifier();
+      if(screen === 'studentDashboard') studentIdleCheck();
+      if(screen === 'teacherDashboard' || screen === 'teacherTracker') teacherIdleSweep();
+      if(screen === 'communityLounge' && 'Notification' in window && Notification.permission === 'default' && !localStorage.getItem('vk_notif_asked')){
+        localStorage.setItem('vk_notif_asked', '1');
+        setTimeout(() => { try{ Notification.requestPermission(); }catch(e){} }, 800);
+      }
+    }catch(e){}
+    return r;
+  };
+  window.addEventListener('load', () => setTimeout(() => { try{ startChatNotifier(); }catch(e){} }, 1500));
+})();
+</script>
+
+<script id="vk-hwcut-v13">
+// ============================================================================
+// [NEW] শিক্ষকের পেজ: HW/রিভিশন মিসের কারণে Treat-এর টাকা কাটা (৩০ দিনের হিসাব) — দেখা · মাফ করা · সেটিং
+// ============================================================================
+(function(){
+  const bn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  async function tpost(action, params){
+    try{
+      const r = await fetch(SCRIPT_URL, { method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action: action, tkey: TEACHER_PASSWORD }, params || {})) });
+      return JSON.parse(await r.text());
+    }catch(e){ return { status:'error', message:'network' }; }
+  }
+  function dateBn(d){ const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? bn(m[3] + '/' + m[2]) : escapeHtml(d || ''); }
+  function card(s, st){
+    const pct = Math.min(st.maxPct, Math.round(s.missed.length / st.windowDays * 100));
+    const dayBtn = (d, ex) => `<button type="button" class="trk-chip" style="border:1px solid var(--paper-edge); cursor:pointer; font-family:inherit; ${ex ? 'text-decoration:line-through; opacity:.6;' : ''}" onclick="hwCutForgive('${escapeHtml(s.slug)}','${escapeHtml(d)}')" title="${ex ? 'মাফ ফিরিয়ে নাও' : 'এই দিনটা মাফ করো'}">${dateBn(d)} ${ex ? '↩️' : '🙏'}</button>`;
+    const all = s.missed.map(d => ({ d: d, ex: false })).concat(s.excused.map(d => ({ d: d, ex: true }))).sort((a, b) => a.d < b.d ? -1 : 1);
+    return `<div class="trk-item k-hw">
+      <div class="trk-title">${escapeHtml(s.name)}</div>
+      <div class="trk-chips">
+        <span class="trk-chip">⏳ গত ${bn(st.windowDays)} দিনে ${bn(s.missed.length)} দিন মিস${s.excused.length ? ' · মাফ ' + bn(s.excused.length) : ''}</span>
+        <span class="trk-chip">আয় ৳${bn(s.base)}</span>
+        <span class="trk-score ${s.cut > 0 ? 'trk-s-lo' : 'trk-s-hi'}">💸 কাটা ৳${bn(s.cut)} (${bn(pct)}%) → পাবে ৳${bn(s.floor)}</span>
+      </div>
+      ${all.length ? `<details style="margin-top:8px;"><summary>📅 মিস দিনগুলো দেখো (ট্যাপ করলে মাফ)</summary><div class="trk-chips" style="margin-top:6px;">${all.map(x => dayBtn(x.d, x.ex)).join('')}</div></details>` : ''}
+      ${s.missed.length ? `<div style="margin-top:10px;"><button type="button" class="btn btn-gold" style="padding:8px 14px; font-size:13px;" onclick="hwCutForgive('${escapeHtml(s.slug)}','')">🙏 সব মিস দিন মাফ করো</button></div>` : ''}
+    </div>`;
+  }
+  window.renderHwCutManage = async function(){
+    if(!currentTeacher){ go('landing'); return; }
+    if(typeof trkInjectCss === 'function') try{ trkInjectCss(); }catch(e){}
+    app.innerHTML = `${header('HW মিসের কাটা')}<div class="card center">লোড হচ্ছে...</div>`;
+    const r = await tpost('trkHwCutList');
+    if(!r || r.status !== 'success'){
+      app.innerHTML = `${header('HW মিসের কাটা')}<div class="card center"><p class="hint" style="color:var(--red);">লোড করা যায়নি — নতুন Code.gs ডিপ্লয় করেছো তো?</p><button class="btn btn-outline" onclick="renderHwCutManage()">🔄 আবার চেষ্টা করো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>`;
+      return;
+    }
+    const st = r.settings || { windowDays:30, maxPct:50, fullDays:15 };
+    app.innerHTML = `
+      ${header('HW মিসের কাটা')}
+      <div style="margin:0 0 12px 0;"><button type="button" class="btn btn-outline" style="padding:8px 14px; font-size:13.5px;" onclick="go('teacherDashboard')">← শিক্ষক প্যানেল</button></div>
+      <div class="card">
+        <h2>📚 HW/রিভিশন মিসের কাটা</h2>
+        <p class="hint">গত <b>${bn(st.windowDays)} দিনে</b> যত দিন কোনো কাজ (HW/রিভিশন/CQ) জমা পড়েনি, সেই অনুপাতে ছাত্রের <b>আয় করা Treat-এর টাকা</b> থেকে কাটা যায়। ${bn(st.fullDays)} দিন মিস হলেই সর্বোচ্চ <b>${bn(st.maxPct)}%</b> কাটা হয়, এর বেশি কখনো না। যেমন ৪০০ টাকা আয় হলে সর্বনিম্ন ${bn(Math.round(400 * (100 - st.maxPct) / 100))} টাকা পাবে। মিস দিনগুলো মাফ করলে আর গোনা হয় না।</p>
+        <div class="row" style="gap:8px;">
+          <div><label class="field-label">কত দিনের হিসাব</label><input type="number" id="hwcWin" min="7" max="120" step="1" value="${st.windowDays}"></div>
+          <div><label class="field-label">সর্বোচ্চ কাটা %</label><input type="number" id="hwcMax" min="0" max="100" step="1" value="${st.maxPct}"></div>
+        </div>
+        <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="hwCutSaveCfg()">💾 সেটিং সেভ করো</button>
+      </div>
+      ${r.data.length ? r.data.map(s => card(s, st)).join('') : '<div class="card"><div class="empty-state">এই ৩০ দিনে কারো কোনো দিন মিস নেই 🎉</div></div>'}
+      ${creditFooter()}`;
+  };
+  window.hwCutSaveCfg = async function(){
+    const v = id => document.getElementById(id).value;
+    const r = await tpost('trkHwCutConfig', { windowDays: v('hwcWin'), maxPct: v('hwcMax') });
+    toast(r && r.status === 'success' ? '✅ সেটিং সেভ হয়েছে' : 'সেভ হয়নি, আবার চেষ্টা করো');
+    if(r && r.status === 'success') renderHwCutManage();
+  };
+  window.hwCutForgive = async function(slug, date){
+    if(!date && !confirm('এই ছাত্রের এখনকার সব মিস দিন মাফ করবে?')) return;
+    const r = await tpost('trkHwCutForgive', { slug: slug, date: date || '' });
+    if(r && r.status === 'success'){ toast('🙏 হালনাগাদ হয়েছে — এখন কাটা ৳' + bn(r.cut || 0)); renderHwCutManage(); }
+    else toast('করা যায়নি, আবার চেষ্টা করো');
+  };
+})();
+</script>
+
 </body>
 </html>
