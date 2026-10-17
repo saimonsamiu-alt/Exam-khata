@@ -20111,6 +20111,18 @@ window.sortConversationsList = function(convs){
   });
 };
 
+// [v15] নকল/পুরনো "শিক্ষক" (যেমন "সৈকত স্যার (কোর্স শিক্ষক)") বাদ — শুধু আসল শিক্ষক (CREATOR_NAME) থাকবে।
+// শিক্ষকের লগইনে নাম সবসময় CREATOR_NAME, তাই অন্য নামের teacher_… চ্যাট/প্রোফাইল পুরনো টেস্ট-ডাটা।
+window.vkIsFakeTeacher = function(slug, name, role, badge){
+  const s = String(slug || ''), n = String(name || '');
+  const teacherish = role === 'teacher' || badge === 'verified_teacher' || s.indexOf('teacher_') === 0 || /শিক্ষক|স্যার/.test(n);
+  if(!teacherish) return false;
+  const real = ('teacher_' + slugify(CREATOR_NAME));
+  if(s === real || s === slugify(CREATOR_NAME) || n === CREATOR_NAME || slugify(n) === slugify(CREATOR_NAME)) return false;
+  return true;
+};
+window.vkDropFakeTeachers = function(list){ return (list || []).filter(p => !vkIsFakeTeacher(p.slug, p.name, p.role, p.badge)); };
+
 window.getActiveConversations = function(){
   const me = typeof getCurrentUserIdentity === 'function' ? getCurrentUserIdentity() : { slug:'student' };
   try {
@@ -20126,7 +20138,7 @@ window.getActiveConversations = function(){
       localStorage.setItem(CONVERSATIONS_STORAGE_KEY, JSON.stringify(initial));
       return initial;
     }
-    const list = parsed.map(c => ({
+    const list = parsed.filter(c => !vkIsFakeTeacher(c.peerSlug, c.peerName, c.peerRole, c.peerBadge)).map(c => ({
       ...c,
       isArchived: !!c.isArchived,
       isPinned: !!c.isPinned,
@@ -22396,7 +22408,7 @@ window.openNewChatPickerModal = async function(){
   Object.values(allProfiles).forEach(p => { if(p && p.slug) peersMap[p.slug] = { ...p }; });
   try{ (await fbListUserProfiles(80)).forEach(p => { peersMap[p.slug] = { ...(peersMap[p.slug] || {}), ...p }; }); }catch(e){}
   Object.values(peersMap).forEach(p => { p.role = p.role || (p.isTeacher ? 'teacher' : 'student'); p.badge = p.badge || (p.isTeacher ? 'verified_teacher' : (p.isVerified ? 'verified_private' : 'public_student')); });
-  let availablePeers = Object.values(peersMap).filter(p => p.slug !== me.slug);
+  let availablePeers = vkDropFakeTeachers(Object.values(peersMap).filter(p => p.slug !== me.slug));
   if(window.vkPrivacyActive && vkPrivacyActive()){
     availablePeers = vkPickerPeers(availablePeers);
   }
@@ -26449,7 +26461,7 @@ window.voiceToggle = function(){
 
   window.vkFilterConvs = function(list){
     if(!privacyActive()) return list;
-    return list.filter(c => c.peerRole === 'teacher' || c.peerBadge === 'verified_teacher' || isTeacherSlug(c.peerSlug) || inCircle(c.peerSlug));
+    return list.filter(c => !vkIsFakeTeacher(c.peerSlug, c.peerName, c.peerRole, c.peerBadge) && (c.peerRole === 'teacher' || c.peerBadge === 'verified_teacher' || isTeacherSlug(c.peerSlug) || inCircle(c.peerSlug)));
   };
   // অন্য ছাত্রের প্রোফাইল খোলা বন্ধ
   const _prof = window.openUserProfileModal;
@@ -26627,7 +26639,7 @@ window.voiceToggle = function(){
   }
   window.vkPickerPeers = function(all){
     const circle = getCircle().list;
-    let out = all.filter(p => p.role === 'teacher' || String(p.slug).indexOf('teacher_') === 0 || circle.some(x => x.slug === p.slug));
+    let out = vkDropFakeTeachers(all).filter(p => p.role === 'teacher' || String(p.slug).indexOf('teacher_') === 0 || circle.some(x => x.slug === p.slug));
     if(!out.some(p => p.role === 'teacher' || String(p.slug).indexOf('teacher_') === 0))
       out.unshift({ slug: TEACHER_SLUG, name: CREATOR_NAME, role: 'teacher', badge: 'verified_teacher', avatar: '👨‍🏫', institution: 'কোর্স শিক্ষক' });
     circle.forEach(x => { if(!out.some(p => p.slug === x.slug)) out.push({ slug: x.slug, name: x.name, role: 'student', avatar: '🧑‍🎓', institution: x.role === 'friend' ? '🤝 বন্ধু' : '🎓 রেফারার' }); });
