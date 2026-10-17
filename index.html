@@ -21146,7 +21146,7 @@ window.closeChatCameraModal = function(){
   if(overlay) overlay.remove();
 };
 
-window.submitPendingChatPhoto = function(){
+window.submitPendingChatPhoto = async function(){
   if(!pendingChatPhotoDataUrl || !activeDirectChatInfo) return;
 
   const captionInput = document.getElementById('chatPhotoCaptionInput');
@@ -21187,11 +21187,22 @@ window.submitPendingChatPhoto = function(){
   scrollChatToBottom(true);
 
   if(typeof playSfx === 'function') playSfx('slash');
-  toast('📸 ছবি সফলভাবে পাঠানো হয়েছে!');
+  toast('📸 ছবি পাঠানো হচ্ছে...');
 
-  // Send to Firestore (storing image link in the Firestore message document)
+  // Send to Firestore — [v15] আগে ফলাফল না দেখেই "সফল" বলা হতো; এখন সত্যিই গেলে তবেই বলা হবে
+  let sentOk = false;
   if(typeof fbSendChatMessage === 'function'){
-    fbSendChatMessage(chatId, newMsg, activeDirectChatInfo);
+    try{ sentOk = !!(await fbSendChatMessage(chatId, newMsg, activeDirectChatInfo)); }catch(e){ sentOk = false; }
+  }
+  if(sentOk){ toast('✅ ছবি পাঠানো হয়েছে'); }
+  else{
+    toast('❌ ছবি ওপাশে পৌঁছায়নি — ইন্টারনেট দেখে আবার পাঠাও');
+    try{
+      const cur = getLocalChatMessages(chatId);
+      const ix = cur.findIndex(x => x.id === newMsg.id);
+      if(ix > -1){ cur.splice(ix, 1); saveLocalChatMessages(chatId, cur); renderChatMessagesList(cur, true); }
+    }catch(e){}
+    return;
   }
 
   // Update conversation record
@@ -22590,6 +22601,30 @@ window.openTeacherVerifiedRequestsModal = function(){ toast('এই ফিচা
 // ============================================================================
 // ১-অন-১ চ্যাট (Firestore)
 // ============================================================================
+// [v15] data:image → আরও ছোট JPEG (maxChars-এর মধ্যে না আসা পর্যন্ত ধাপে ধাপে কমানো)
+window.vkShrinkDataUrl = function(dataUrl, maxChars){
+  return new Promise(function(resolve){
+    try{
+      const img = new Image();
+      img.onload = function(){
+        const steps = [[800,0.7],[720,0.6],[640,0.55],[560,0.5],[480,0.45],[400,0.4]];
+        for(let s = 0; s < steps.length; s++){
+          const maxDim = steps[s][0], q = steps[s][1];
+          let w = img.width, hh = img.height;
+          if(w > maxDim || hh > maxDim){ if(w > hh){ hh = Math.round(hh * maxDim / w); w = maxDim; } else { w = Math.round(w * maxDim / hh); hh = maxDim; } }
+          const c = document.createElement('canvas'); c.width = w; c.height = hh;
+          c.getContext('2d').drawImage(img, 0, 0, w, hh);
+          const out = c.toDataURL('image/jpeg', q);
+          if(out.length <= maxChars) return resolve(out);
+        }
+        resolve(null);
+      };
+      img.onerror = function(){ resolve(null); };
+      img.src = dataUrl;
+    }catch(e){ resolve(null); }
+  });
+};
+
 window.fbSendChatMessage = async function(chatId, messageObj, conversationMeta){
   await fbReady(); if(!firestoreDb) return null;
   try{
@@ -22603,6 +22638,13 @@ window.fbSendChatMessage = async function(chatId, messageObj, conversationMeta){
       if(String(v).startsWith('data:')){
         const url = await fbUploadDataUrl(v, folder);
         if(url) return url;
+        // [v15] Storage ফেল করলে ছবি আরও ছোট করে Firestore-এ সরাসরি রাখা (১MB ডকুমেন্ট সীমার নিচে)
+        const INLINE_MAX = 420000;
+        if(String(v).indexOf('data:image/') === 0){
+          if(v.length <= INLINE_MAX) return v;
+          const small = await vkShrinkDataUrl(v, INLINE_MAX);
+          if(small) return small;
+        }
         if(v.length < 250000) return v;
         throw new Error('media_too_large');
       }
@@ -22617,8 +22659,8 @@ window.fbSendChatMessage = async function(chatId, messageObj, conversationMeta){
 
     const msgData = {
       ...messageObj, id: msgId, chatId,
-      text: encText, imageUrl: encImage, imageLink: encImage, videoUrl: encVideo,
-      audioUrl: encAudio, audioLink: encAudio, mediaUrl: encImage || encVideo || encAudio,
+      text: encText, imageUrl: encImage, imageLink: (String(imageRaw).indexOf('data:') === 0 ? '' : encImage), videoUrl: encVideo,
+      audioUrl: encAudio, audioLink: encAudio, mediaUrl: (String(imageRaw).indexOf('data:') === 0 ? '' : encImage) || encVideo || encAudio,
       isEncrypted: true, encryptionAlgorithm: 'AES-GCM-256',
       status: messageObj.status || 'sent', timestamp: messageObj.timestamp || Date.now()
     };
@@ -26485,10 +26527,28 @@ window.voiceToggle = function(){
 
   // ---- ২) নতুন মেসেজের নোটিফিকেশন (অ্যাপ খোলা/ব্যাকগ্রাউন্ডে থাকলে) ----
   let _unsub = null, _slug = '', _seen = {}, _hasStore = false, _unread = 0;
+  let _notified = {}, _unreadList = [];   // [v15] _notified = সিস্টেম নোটিফিকেশন গেছে; _seen = সত্যিই পড়া হয়েছে (দুটো আলাদা)
   const _baseTitle = document.title;
   const seenKey = () => 'vk_chat_seen_' + _slug;
   function saveSeen(){ try{ localStorage.setItem(seenKey(), JSON.stringify(_seen)); }catch(e){} }
-  function markSeen(chatId, ts){ if(!_slug) return; _seen[chatId] = Math.max(_seen[chatId] || 0, ts || Date.now()); saveSeen(); }
+  function markSeen(chatId, ts){ if(!_slug) return; _seen[chatId] = Math.max(_seen[chatId] || 0, ts || Date.now()); saveSeen(); try{ renderChatBanner(); }catch(e){} }
+  const notifKey = () => 'vk_chat_notified_' + _slug;
+  function saveNotified(){ try{ localStorage.setItem(notifKey(), JSON.stringify(_notified)); }catch(e){} }
+  // [v15] অ্যাপের ভেতরের নোটিফিকেশন: না-পড়া চ্যাট থাকলে ওপরে ব্যানার (ট্যাপ করলে চ্যাট লিস্ট)। পড়লে/চ্যাট খুললে চলে যায়।
+  function renderChatBanner(){
+    const pending = _unreadList.filter(x => x.at > (_seen[x.id] || 0));
+    let el = document.getElementById('vkChatBanner');
+    if(!pending.length){ if(el) el.remove(); return; }
+    if(!el){
+      el = document.createElement('div'); el.id = 'vkChatBanner';
+      el.style.cssText = 'position:fixed;left:10px;right:10px;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:9998;background:#1F2A44;color:#fff;border:1.5px solid #D9A441;border-radius:14px;padding:10px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer;font-weight:600;font-size:14px;line-height:1.4;';
+      el.onclick = function(e){ if(e.target && e.target.id === 'vkChatBannerX') return; try{ go('communityLounge'); setCommunityViewMode('chats'); }catch(err){} };
+      document.body.appendChild(el);
+    }
+    const who = pending.length === 1 ? ((pending[0].c && pending[0].c.lastSender) || 'কেউ') : '';
+    el.innerHTML = '<span style="font-size:20px;">💬</span><span style="flex:1;">' + (pending.length === 1 ? escapeHtml(who) + ' তোমাকে মেসেজ পাঠিয়েছে — ট্যাপ করে দেখো' : pending.length + 'টি চ্যাটে নতুন মেসেজ আছে — ট্যাপ করে দেখো') + '</span><span id="vkChatBannerX" style="padding:2px 8px;font-size:18px;opacity:.8;">✕</span>';
+    const x = document.getElementById('vkChatBannerX'); if(x) x.onclick = function(ev){ ev.stopPropagation(); el.remove(); };
+  }
   function showSystemNotification(title, body, chatId){
     try{
       if(!('Notification' in window) || Notification.permission !== 'granted') return;
@@ -26510,23 +26570,25 @@ window.voiceToggle = function(){
     if(_unsub){ try{ _unsub(); }catch(e){} _unsub = null; }
     _slug = me.slug;
     try{ const raw = localStorage.getItem(seenKey()); _hasStore = raw !== null; _seen = raw ? (JSON.parse(raw) || {}) : {}; }catch(e){ _seen = {}; _hasStore = false; }
+  try{ _notified = JSON.parse(localStorage.getItem(notifKey()) || '{}') || {}; }catch(e){ _notified = {}; }
     try{ await fbReady(); }catch(e){}
     if(typeof firestoreDb === 'undefined' || !firestoreDb) { _slug = ''; return; }
     let firstRun = true;
     _unsub = firestoreDb.collection('personal_chats').where('participantSlugs', 'array-contains', me.slug).limit(80).onSnapshot(async (snap) => {
-      const incoming = [];
+      const incoming = [], unread = [];
       snap.forEach(doc => {
         const c = doc.data() || {}, at = c.lastMessageAt || 0, id = c.chatId || doc.id;
         if(!at) return;
         if(c.lastSenderSlug === me.slug){ _seen[id] = Math.max(_seen[id] || 0, at); return; }
         const openNow = (typeof activeDirectChatInfo !== 'undefined') && activeDirectChatInfo && activeDirectChatInfo.chatId === id && document.visibilityState === 'visible';
         if(openNow){ _seen[id] = Math.max(_seen[id] || 0, at); return; }
-        if(at > (_seen[id] || 0)) incoming.push({ id: id, c: c, at: at });
+        if(at > (_seen[id] || 0)){ const it = { id: id, c: c, at: at }; unread.push(it); if(at > (_notified[id] || 0)) incoming.push(it); }
       });
       const baseline = firstRun && !_hasStore;   // নতুন ডিভাইসে পুরনো সব মেসেজের নোটিফিকেশন নয়
       firstRun = false;
-      if(baseline){ incoming.forEach(x => { _seen[x.id] = x.at; }); _hasStore = true; saveSeen(); return; }
-      if(!incoming.length){ saveSeen(); return; }
+      if(baseline){ unread.forEach(x => { _seen[x.id] = x.at; }); _unreadList = []; _hasStore = true; saveSeen(); renderChatBanner(); return; }
+  _unreadList = unread; renderChatBanner();
+  if(!incoming.length){ saveSeen(); return; }
       incoming.sort((a, b) => b.at - a.at);
       if(incoming.length > 1){
         toast('💬 ' + incoming.length + 'টি চ্যাটে নতুন মেসেজ আছে');
@@ -26541,9 +26603,9 @@ window.voiceToggle = function(){
         showSystemNotification(who, prev, x.id);
       }
       bumpTitle(incoming.length);
-      incoming.forEach(x => { _seen[x.id] = x.at; });
-      saveSeen();
-    }, (err) => console.warn('chat notifier error:', err));
+      incoming.forEach(x => { _notified[x.id] = x.at; });
+  saveNotified();
+  }, (err) => console.warn('chat notifier error:', err));
   }
   window.startChatNotifier = startChatNotifier;
 
