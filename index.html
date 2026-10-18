@@ -26811,7 +26811,8 @@ window.voiceToggle = function(){
         <span class="trk-score ${s.cut > 0 ? 'trk-s-lo' : 'trk-s-hi'}">💸 কাটা ৳${bn(s.cut)} (${bn(pct)}%) → পাবে ৳${bn(s.floor)}</span>
       </div>
       ${all.length ? `<details style="margin-top:8px;"><summary>📅 মিস দিনগুলো দেখো (ট্যাপ করলে মাফ)</summary><div class="trk-chips" style="margin-top:6px;">${all.map(x => dayBtn(x.d, x.ex)).join('')}</div></details>` : ''}
-      ${s.missed.length ? `<div style="margin-top:10px;"><button type="button" class="btn btn-gold" style="padding:8px 14px; font-size:13px;" onclick="hwCutForgive('${escapeHtml(s.slug)}','')">🙏 সব মিস দিন মাফ করো</button></div>` : ''}
+      ${s.locked ? `<div style="margin-top:10px;padding:10px;border:1px dashed var(--gold);border-radius:10px;"><div style="font-size:13px;margin-bottom:6px;">🔒 Withdraw অনুরোধে ৳${bn(s.locked.cut)} কাটা আছে (মোট অনুরোধ ৳${bn(s.locked.amount)})</div><button type="button" class="btn btn-gold" style="padding:8px 14px; font-size:13px;" onclick="hwCutForgive('${escapeHtml(s.slug)}','')">🙏 এই কাটা মাফ করো (৳${bn(s.locked.cut)} ফেরত)</button></div>` : ''}
+  ${s.missed.length ? `<div style="margin-top:10px;"><button type="button" class="btn btn-gold" style="padding:8px 14px; font-size:13px;" onclick="hwCutForgive('${escapeHtml(s.slug)}','')">🙏 সব মিস দিন মাফ করো</button></div>` : ''}
     </div>`;
   }
   window.renderHwCutManage = async function(){
@@ -26846,9 +26847,9 @@ window.voiceToggle = function(){
     if(r && r.status === 'success') renderHwCutManage();
   };
   window.hwCutForgive = async function(slug, date){
-    if(!date && !confirm('এই ছাত্রের এখনকার সব মিস দিন মাফ করবে?')) return;
+    if(!date && !confirm('এই ছাত্রের সব মিস দিন/কাটা মাফ করবে? (Withdraw অনুরোধে কাটা থাকলে সেটাও ফেরত যাবে)')) return;
     const r = await tpost('trkHwCutForgive', { slug: slug, date: date || '' });
-    if(r && r.status === 'success'){ toast('🙏 হালনাগাদ হয়েছে — এখন কাটা ৳' + bn(r.cut || 0)); renderHwCutManage(); }
+    if(r && r.status === 'success'){ toast(r.refunded ? ('🙏 মাফ হয়েছে — Withdraw অনুরোধে ৳' + bn(r.refunded) + ' ফেরত যোগ হলো') : ('🙏 হালনাগাদ হয়েছে — এখন কাটা ৳' + bn(r.cut || 0))); renderHwCutManage(); }
     else toast('করা যায়নি, আবার চেষ্টা করো');
   };
 })();
