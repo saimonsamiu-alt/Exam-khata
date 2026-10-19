@@ -4298,7 +4298,6 @@ async function renderTeacherDashboard(){
       </div>
       <div class="row" style="margin-top:10px;">
         <button class="btn btn-outline btn-block" onclick="go('hwCutManage')">🛡️ HW মিসের কাটা</button>
-  <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('visManage')">👥 কে কাকে দেখবে (অনুমতি)</button>
       </div>
     </div>
     <div class="card">
@@ -9817,7 +9816,6 @@ function render(){
   else if(s==='teacherTrackerStudent') renderTeacherTrackerStudent(state.slug, state.name, state.kind);
   else if(s==='myTeacherFb') renderMyTeacherFb();
   else if(s==='hwCutManage') renderHwCutManage();
-  else if(s==='visManage') renderVisManage();
   else if(s==='teacherNewExam') renderTeacherNewExam(state.editingExam);
   else if(s==='teacherResults') renderTeacherResults(state.code);
   else if(s==='studentEntry') renderStudentEntry();
@@ -11802,7 +11800,7 @@ window.doSmartSearch = async function(){
     let pr = null; try{ pr = JSON.parse(localStorage.getItem('rev_prefs_v1') || 'null'); }catch(e){}
     const sel = (pr && pr.subs ? pr.subs : []).filter(k => allowed.indexOf(k) !== -1 && NOTES_SUBJECTS[k]);
     const valid = sel.length > 0;
-    const pm = (pr && pr.mode) || 'unified', pmins = (pr && pr.mins) || goal;
+    const pm = (pr && pr.mode) || 'unified', pmins = (pr && pr.mins) || goal, pmcq = (pr && pr.mcqPct !== undefined) ? pr.mcqPct : 20;
     const prefNote = valid ? `<div style="padding:10px 12px;background:#EEF2FA;border-radius:10px;margin:0 0 12px 0;font-size:13.5px;line-height:1.5;">আগের সেটিংস: <b>${sel.map(k => NOTES_SUBJECTS[k].label).join(', ')}</b> · ${pm === 'sep' ? 'প্রতি বিষয়ে' : 'মোট'} ${pmins} মিনিট</div>` : '';
     app.innerHTML = `
       ${header('রিভিশন')}
@@ -11821,6 +11819,8 @@ window.doSmartSearch = async function(){
         </select>
         <label class="field-label">সময় (মিনিট, সর্বনিম্ন ৫) — "আলাদা" হলে প্রতি বিষয়ে এই সময়</label>
         <input type="number" id="revMin" min="5" value="${pmins}">
+        <label class="field-label">মোট সময়ের কত % শুরুতে MCQ (বাকিটা CQ) — যেমন ২০ মানে ২৫ মিনিটে ৫ মিনিট MCQ + ২০ মিনিট CQ; ০ দিলে মিশিয়ে আসবে</label>
+        <input type="number" id="revMcq" min="0" max="80" value="${pmcq}">
         <label class="field-label">প্রতিদিনের লক্ষ্য (মিনিট)</label>
         <input type="number" id="revGoal" min="5" value="${goal}">
         </details>
@@ -11840,8 +11840,10 @@ window.doSmartSearch = async function(){
     const goal = Math.max(5, parseInt(document.getElementById('revGoal').value, 10) || mins);
     localStorage.setItem('rev_goal', goal);
     const sep = document.getElementById('revMode').value === 'sep';
-    try{ localStorage.setItem('rev_prefs_v1', JSON.stringify({ subs, mode: sep ? 'sep' : 'unified', mins })); }catch(e){} // [NEW] পছন্দ সেভ
-    const segs = sep ? subs.map(s => ({ subs:[s], sec:mins * 60 })) : [{ subs:subs, sec:mins * 60 }];
+    const mcqPct = Math.min(80, Math.max(0, parseInt((document.getElementById('revMcq') || {}).value, 10) || 0));
+    try{ localStorage.setItem('rev_prefs_v1', JSON.stringify({ subs, mode: sep ? 'sep' : 'unified', mins, mcqPct })); }catch(e){} // [NEW] পছন্দ সেভ
+    const mcqSec = Math.min(Math.round(mins * 60 * mcqPct / 100), Math.max(0, mins * 60 - CQ_MIN_SEC));   // [NEW] শুরুতে MCQ, বাকিটা CQ — অন্তত ৪ মিনিট CQ-র জন্য রাখা হয়
+    const segs = sep ? subs.map(s => ({ subs:[s], sec:mins * 60, mcqSec })) : [{ subs:subs, sec:mins * 60, mcqSec }];
     window.__rev = { phase:'loading', slug:stud.slug, segs, si:0, tog:0, used:{}, stats:{ m:0, mc:0, cq:[] } };
     revRender();
     const res = await postToScriptRaw('revisionBuild', { slug:stud.slug, subjects:subs.join(',') });
@@ -11855,7 +11857,7 @@ window.doSmartSearch = async function(){
     if(r.timer) clearInterval(r.timer);
     r.timer = setInterval(() => {
       if(state.screen !== 'revision' || !R() || R() !== r){ clearInterval(r.timer); return; }
-      if(r.paused) return;
+      if(r.paused || r.busy) return;   // [NEW] AI লোড/চেক হওয়ার সময় টাইমার থামে
       r.remaining--; localStorage.setItem(doneKey(), doneSec() + 1);
       const el = document.getElementById('revT'); if(el) el.textContent = fmtTime(Math.max(0, r.remaining));
       if(r.remaining <= 0){ r.over = true; clearInterval(r.timer); }
@@ -11871,7 +11873,10 @@ window.doSmartSearch = async function(){
     const get = k => { const a = (P[k] || []).filter(ok), f = a.filter(i => !r.seen[i.tk]); return f.length ? f : a; };
     r.tog ^= 1;                                   // দুর্বল ↔ সহজ পালাক্রমে
     const weak = r.tog === 1, cq = r.remaining >= CQ_MIN_SEC;
-    const order = cq
+    const seg = r.segs[r.si], inMcq = (seg.mcqSec || 0) > 0 && (seg.sec - r.remaining) < seg.mcqSec;   // [NEW] প্রথম অংশ শুধু MCQ
+    const order = inMcq
+      ? (weak ? ['mcqWeak','mcqEasy','cqWeak','gen','cqEasy'] : ['mcqEasy','mcqWeak','cqEasy','cqWeak','gen'])
+      : cq
       ? (weak ? ['cqWeak','gen','cqEasy','mcqWeak','mcqEasy'] : ['cqEasy','cqWeak','gen','mcqEasy','mcqWeak'])
       : (weak ? ['mcqWeak','mcqEasy'] : ['mcqEasy','mcqWeak']);
     for(const k of order){ const l = get(k); if(l.length){
@@ -11902,13 +11907,15 @@ window.doSmartSearch = async function(){
       <div style="display:flex;align-items:center;gap:8px;"><button class="info-btn" style="background:#FEF6E8;border-color:var(--gold);color:#7B4F06;font-weight:700;" onclick="revPause()">⏸ রিভিশন নোট</button><div class="timer-chip" style="position:static;"><span class="timer-dot"></span><span id="revT">${fmtTime(Math.max(0, R().remaining))}</span></div></div></div>`;
   }
 
+  async function revWait(p){ const r = R(); if(r) r.busy = (r.busy || 0) + 1; try{ return await p; } finally{ if(r) r.busy = Math.max(0, (r.busy || 1) - 1); } }
+
   function revItem(){
     const it = R().cur;
     if(it.kind === 'mcq') return revMcq(it);
     if(it.kind === 'cq') return revCq(it, it.q);
     if(it.q) return revCq(it, it.q);                        // gen: প্রশ্ন আগেই তৈরি হয়ে গেছে
     app.innerHTML = header('রিভিশন') + bar(it) + `<div class="card center">স্লাইড থেকে নতুন প্রশ্ন বানানো হচ্ছে...</div>`;
-    postToScriptRaw('revisionGen', { topic:it.topic, ctx:it.ctx || '' }).then(res => {
+    revWait(postToScriptRaw('revisionGen', { topic:it.topic, ctx:it.ctx || '' })).then(res => {
       if(R().cur !== it) return;
       if(res && res.status === 'success'){ it.q = res.question; revCq(it, it.q); }
       else revNext();                                       // বানাতে না পারলে পরেরটা
@@ -11936,8 +11943,8 @@ window.doSmartSearch = async function(){
   window.revExplain = async function(){
     const it = R().cur, q = it.q || it, box = document.getElementById('revExp'); if(!box) return;
     box.innerHTML = `<p class="hint">সহজ করে ভাবছি...</p>`;
-    const res = await postToScriptRaw('revisionExplain', { topic:it.topic || '', text:q.text || '', options:JSON.stringify(q.options || []),
-      correct:q.correct === undefined ? '' : q.correct, model:q.modelAnswerText || '', pre:(it.kind !== 'mcq' && !it.submitted) });
+    const res = await revWait(postToScriptRaw('revisionExplain', { topic:it.topic || '', text:q.text || '', options:JSON.stringify(q.options || []),
+      correct:q.correct === undefined ? '' : q.correct, model:q.modelAnswerText || '', pre:(it.kind !== 'mcq' && !it.submitted) }));
     box.innerHTML = (res && res.status === 'success')
       ? `<div style="white-space:pre-wrap;line-height:1.7;margin-top:10px;background:#F5F9FE;border-radius:10px;padding:12px;font-size:14px;">${escapeHtml(res.text)}</div>`
       : `<p class="hint" style="color:var(--red);">এখন বোঝাতে পারছি না, একটু পরে আবার চাপো।</p>`;
@@ -11947,7 +11954,7 @@ window.doSmartSearch = async function(){
     const r = R(), it = r.cur, q = it.q || it, box = document.getElementById('revExp');
     if(box) box.innerHTML = `<p class="hint">একই ধরনের নতুন প্রশ্ন বানানো হচ্ছে...</p>`;
     const kind = it.kind === 'mcq' ? 'mcq' : 'cq';
-    const res = await postToScriptRaw('revisionVariant', { kind, topic:it.topic || '', text:q.text || '', options:JSON.stringify(q.options || []), model:q.modelAnswerText || '' });
+    const res = await revWait(postToScriptRaw('revisionVariant', { kind, topic:it.topic || '', text:q.text || '', options:JSON.stringify(q.options || []), model:q.modelAnswerText || '' }));
     if(!res || res.status !== 'success'){ if(box) box.innerHTML = `<p class="hint" style="color:var(--red);">এখন বানানো যায়নি, পরে চেষ্টা করো।</p>`; return; }
     const n = res.question, key = 'var:' + Date.now();
     r.cur = kind === 'mcq'
@@ -11987,8 +11994,8 @@ window.doSmartSearch = async function(){
     if(!f){ toast('আগে ছবি বাছো'); return; }
     const out = document.getElementById('revRes'), btn = document.getElementById('revSend');
     btn.disabled = true; out.innerHTML = `<p class="hint">চেক হচ্ছে...</p>`;
-    const c = await compressImageFile(f, 1200, 0.75);
-    const res = await postToScriptRaw('revisionGradeCq', { slug:r.slug, date:todayStr(), itemKey:it.key, tk:(it.subject||'') + '|' + (it.topic||''), question:JSON.stringify(it.q), base64:c.base64, mimeType:c.mimeType });
+    const c = await revWait(compressImageFile(f, 1200, 0.75));
+    const res = await revWait(postToScriptRaw('revisionGradeCq', { slug:r.slug, date:todayStr(), itemKey:it.key, tk:(it.subject||'') + '|' + (it.topic||''), question:JSON.stringify(it.q), base64:c.base64, mimeType:c.mimeType }));
     if(!res || res.status !== 'success'){ btn.disabled = false; out.innerHTML = `<p class="hint" style="color:var(--red);">${gradeErrMsg(res)}</p>`; return; }
     r.stats.cq.push(res.percent);
     out.innerHTML = `<div class="review-ans ${res.percent >= 90 ? 'right' : 'wrong'}">🤖 ${res.percent}% — ${escapeHtml(res.feedback)}</div>
@@ -16186,7 +16193,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     const nm = (opts.showName && it.name) ? `<span class="trk-chip" style="background:#E8EEFB; font-weight:700;">👤 ${escapeHtml(it.name)}</span>` : '';
     const dup = it.dupN > 1 ? `<span class="trk-chip">🔁 ${bnN(it.dupN)} বার জমা</span>` : '';
     const img = it.url ? `<a class="trk-chip" href="${escapeHtml(it.url)}" target="_blank" rel="noopener" style="text-decoration:none;">🖼 খাতা/ছবি দেখো</a>` : '';
-    const q = it.qText ? `<details><summary>❓ প্রশ্ন দেখো</summary><div class="trk-q">${escapeHtml(it.qText)}</div></details>` : '';
+    const q = (it.qText || it.qUrl) ? `<details><summary>❓ প্রশ্ন দেখো</summary><div class="trk-q">${escapeHtml(it.qText || '')}${it.qUrl ? `<div style="margin-top:6px;"><a href="${escapeHtml(it.qUrl)}" target="_blank" rel="noopener">🖼 প্রশ্নের ছবি দেখো</a></div>` : ''}</div></details>` : '';
     const ai = it.feedback ? `<details><summary>🤖 AI-র মন্তব্য দেখো</summary><div class="trk-ai">${escapeHtml(it.feedback)}</div></details>` : '';
     const rr = it.reviewReq ? `<div class="trk-note" style="color:#7B5A10;">🚩 ছাত্র রিভিউ চেয়েছে${it.reason ? ': ' + escapeHtml(it.reason) : ''}${it.resolved ? ' · ✅ নিষ্পত্তি হয়েছে' : ''}${it.tnote ? '<br>💬 শিক্ষকের উত্তর: ' + escapeHtml(it.tnote) : ''}</div>` : '';
     const nr = it.noReply ? `<div class="trk-note">ℹ️ এই দিনের শুধু সংখ্যা জমা আছে — AI-র উত্তর/খাতার ছবি সেভ হয়নি।</div>` : '';
@@ -18768,7 +18775,7 @@ function renderCommunityFeedComponent(){
   const goalCount = posts.filter(p => p.tag === '🎯 ডেইলি গোল').length;
   const noticeCount = posts.filter(p => p.tag === '📢 নোটিশ').length;
   const savedCount = getSavedPostIds().length;
-  const activeChats = typeof getActiveConversations === 'function' ? (window.vkFilterConvs ? vkFilterConvs(getActiveConversations()) : getActiveConversations()) : [];
+  const activeChats = typeof getActiveConversations === 'function' ? getActiveConversations() : [];
   const unreadChatsCount = activeChats.filter(c => (c.unreadCount || 0) > 0).length;
 
   const filteredPosts = getFilteredCommunityPosts(posts);
@@ -26478,9 +26485,6 @@ window.voiceToggle = function(){
 (function(){
   // ছাত্ররা এখন একে অপরকে দেখতে পাবে না। পরে সোশ্যাল চালু করতে শুধু এটা false করো।
   const STUDENT_PRIVACY_MODE = true;
-  // [v15] ছাত্র দেখে: শিক্ষক + নিজের বন্ধু-সার্কেল + শিক্ষক যাদের গ্রুপে দিয়েছেন (অনুমতি পাতা)। বাকি ছাত্র নয়। false করলে শুধু শিক্ষক।
-  const STUDENT_CIRCLE_VISIBLE = true;
-  const circleList_ = () => STUDENT_CIRCLE_VISIBLE ? getCircle().list : [];
   const WARN_AFTER_DAYS = 2;            // শেষ HW/রিভিশনের পর ২ দিনের বেশি গেলে ওয়ার্নিং (সার্ভারের VK_IDLE_WARN_DAYS-এর সাথে মিলিয়ে রাখো)
   const TEACHER_SLUG = 'teacher_' + slugify(CREATOR_NAME);
 
@@ -26496,7 +26500,7 @@ window.voiceToggle = function(){
     const me = getCurrentUserIdentity();
     if(!me) return false;
     if((it.authorSlug && it.authorSlug === me.slug) || (it.authorName && it.authorName === me.name)) return true;
-    return circleList_().some(x => (it.authorSlug && it.authorSlug === x.slug) || (it.authorName && it.authorName === x.name));
+    return getCircle().list.some(x => (it.authorSlug && it.authorSlug === x.slug) || (it.authorName && it.authorName === x.name));
   }
   // ---- ১) ফিড/স্টোরি/কমেন্টে ছাত্র শুধু শিক্ষকের আর নিজের জিনিস দেখবে ----
   window.fetchCommunityPosts = fetchCommunityPosts = function(){
@@ -26508,18 +26512,7 @@ window.voiceToggle = function(){
 
   window.vkFilterConvs = function(list){
     if(!privacyActive()) return list;
-    const kept = list.filter(c => !vkIsFakeTeacher(c.peerSlug, c.peerName, c.peerRole, c.peerBadge) && (c.peerRole === 'teacher' || c.peerBadge === 'verified_teacher' || isTeacherSlug(c.peerSlug) || inCircle(c.peerSlug)));
-    // [v15] একই শিক্ষকের একাধিক চ্যাট (পুরনো/ভিন্ন slug) থাকলে একটাই দেখাও — সবচেয়ে নতুনটা, না-পড়া যোগ করে
-    const isT = c => isTeacherSlug(c.peerSlug) || c.peerRole === 'teacher' || c.peerBadge === 'verified_teacher' || slugify(c.peerName || '') === slugify(CREATOR_NAME);
-    const ts = kept.filter(isT), rest = kept.filter(c => !isT(c));
-    if(ts.length > 1){
-      ts.sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
-      const top = Object.assign({}, ts[0]); top.unreadCount = ts.reduce((s, x) => s + (x.unreadCount || 0), 0); top.isArchived = ts.every(x => x.isArchived); top.isPinned = ts.some(x => x.isPinned);
-      rest.push(top);
-      try{ sortConversationsList(rest); }catch(e){}
-      return rest;
-    }
-    return kept;
+    return list.filter(c => !vkIsFakeTeacher(c.peerSlug, c.peerName, c.peerRole, c.peerBadge) && (c.peerRole === 'teacher' || c.peerBadge === 'verified_teacher' || isTeacherSlug(c.peerSlug) || inCircle(c.peerSlug)));
   };
   // অন্য ছাত্রের প্রোফাইল খোলা বন্ধ
   const _prof = window.openUserProfileModal;
@@ -26595,7 +26588,6 @@ window.voiceToggle = function(){
       snap.forEach(doc => {
         const c = doc.data() || {}, at = c.lastMessageAt || 0, id = c.chatId || doc.id;
         if(!at) return;
-        { const peerS = (c.participantSlugs || []).find(s => s !== me.slug); if(privacyActive() && peerS && !(isTeacherSlug(peerS) || inCircle(peerS))) return; }   // [v15] লুকানো ছাত্রের মেসেজে ব্যানার/নোটিফিকেশন নয়
         if(c.lastSenderSlug === me.slug){ _seen[id] = Math.max(_seen[id] || 0, at); return; }
         const openNow = (typeof activeDirectChatInfo !== 'undefined') && activeDirectChatInfo && activeDirectChatInfo.chatId === id && document.visibilityState === 'visible';
         if(openNow){ _seen[id] = Math.max(_seen[id] || 0, at); return; }
@@ -26700,7 +26692,7 @@ window.voiceToggle = function(){
     try{ const c = JSON.parse(localStorage.getItem(CIRCLE_KEY) || 'null'); const me = getCurrentUserIdentity(); if(c && me && c.me === me.slug) return c; }catch(e){}
     return { me: '', list: [], at: 0, friend: false, refBy: '' };
   }
-  function inCircle(slug){ return !!slug && circleList_().some(x => x.slug === slug); }
+  function inCircle(slug){ return !!slug && getCircle().list.some(x => x.slug === slug); }
   window.vkGetCircle = getCircle;
   async function refreshCircle(force){
     try{
@@ -26717,11 +26709,11 @@ window.voiceToggle = function(){
     }catch(e){}
   }
   window.vkPickerPeers = function(all){
-    const circle = circleList_();
+    const circle = getCircle().list;
     let out = vkDropFakeTeachers(all).filter(p => p.role === 'teacher' || String(p.slug).indexOf('teacher_') === 0 || circle.some(x => x.slug === p.slug));
     if(!out.some(p => p.role === 'teacher' || String(p.slug).indexOf('teacher_') === 0))
       out.unshift({ slug: TEACHER_SLUG, name: CREATOR_NAME, role: 'teacher', badge: 'verified_teacher', avatar: '👨‍🏫', institution: 'কোর্স শিক্ষক' });
-    circle.forEach(x => { if(!out.some(p => p.slug === x.slug)) out.push({ slug: x.slug, name: x.name, role: 'student', avatar: '🧑‍🎓', institution: x.role === 'friend' ? '🤝 বন্ধু' : (x.role === 'allowed' ? '👥 শিক্ষকের অনুমতি' : '🎓 রেফারার') }); });
+    circle.forEach(x => { if(!out.some(p => p.slug === x.slug)) out.push({ slug: x.slug, name: x.name, role: 'student', avatar: '🧑‍🎓', institution: x.role === 'friend' ? '🤝 বন্ধু' : '🎓 রেফারার' }); });
     return out;
   };
 
@@ -26869,74 +26861,6 @@ window.voiceToggle = function(){
     if(r && r.status === 'success'){ toast(r.refunded ? ('🙏 মাফ হয়েছে — Withdraw অনুরোধে ৳' + bn(r.refunded) + ' ফেরত যোগ হলো') : ('🙏 হালনাগাদ হয়েছে — এখন কাটা ৳' + bn(r.cut || 0))); renderHwCutManage(); }
     else toast('করা যায়নি, আবার চেষ্টা করো');
   };
-  // ===== [v15] শিক্ষকের পাতা: কোন ছাত্ররা একে অপরকে দেখতে পাবে =====
-  window.renderVisManage = async function(){
-    if(!currentTeacher){ go('landing'); return; }
-    app.innerHTML = `${header('কে কাকে দেখবে')}<div class="card center">লোড হচ্ছে...</div>`;
-    const r = await tpost('trkVisGroups');
-    if(!r || r.status !== 'success'){
-      app.innerHTML = `${header('কে কাকে দেখবে')}<div class="card center"><p class="hint" style="color:var(--red);">লোড করা যায়নি — নতুন Code.gs ডিপ্লয় করেছো তো?</p><button class="btn btn-outline" onclick="renderVisManage()">🔄 আবার চেষ্টা করো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেল</a></div>`;
-      return;
-    }
-    window.__vis = { groups: r.groups || [], students: r.students || [], picked: {}, q: '' };
-    drawVisPage();
-  };
-  function visNm(slug){ const s = (window.__vis.students || []).find(x => x.slug === slug); return s ? s.name : slug; }
-  function drawVisPage(){
-    const V = window.__vis;
-    const groupsHtml = V.groups.length ? V.groups.map((grp, i) => `
-      <div style="border:1px solid var(--paper-edge); border-radius:12px; padding:10px 12px; margin-top:8px;">
-        <div style="font-weight:700; margin-bottom:6px;">👥 গ্রুপ ${bn(i + 1)} · ${bn(grp.length)} জন</div>
-        <div style="font-size:14px; line-height:1.7;">${grp.map(s => escapeHtml(visNm(s))).join(' · ')}</div>
-        <button type="button" class="btn btn-outline" style="margin-top:8px; padding:6px 12px; font-size:13px;" onclick="visDel(${i})">🗑️ এই গ্রুপ মুছো</button>
-      </div>`).join('') : '<p class="hint" style="margin-top:8px;">এখনো কোনো গ্রুপ নেই — তাই ছাত্ররা শুধু তোমাকে আর নিজের বন্ধু-সার্কেলকে দেখছে।</p>';
-    app.innerHTML = `
-      ${header('কে কাকে দেখবে')}
-      <div style="margin:0 0 12px 0;"><button type="button" class="btn btn-outline" style="padding:8px 14px; font-size:13.5px;" onclick="go('teacherDashboard')">← শিক্ষক প্যানেল</button></div>
-      <div class="card">
-        <h2>👥 ছাত্রদের পরস্পরকে দেখার অনুমতি</h2>
-        <p class="hint">ডিফল্টে একজন ছাত্র শুধু <b>তোমাকে</b> আর <b>নিজের বন্ধু-সার্কেলকে</b> (চ্যাট ও পোস্ট) দেখতে পায়। এখানে যাদের একই গ্রুপে দেবে, তারা <b>একে অপরকে</b> দেখতে ও চ্যাট করতে পারবে। গ্রুপ মুছলেই আবার বন্ধ।</p>
-        ${groupsHtml}
-      </div>
-      <div class="card">
-        <h3 style="margin-bottom:6px;">➕ নতুন গ্রুপ বানাও</h3>
-        <input type="text" id="visQ" placeholder="নাম দিয়ে খোঁজো…" oninput="visSearch(this.value)" style="margin-bottom:8px;">
-        <div id="visList" style="max-height:320px; overflow:auto; border:1px solid var(--paper-edge); border-radius:10px; padding:6px 10px;"></div>
-        <div id="visCount" class="hint" style="margin-top:8px;"></div>
-        <button class="btn btn-gold btn-block" style="margin-top:8px;" onclick="visCreate()">✅ এদের গ্রুপ বানাও (একে অপরকে দেখবে)</button>
-      </div>
-      ${creditFooter()}`;
-    drawVisList();
-  }
-  function drawVisList(){
-    const V = window.__vis, q = (V.q || '').toLowerCase();
-    const el = document.getElementById('visList'); if(!el) return;
-    const rows = V.students.filter(s => !q || String(s.name).toLowerCase().indexOf(q) >= 0);
-    el.innerHTML = rows.length ? rows.map(s => `
-      <label style="display:flex; align-items:center; gap:10px; padding:8px 2px; border-bottom:1px dashed var(--paper-edge); cursor:pointer;">
-        <input type="checkbox" ${V.picked[s.slug] ? 'checked' : ''} onchange="visToggle('${escapeHtml(s.slug)}', this.checked)" style="width:18px; height:18px;">
-        <span>${escapeHtml(s.name)}</span>
-      </label>`).join('') : '<div class="hint" style="padding:10px;">কাউকে পাওয়া যায়নি</div>';
-    visCount();
-  }
-  function visCount(){ const n = Object.keys(window.__vis.picked).filter(k => window.__vis.picked[k]).length; const el = document.getElementById('visCount'); if(el) el.textContent = n + ' জন বাছা হয়েছে (কমপক্ষে ২ জন লাগবে)'; }
-  window.visSearch = function(v){ window.__vis.q = v || ''; drawVisList(); };
-  window.visToggle = function(slug, on){ window.__vis.picked[slug] = !!on; visCount(); };
-  async function visSave(groups){
-    const r = await tpost('trkVisSave', { groups: groups });
-    if(r && r.status === 'success'){ window.__vis.groups = r.groups || groups; window.__vis.picked = {}; window.__vis.q = ''; toast('✅ সেভ হয়েছে'); drawVisPage(); return true; }
-    toast('সেভ হয়নি, আবার চেষ্টা করো'); return false;
-  }
-  window.visCreate = function(){
-    const V = window.__vis, sel = Object.keys(V.picked).filter(k => V.picked[k]);
-    if(sel.length < 2){ toast('কমপক্ষে ২ জন বাছো'); return; }
-    visSave(V.groups.concat([sel]));
-  };
-  window.visDel = function(i){
-    if(!confirm('এই গ্রুপ মুছলে ওরা আর একে অপরকে দেখতে পাবে না। মুছবে?')) return;
-    const V = window.__vis; visSave(V.groups.filter((_, k) => k !== i));
-  };
-
 })();
 </script>
 
