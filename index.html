@@ -5877,7 +5877,8 @@ const NOTES_SUBJECTS = {
 };
 async function getAllNotes(){
   try{
-    const r = await fetch(`${SCRIPT_URL}?action=listNotes`);
+    let __sl = ''; try{ const __st = getLoggedStudent(); if(__st && __st.slug && !getLoggedTeacher()) __sl = '&slug=' + encodeURIComponent(__st.slug); }catch(e){}
+    const r = await fetch(`${SCRIPT_URL}?action=listNotes${__sl}`);
     const json = await r.json();
     if(json.status==='success') return json.data;
   } catch(e){}
@@ -9898,6 +9899,7 @@ function render(){
   else if(s==='pastWrittenDetail') renderPastWrittenDetail(state.title, state.subs, state.examQuestions);
   else if(s==='reviewInbox') renderReviewInbox();
   else if(s==='notesAutoAdd') renderNotesAutoAdd();
+  else if(s==='notesPdfAdd') renderNotesPdfAdd();
   else if(s==='notesTagEdit') renderNotesTagEdit();
   else if(s==='withdrawManage') renderWithdrawManage();
 
@@ -11301,12 +11303,17 @@ async function renderNotesManage(){
   }).join('');
   const pendRows = pend.map(n=> `
     <div class="review-block" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-      <div style="min-width:0;"><b>${escapeHtml(n.title || '(শিরোনাম নেই)')}</b> <span class="q-tag">${n.type === 'html' ? 'HTML' : 'লিংক'}</span>
+      <div style="min-width:0;"><b>${escapeHtml(n.title || '(শিরোনাম নেই)')}</b> <span class="q-tag">${n.type === 'html' ? 'HTML' : (n.type === 'pdf' ? 'PDF' : 'লিংক')}</span>
         <div class="meta">${n.subject && n.subject !== 'untagged' ? noteSubjLabel(n.subject) + ' · ' : ''}ট্যাগ হয়নি</div></div>
       <button class="btn btn-outline" style="padding:7px 12px; font-size:12.5px;" onclick="noteTagEditById('${n.id}')">🏷️ নিজে ট্যাগ করো</button>
     </div>`).join('');
   app.innerHTML = `
     ${header('নোট/স্লাইড ম্যানেজ করো')}
+    <div class="card" style="border:1.5px solid var(--green);">
+      <h2>📄 PDF সরাসরি আপলোড (HTML লাগবে না)</h2>
+      <p class="hint">PDF সিলেক্ট করো (একসাথে অনেকগুলোও), কোন ছাত্রদের পড়িয়েছ বেছে দাও — শুধু ওরা দেখবে আর ওদের রিভিশনে অটো আসবে। AI বিষয়-অধ্যায়-টপিক ঠিক করে দেবে।</p>
+      <button class="btn btn-primary btn-block" onclick="go('notesPdfAdd')">📄 PDF আপলোড করো</button>
+    </div>
     <div class="card" style="border:1.5px solid var(--gold);">
       <h2>⚡ PDF → HTML পেস্ট করো, বাকিটা অটো</h2>
       <p class="hint">PDF স্লাইড অন্য কোনো AI দিয়ে HTML বানিয়ে এখানে শুধু পেস্ট করো। AI নিজেই বিষয়, অধ্যায়, টপিক আর সাবটপিক ঠিক করে ছাত্রদের নোটে সাজিয়ে দেবে।</p>
@@ -11467,13 +11474,13 @@ async function renderNotesManageSubject(subject){
   window.__notesManageCtx = { subject, items: mine };
   let rows = mine.map((n, idx)=> `
     <div class="exam-item">
-      <h3 style="margin-bottom:4px;">${escapeHtml(n.title)} <span class="q-tag">${n.type === 'html' ? 'HTML স্লাইড' : 'লিংক'}</span></h3>
+      <h3 style="margin-bottom:4px;">${escapeHtml(n.title)} <span class="q-tag">${n.type === 'html' ? 'HTML স্লাইড' : (n.type === 'pdf' ? 'PDF' : 'লিংক')}</span></h3>
       <div class="meta">${n.chapter && n.topic ? '📖 ' + escapeHtml(n.chapter) + ' › ' + escapeHtml(n.topic) : '⚠️ ট্যাগ হয়নি'}</div>
       <div style="margin-top:4px;">${noteChips(n)}</div>
-      <div class="meta" style="margin-top:4px;">👥 রিভিশনে আসবে: <b>${escapeHtml(naLabel(n.id))}</b></div>
+      <div class="meta" style="margin-top:4px;">${n.type === 'pdf' ? '👥 কারা দেখবে + রিভিশনে আসবে' : '👥 রিভিশনে আসবে'}: <b>${escapeHtml(naLabel(n.id))}</b></div>
       <div id="naBox_${n.id}"></div>
       <div class="row" style="margin-top:8px;">
-        <button class="btn btn-outline" onclick="editNoteItem(${idx})">✏️ এডিট</button>
+        ${n.type === 'pdf' ? `<button class="btn btn-outline" onclick="pdfNoteViewManage(${idx})">👁️ দেখো</button>` : `<button class="btn btn-outline" onclick="editNoteItem(${idx})">✏️ এডিট</button>`}
         <button class="btn btn-outline" onclick="noteTagEditById('${n.id}')">🏷️ ট্যাগ</button>
         <button class="btn btn-outline" onclick="noteAssignOpen('${n.id}')">👥 কারা পড়বে</button>
         <button class="btn btn-outline" onclick="retagNoteUI('${n.id}')">🤖 AI ট্যাগ</button>
@@ -11489,6 +11496,7 @@ async function renderNotesManageSubject(subject){
       <div class="row" style="margin-top:10px;">
         <button class="btn btn-primary btn-block" onclick="go('notesEdit',{subject:'${subject}', noteId:null, mode:'link'})">🔗 + নতুন লিংক</button>
         <button class="btn btn-gold btn-block" onclick="go('notesAutoAdd')">⚡ + HTML (অটো)</button>
+        <button class="btn btn-primary btn-block" onclick="go('notesPdfAdd')">📄 + PDF সরাসরি</button>
       </div>
     </div>
     <div class="center"><a class="link-back" onclick="go('notesManage')">← ফিরে যাও</a></div>
@@ -11601,6 +11609,77 @@ window.goNoteSlideNav = function(newIndex){
   setTimeout(function(){ renderAllMath(document.getElementById('app')); }, 30);
 };
 /* ============ NOTES AUTO-ORGANIZE (end) ============ */
+
+/* ============ PDF NOTES (direct upload) ============ */
+window.pdfNoteShow = function(content, title){
+  const id = String(content || '').replace(/^DRIVEPDF:/, '');
+  const old = document.getElementById('pdfNoteOv'); if(old) old.remove();
+  const ov = document.createElement('div'); ov.id = 'pdfNoteOv';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#fff;display:flex;flex-direction:column;';
+  ov.innerHTML = `<div style="display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid #ddd;">
+    <b style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(title || 'PDF')}</b>
+    <a class="btn btn-outline" style="text-decoration:none;padding:6px 10px;" target="_blank" rel="noopener" href="https://drive.google.com/file/d/${id}/view">↗ নতুন ট্যাবে</a>
+    <button class="btn btn-danger" style="padding:6px 12px;" onclick="document.getElementById('pdfNoteOv').remove()">✕</button></div>
+    <iframe src="https://drive.google.com/file/d/${id}/preview" style="flex:1;width:100%;border:0;" allow="autoplay"></iframe>`;
+  document.body.appendChild(ov);
+};
+window.pdfNoteOpenIdx = function(idx){ const c = window.__notesListCtx; const n = c && c.items[idx]; if(n) pdfNoteShow(n.content, n.title); };
+window.pdfNoteViewManage = function(idx){ const c = window.__notesManageCtx; const n = c && c.items[idx]; if(n) pdfNoteShow(n.content, n.title); };
+
+window.renderNotesPdfAdd = async function(){
+  const opts = Object.keys(NOTES_SUBJECTS).map(k=> `<option value="${k}">${NOTES_SUBJECTS[k].icon} ${NOTES_SUBJECTS[k].label}</option>`).join('');
+  app.innerHTML = `
+    ${header('PDF আপলোড')}
+    <div class="card">
+      <h2>📄 PDF সরাসরি আপলোড</h2>
+      <p class="hint">HTML বানানো লাগবে না। একসাথে একাধিক PDF বাছা যায় (প্রতিটা সর্বোচ্চ ১২ MB)।</p>
+      <label class="field-label">PDF ফাইল</label>
+      <input type="file" id="pdFiles" accept="application/pdf,.pdf" multiple>
+      <label class="field-label">শিরোনাম (ঐচ্ছিক — শুধু একটা PDF হলে কাজ করে; খালি রাখলে AI দেবে)</label>
+      <input type="text" id="pdTitle" placeholder="খালি রাখলে AI দেবে">
+      <label class="field-label">বিষয় (ঐচ্ছিক)</label>
+      <select id="pdSubject"><option value="">🤖 AI ঠিক করবে</option>${opts}</select>
+      <label class="field-label">কাদের পড়িয়েছ? (কাউকে না বাছলে সব ছাত্র দেখবে)</label>
+      <div id="pdStuds" class="meta">লোড হচ্ছে...</div>
+      <button id="pdSaveBtn" class="btn btn-primary btn-block" style="margin-top:10px;" onclick="savePdfNotes()">⬆️ আপলোড করো ও AI দিয়ে সাজাও</button>
+      <div id="pdResult" style="margin-top:12px;"></div>
+    </div>
+    <div class="center"><a class="link-back" onclick="go('notesManage')">← ফিরে যাও</a></div>
+    ${creditFooter()}`;
+  const studs = await listStudentsRemote(); window.__pdStuds = studs || [];
+  const box = document.getElementById('pdStuds'); if(!box) return;
+  box.innerHTML = (window.__pdStuds.map(s => `<label style="display:flex;gap:6px;align-items:center;margin:4px 0;cursor:pointer;font-size:14px;"><input type="checkbox" data-pd="1" value="${escapeHtml(s.slug)}" style="display:inline-block;width:auto;margin:0;">${escapeHtml(s.name)}</label>`).join('') || 'কোনো ছাত্র নেই')
+    + `<div class="row" style="margin-top:6px;"><button class="btn btn-outline" onclick="document.querySelectorAll('input[data-pd]').forEach(i=>i.checked=true)">সবাইকে বাছো</button><button class="btn btn-outline" onclick="document.querySelectorAll('input[data-pd]').forEach(i=>i.checked=false)">বাছাই মুছো</button></div>`;
+};
+window.savePdfNotes = async function(){
+  const files = Array.from((document.getElementById('pdFiles') || {}).files || []);
+  if(!files.length){ toast('আগে PDF বাছো'); return; }
+  const subject = document.getElementById('pdSubject').value;
+  const title = files.length === 1 ? (document.getElementById('pdTitle').value || '').trim() : '';
+  const slugs = Array.from(document.querySelectorAll('input[data-pd]')).filter(i => i.checked).map(i => i.value);
+  const nameOf = s => { const f = (window.__pdStuds || []).find(x => x.slug === s); return f ? f.name : s; };
+  const btn = document.getElementById('pdSaveBtn'), box = document.getElementById('pdResult');
+  btn.disabled = true; box.innerHTML = '';
+  const toB64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(new Error('read')); r.readAsDataURL(f); });
+  for(let i = 0; i < files.length; i++){
+    const f = files[i], line = document.createElement('div'); line.className = 'review-block'; box.appendChild(line);
+    if(f.size > 12 * 1024 * 1024){ line.innerHTML = `❌ <b>${escapeHtml(f.name)}</b> — ১২ MB-এর বেশি, ছোট করে আবার দাও।`; continue; }
+    line.innerHTML = `⏳ <b>${escapeHtml(f.name)}</b> আপলোড ও AI সাজানো চলছে (${i + 1}/${files.length})... পেজ বন্ধ কোরো না`;
+    let res;
+    try{ res = await postToScriptRaw('pdfNoteSave', { tkey: TEACHER_PASSWORD, pdfBase64: await toB64(f), fileName: f.name, title, subject: subject || 'auto', slugs: slugs.join(',') }); }
+    catch(e){ res = null; }
+    if(!res || res.status !== 'success'){ line.innerHTML = `❌ <b>${escapeHtml(f.name)}</b> — আপলোড হয়নি (${escapeHtml((res && res.message) || 'সংযোগ সমস্যা')}). Apps Script নতুন version Deploy করা আছে তো?`; continue; }
+    window.__notesAll = (window.__notesAll || []).filter(n => n.id !== res.id).concat([{ id:res.id, subject:res.subject, title:res.title, type:'pdf', content:res.content, chapter:res.chapter, topic:res.topic, subtopics:res.subtopics }]);
+    const who = slugs.length ? slugs.map(nameOf).join(', ') : 'সব ছাত্র';
+    line.innerHTML = res.tagged
+      ? `✅ <b>${escapeHtml(res.title)}</b><div class="meta">${noteSubjLabel(res.subject)} › ${escapeHtml(res.chapter)} › ${escapeHtml(res.topic)}</div><div class="meta">👥 ${escapeHtml(who)}</div>`
+      : `⚠️ <b>${escapeHtml(res.title)}</b> সেভ হয়েছে, কিন্তু AI ট্যাগ করতে পারেনি (ট্যাগ ছাড়া রিভিশনে আসবে না)।<div class="meta">👥 ${escapeHtml(who)}</div><button class="btn btn-outline" onclick="noteTagEditById('${res.id}')">🏷️ নিজে ট্যাগ করো</button>`;
+  }
+  btn.disabled = false;
+  box.insertAdjacentHTML('beforeend', `<button class="btn btn-gold btn-block" style="margin-top:8px;" onclick="renderNotesPdfAdd()">➕ আরও PDF যোগ করো</button>`);
+};
+/* ============ PDF NOTES (end) ============ */
+
 
 
 
@@ -11750,6 +11829,11 @@ window.doSmartSearch = async function(){
   const CQ_MIN_SEC = 240;               // ৪ মিনিট বা বেশি বাকি থাকলে CQ/ছবি-প্রশ্ন, নইলে MCQ
   const doneKey = () => 'rev_done_' + todayStr();
   const doneSec = () => Number(localStorage.getItem(doneKey()) || 0);
+  // [NEW] সাপ্তাহিক রিভিশন: ছাত্রের সপ্তাহের প্রথম দিনই সাপ্তাহিক দিন (১২০ মিনিট বাধ্যতামূলক); বাকি ৬ দিন নিজের ইচ্ছামতো সময়
+  const WK_DAYS = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'], WK_SEC = 7200;
+  const wkStart = () => { const v = localStorage.getItem('rev_week_start'); return (v === null || v === '') ? -1 : Number(v); };
+  const wkIsToday = () => wkStart() >= 0 && new Date().getDay() === wkStart();
+  const wkDaysTo = () => (wkStart() - new Date().getDay() + 7) % 7;
 
   window.revOpen = function(){ window.__rev = { phase: localStorage.getItem('rev_greet_' + todayStr()) ? 'setup' : 'greet' }; go('revision'); };
 
@@ -11785,6 +11869,15 @@ window.doSmartSearch = async function(){
       if(R() !== r0) return;
       r0.allowed = (res && res.subjects && res.subjects.length) ? res.subjects : Object.keys(NOTES_SUBJECTS);
     }
+    if(!r0.wkLoaded){   // [NEW] সাপ্তাহিক রিভিশনের দিন সার্ভার থেকে (অন্য ডিভাইসেও একই থাকে)
+      const st0 = getLoggedStudent();
+      if(st0){
+        const w = await postToScriptRaw('revisionWeeklyGet', { slug: st0.slug });
+        if(R() !== r0) return;
+        if(w && w.status === 'success' && w.startDow >= 0) localStorage.setItem('rev_week_start', String(w.startDow));
+      }
+      r0.wkLoaded = true;
+    }
     revSetupDraw(r0.allowed); revFillCov(r0.allowed);
   }
   async function revFillCov(allowed){
@@ -11796,8 +11889,24 @@ window.doSmartSearch = async function(){
     el.innerHTML = rows ? `<div style="margin:10px 0;padding:10px 12px;background:#F5F9FE;border-radius:10px;"><b style="font-size:13px;">📈 রিভিশন চক্র</b>${rows}<div class="meta" style="margin-top:4px;">🔴দুর্বল (৩ দিনে ফেরে) 🟡মাঝারি (১০) 🟢সহজ (৩০) ⚪নতুন (১৪)</div></div>` : '';
   }
   function revSetupDraw(allowed){
-    const goal = Number(localStorage.getItem('rev_goal') || 10);
+    const wkTodayF = wkIsToday(), wkDoneMin = Math.floor(doneSec() / 60), wkMust = wkTodayF && doneSec() < WK_SEC;
+    const goal = wkTodayF ? 120 : Number(localStorage.getItem('rev_goal') || 10);
     const done = Math.floor(doneSec() / 60);
+    const wkS = wkStart(), wkEdit = !!(R() && R().wkEdit);
+    let wkCard = '';
+    if(wkS < 0 || wkEdit){
+      wkCard = `<div style="border:1.5px solid var(--gold);border-radius:12px;padding:12px;margin:0 0 12px 0;background:#FFFBF0;"><b>📅 সাপ্তাহিক রিভিশন</b>
+        <p class="hint" style="margin:6px 0;">সপ্তাহে একদিন <b>১২০ মিনিটের</b> বড় রিভিশন। তোমার সপ্তাহের <b>প্রথম দিন</b> কোনটা? ওই দিনটাই সাপ্তাহিক রিভিশনের দিন হবে — একবারই বলতে হবে। বাকি ৬ দিন নিজের ইচ্ছামতো সময় (যেমন ১০ বা ২০ মিনিট) রিভিশন দেবে।</p>
+        <select id="wkDow">${WK_DAYS.map((d, i) => `<option value="${i}" ${i === (wkS >= 0 ? wkS : 6) ? 'selected' : ''}>${d}</option>`).join('')}</select>
+        <button class="btn btn-gold btn-block" onclick="revWkSave()">💾 সেভ করো</button></div>`;
+    } else if(wkTodayF){
+      wkCard = `<div style="border:1.5px solid ${wkMust ? '#E58B82' : '#BFE3CC'};border-radius:12px;padding:12px;margin:0 0 12px 0;background:${wkMust ? '#FFF5F4' : '#F1FAF4'};"><b>📅 আজ সাপ্তাহিক রিভিশনের দিন</b>
+        <div class="meta" style="margin-top:4px;">${wkMust ? `আজ ১২০ মিনিট রিভিশন করতেই হবে — করেছো <b>${wkDoneMin}</b> মিনিট, বাকি <b>${Math.ceil((WK_SEC - doneSec()) / 60)}</b> মিনিট। একবারে না পারলে বিরতি দিয়ে আবার এসে চালিয়ে যেতে পারবে।` : '✅ আজকের ১২০ মিনিট পূর্ণ হয়েছে। চাইলে আরও রিভিশন করতে পারো।'}</div>
+        <a class="link-back" onclick="revWkChange()">দিন বদলাও</a></div>`;
+    } else {
+      const dt = wkDaysTo();
+      wkCard = `<div class="meta" style="margin:0 0 10px 0;">📅 সাপ্তাহিক রিভিশন: <b>${WK_DAYS[wkS]}</b> (${dt === 1 ? 'কাল' : dt + ' দিন পর'}) · ১২০ মিনিট · <a class="link-back" onclick="revWkChange()">দিন বদলাও</a></div>`;
+    }
     // [NEW] আগের বারের পছন্দ মনে রাখা — একবার ঠিক করলেই হবে
     let pr = null; try{ pr = JSON.parse(localStorage.getItem('rev_prefs_v1') || 'null'); }catch(e){}
     const sel = (pr && pr.subs ? pr.subs : []).filter(k => allowed.indexOf(k) !== -1 && NOTES_SUBJECTS[k]);
@@ -11809,9 +11918,10 @@ window.doSmartSearch = async function(){
       <div class="card">
         <h2>🔁 আজকের রিভিশন</h2>
         <p class="hint">আজ করেছো: <b>${done}</b> মিনিট / লক্ষ্য <b>${goal}</b> মিনিট</p>
+        ${wkCard}
         <div id="revCov"></div>
         ${prefNote}
-        <details ${valid ? '' : 'open'} style="margin-bottom:12px;"><summary style="cursor:pointer;font-weight:600;font-size:13.5px;padding:6px 0;">${valid ? 'সেটিংস বদলাও' : 'সেটিংস ঠিক করো (একবারই লাগবে)'}</summary>
+        <details ${valid ? '' : 'open'} style="margin-bottom:12px;${wkMust ? 'display:none;' : ''}"><summary style="cursor:pointer;font-weight:600;font-size:13.5px;padding:6px 0;">${valid ? 'সেটিংস বদলাও' : 'সেটিংস ঠিক করো (একবারই লাগবে)'}</summary>
         <label class="field-label">বিষয় (একাধিক বাছতে পারো)</label>
         ${allowed.map(k => `<label class="bubble-opt"><input type="checkbox" id="revS_${k}" ${sel.indexOf(k) !== -1 ? 'checked' : ''} style="display:inline-block;width:auto;margin:0;"><span>${NOTES_SUBJECTS[k].icon} ${NOTES_SUBJECTS[k].label}</span></label>`).join('')}
         <label class="field-label" style="margin-top:12px;">সময়ের ধরন</label>
@@ -11826,12 +11936,36 @@ window.doSmartSearch = async function(){
         <label class="field-label">প্রতিদিনের লক্ষ্য (মিনিট)</label>
         <input type="number" id="revGoal" min="5" value="${goal}">
         </details>
-        <button class="btn btn-primary btn-block" onclick="revStart()">▶️ শুরু করো</button>
+        ${wkMust ? `<button class="btn btn-primary btn-block" onclick="revWkStart()">▶️ সাপ্তাহিক রিভিশন শুরু করো (বাকি ${Math.ceil((WK_SEC - doneSec()) / 60)} মিনিট)</button>` : `<button class="btn btn-primary btn-block" onclick="revStart()">▶️ শুরু করো</button>`}
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('revFlow')">🗺️ আমার রিভিশন ফ্লো — দেখো, বদলাও, AI-র সাথে সাজাও</button>
       </div>
       <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>
       ${creditFooter()}`;
   }
+
+  window.revWkSave = async function(){
+    const st = getLoggedStudent(); if(!st){ go('studentAuth'); return; }
+    const d = parseInt((document.getElementById('wkDow') || {}).value, 10);
+    if(!(d >= 0 && d <= 6)) return;
+    const res = await postToScriptRaw('revisionWeeklySet', { slug: st.slug, startDow: d });
+    if(!res || res.status !== 'success'){ toast('সেভ হয়নি, আবার চেষ্টা করো'); return; }
+    localStorage.setItem('rev_week_start', String(d)); if(R()) R().wkEdit = false;
+    toast('সেভ হয়েছে ✅ — সাপ্তাহিক রিভিশনের দিন: ' + WK_DAYS[d]); revRender();
+  };
+  window.revWkChange = function(){ if(R()){ R().wkEdit = true; revRender(); } };
+  window.revWkStart = async function(){
+    const stud = getLoggedStudent(); if(!stud){ go('studentAuth'); return; }
+    const left = Math.max(0, WK_SEC - doneSec());
+    if(left < 30){ toast('আজকের ১২০ মিনিট পূর্ণ ✅'); revRender(); return; }
+    const subs = (R() && R().allowed && R().allowed.length) ? R().allowed.slice() : Object.keys(NOTES_SUBJECTS);
+    const mcqSec = Math.min(Math.round(left * 0.2), Math.max(0, left - CQ_MIN_SEC));
+    window.__rev = { phase:'loading', weekly:true, allowed:subs, wkLoaded:true, slug:stud.slug, segs:[{ subs, sec:left, mcqSec }], si:0, tog:0, used:{}, stats:{ m:0, mc:0, cq:[] } };
+    revRender();
+    const res = await postToScriptRaw('revisionBuild', { slug:stud.slug, subjects:subs.join(','), weekly:'1' });
+    if(!res || res.status !== 'success'){ toast('লোড হয়নি, আবার চেষ্টা করো'); window.__rev = { phase:'setup' }; revRender(); return; }
+    R().pool = res;
+    revBeginSeg();
+  };
 
   window.revStart = async function(){
     const stud = getLoggedStudent();
@@ -12016,6 +12150,7 @@ window.doSmartSearch = async function(){
         <p class="hint">আজ মোট রিভিশন: <b>${Math.floor(doneSec() / 60)}</b> মিনিট (লক্ষ্য ${localStorage.getItem('rev_goal') || 10})</p>
         <div class="meta">MCQ: <b>${s.mc}/${s.m}</b> সঠিক ${avg !== null ? `· CQ গড়: <b>${avg}%</b> (${s.cq.length}টা)` : ''}</div>
         ${s.m + s.cq.length === 0 ? `<p class="hint" style="margin-top:10px;">এই বিষয়ে এখনো রিভিশন করার মতো কিছু জমেনি — আগে MCQ/Written/HW দাও।</p>` : ''}
+        ${R().weekly ? `<div style="margin-top:10px;padding:10px 12px;border-radius:10px;background:${doneSec() >= WK_SEC ? '#F1FAF4' : '#FEF8EC'};">📅 সাপ্তাহিক রিভিশন: আজ <b>${Math.floor(doneSec() / 60)}</b>/১২০ মিনিট ${doneSec() >= WK_SEC ? '✅ পূর্ণ!' : '— বাকি ' + Math.ceil((WK_SEC - doneSec()) / 60) + ' মিনিট (এখন রিভিশন করার মতো প্রশ্ন শেষ হয়ে থাকলে পরে আবার চেষ্টা করো)'}</div>` : ''}
         <button class="btn btn-primary btn-block" style="margin-top:12px;" onclick="revOpen()">🔁 আবার রিভিশন</button>
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('studentDashboard')">ড্যাশবোর্ডে যাও</button></div>${creditFooter()}`;
   }
@@ -12078,6 +12213,7 @@ window.doSmartSearch = async function(){
   }
   window.revNoteOpen = async function(idx){
     const n = (window.__revNoteList || [])[idx]; if(!n) return;
+    if(n.type === 'pdf'){ pdfNoteShow(n.content, n.title); return; }
     if(n.type !== 'html'){ window.open(n.content, '_blank', 'noopener'); return; }
     let content = n.content;
     if(String(content).indexOf('DRIVEHTML:') === 0){
@@ -12414,7 +12550,7 @@ window.doSmartSearch = async function(){
 (function(){
   const __rx = render;
   render = function(){
-    const m = { revTaxonomy:revTaxRender, revAssign:revAsgRender, revOverride:revOvRender, revToday:revTodayRender }[state.screen];
+    const m = { revTaxonomy:revTaxRender, revAssign:revAsgRender, revOverride:revOvRender, revToday:revTodayRender, revWeekly:revWkRender }[state.screen];
     if(m){ syncLogoutFab(); m(); return; }
     __rx();
   };
@@ -12772,11 +12908,85 @@ window.doSmartSearch = async function(){
   };
   window.revTodayRender2 = function(){ revTodayRender(); };
 
+  // ---------------- শিক্ষক: সাপ্তাহিক রিভিশনের গুরুত্বপূর্ণ টপিক ----------------
+  // একবার সেভ করলে সার্ভারে থেকে যায় — প্রতি সপ্তাহে আবার ফর্ম পূরণ লাগে না। কিছু না বাছলে সাপ্তাহিক রিভিশনও আগের মতো AI-র অটো নিয়মেই চলে।
+  const WKT = { scope:'', studs:[], tree:{}, subj:'', sel:new Map(), flat:[], summary:{} };
+  window.revWkOpen = function(){ go('revWeekly'); };
+  const wkKey = (s, t) => s + '\u0001' + t;
+  async function wkLoadScope(scope){
+    const res = await postToScriptRaw('revisionWeeklyTopicsGet', { scope });
+    WKT.scope = scope; WKT.sel = new Map(); WKT.summary = (res && res.summary) || {};
+    ((res && res.items) || []).forEach(o => WKT.sel.set(wkKey(o.subject, o.topic), { subject:o.subject, topic:o.topic, chapter:o.chapter || '' }));
+  }
+  async function revWkRender(){
+    app.innerHTML = header('সাপ্তাহিক রিভিশন') + `<div class="card center">লোড হচ্ছে...</div>`;
+    const [studs, tax] = await Promise.all([listStudentsRemote(), postToScriptRaw('taxMaster', {})]);
+    WKT.studs = studs || []; WKT.tree = (tax && tax.tree) || {};
+    WKT.subj = Object.keys(NOTES_SUBJECTS)[0];
+    await wkLoadScope('');
+    wkDraw();
+  }
+  function wkDraw(){
+    const sm = WKT.summary || {};
+    const nameOf = s => { const f = WKT.studs.find(x => x.slug === s); return f ? f.name : s; };
+    app.innerHTML = `${header('সাপ্তাহিক রিভিশন')}
+      <div class="card"><h2>⭐ সাপ্তাহিক রিভিশনের গুরুত্বপূর্ণ টপিক</h2>
+        <p class="hint">ছাত্ররা সপ্তাহের প্রথম দিনে ১২০ মিনিটের সাপ্তাহিক রিভিশন করে। এখানে যে টপিকগুলো বাছবে সেগুলো ওই সেশনে <b>সবার আগে</b> আসবে (বেশি প্রশ্নসহ, নতুন প্রশ্নও বানানো হবে)। একবার সেভ করলে প্রতি সপ্তাহে নিজে থেকেই থাকবে — আবার ফর্ম পূরণ লাগবে না। কিছু না বাছলে আগের মতো AI নিজেই বাছবে।</p>
+        <label class="field-label">কাদের জন্য</label>
+        <select id="wkScope" onchange="wkScopeChange()">
+          <option value="" ${WKT.scope === '' ? 'selected' : ''}>👥 সব ছাত্র${sm[''] ? ' (' + sm[''] + 'টা বাছা)' : ''}</option>
+          ${WKT.studs.map(s => `<option value="${escapeHtml(s.slug)}" ${WKT.scope === s.slug ? 'selected' : ''}>${escapeHtml(s.name)}${sm[s.slug] ? ' (' + sm[s.slug] + 'টা বাছা)' : ''}</option>`).join('')}
+        </select>
+        <div class="meta">${WKT.scope ? `শুধু ${escapeHtml(nameOf(WKT.scope))}-এর জন্য — "সব ছাত্র"-এর বাছা টপিকের সাথে যোগ হবে।` : 'এই টপিকগুলো সব ছাত্রের সাপ্তাহিক রিভিশনে আসবে।'}</div>
+        <label class="field-label" style="margin-top:12px;">বিষয়</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${Object.keys(NOTES_SUBJECTS).map(k => `<button class="btn ${k === WKT.subj ? 'btn-primary' : 'btn-outline'}" style="padding:6px 12px;" onclick="wkSubj('${k}')">${NOTES_SUBJECTS[k].icon} ${NOTES_SUBJECTS[k].label}</button>`).join('')}</div>
+        <div id="wkTopics" style="margin-top:10px;"></div>
+        <h3 style="margin:14px 0 4px 0;">✅ বাছা টপিক (<span id="wkCnt">0</span>)</h3><div id="wkChips"></div>
+        <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="wkSave()">💾 সেভ করো</button>
+        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="wkClear()">🗑️ সব মুছে AI অটোতে ফেরো</button>
+        <div id="wkSt" class="hint" style="margin-top:8px;"></div></div>
+      <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+    wkTopics(); wkChips();
+  }
+  function wkTopics(){
+    const el = document.getElementById('wkTopics'); if(!el) return;
+    const chs = (WKT.tree[WKT.subj] || []).filter(c => c.topics && c.topics.length);
+    WKT.flat = [];
+    el.innerHTML = chs.length ? chs.map(c => `<details style="margin-bottom:8px;border:1px solid var(--paper-edge);border-radius:10px;padding:6px 10px;background:#FCFDFE;">
+      <summary style="cursor:pointer;font-weight:600;font-size:14px;">📖 ${escapeHtml(c.chapter)}</summary>
+      ${c.topics.map(tp => { const i = WKT.flat.push({ subject:WKT.subj, chapter:c.chapter, topic:tp.topic }) - 1;
+        return `<label style="display:flex;gap:6px;align-items:center;margin:5px 0;cursor:pointer;font-size:14px;"><input type="checkbox" ${WKT.sel.has(wkKey(WKT.subj, tp.topic)) ? 'checked' : ''} onchange="wkTog(${i}, this.checked)" style="display:inline-block;width:auto;margin:0;">${escapeHtml(tp.topic)}</label>`; }).join('')}
+    </details>`).join('') : `<div class="empty-state">এই বিষয়ে এখনো কোনো অধ্যায়/টপিক নেই (নোট যোগ হলে বা "বই TOC / Taxonomy" থেকে আসবে)।</div>`;
+  }
+  function wkChips(){
+    const el = document.getElementById('wkChips'), cn = document.getElementById('wkCnt'); if(!el) return;
+    const arr = Array.from(WKT.sel.values()); if(cn) cn.textContent = arr.length;
+    el.innerHTML = arr.length ? arr.map((o, i) => `<span style="display:inline-block;border:1px solid var(--paper-edge);border-radius:8px;padding:3px 8px;margin:3px 4px 3px 0;font-size:12.5px;background:#fff;">${NOTES_SUBJECTS[o.subject] ? NOTES_SUBJECTS[o.subject].icon : ''} ${escapeHtml(o.topic)} <a onclick="wkRem(${i})" style="cursor:pointer;color:var(--red);">✕</a></span>`).join('') : `<div class="meta">কিছু বাছা নেই — সাপ্তাহিক রিভিশন AI-র অটো নিয়মে চলবে।</div>`;
+  }
+  window.wkSubj = function(k){ WKT.subj = k; wkDraw(); };
+  window.wkTog = function(i, on){ const o = WKT.flat[i]; if(!o) return; const k = wkKey(o.subject, o.topic); if(on) WKT.sel.set(k, o); else WKT.sel.delete(k); wkChips(); };
+  window.wkRem = function(i){ const k = Array.from(WKT.sel.keys())[i]; if(k !== undefined){ WKT.sel.delete(k); wkTopics(); wkChips(); } };
+  window.wkScopeChange = async function(){
+    const v = (document.getElementById('wkScope') || {}).value || '';
+    const st = document.getElementById('wkSt'); if(st) st.textContent = 'লোড হচ্ছে...';
+    await wkLoadScope(v); wkDraw();
+  };
+  window.wkSave = async function(){
+    const st = document.getElementById('wkSt'); if(st) st.textContent = 'সেভ হচ্ছে...';
+    const res = await postToScriptRaw('revisionWeeklyTopicsSet', { scope: WKT.scope, items: JSON.stringify(Array.from(WKT.sel.values())) });
+    if(!res || res.status !== 'success'){ if(st) st.innerHTML = '<span style="color:var(--red);">❌ সেভ হয়নি (Apps Script নতুন version Deploy করা আছে তো?)</span>'; return; }
+    WKT.summary[WKT.scope] = res.saved; if(st) st.innerHTML = `<span style="color:var(--green);">✅ ${res.saved}টা টপিক সেভ হয়েছে — এগুলো প্রতি সপ্তাহের সাপ্তাহিক রিভিশনে সবার আগে আসবে।</span>`;
+  };
+  window.wkClear = async function(){
+    if(!confirm('এই তালিকার সব বাছা টপিক মুছে AI অটোতে ফিরবে?')) return;
+    WKT.sel = new Map(); await wkSave(); wkDraw();
+  };
+
   // ---------------- ড্যাশবোর্ডে বাটন ----------------
   function injectRx(){
     const t = document.querySelector('#app button[data-revt]');
     if(t && t.parentElement && !t.parentElement.querySelector('[data-rx]')){
-      [['📖 বই TOC / Taxonomy', revTaxOpen], ['📌 HW অ্যাসাইন করো', revAsgOpen], ['🎚️ রিভিশন কন্ট্রোল', revOvOpen]].forEach(([label, fn]) => {
+      [['📖 বই TOC / Taxonomy', revTaxOpen], ['📌 HW অ্যাসাইন করো', revAsgOpen], ['🎚️ রিভিশন কন্ট্রোল', revOvOpen], ['⭐ সাপ্তাহিক গুরুত্বপূর্ণ টপিক', revWkOpen]].forEach(([label, fn]) => {
         const b = document.createElement('button'); b.className = 'btn btn-outline btn-block'; b.setAttribute('data-rx', '1');
         b.textContent = label; b.onclick = fn; t.parentElement.appendChild(b);
       });
@@ -12978,7 +13188,7 @@ window.doSmartSearch = async function(){
             <h3 style="margin-bottom:4px;font-size:15px;">${escapeHtml(n.title)}</h3><div>${noteChips(n)}</div>
             ${n.type === 'html'
               ? `<div class="row" style="margin-top:6px;"><button class="btn btn-outline" onclick="viewNoteSlide(${x.idx})">📄 স্লাইড দেখো</button><button class="btn btn-outline" onclick="notePdf(${x.idx})">📥 PDF</button></div>`
-              : `<a href="${escapeHtml(n.content)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="text-decoration:none;margin-top:6px;">📄 খোলো</a>`}
+              : (n.type === 'pdf' ? `<button class="btn btn-outline btn-block" style="margin-top:6px;" onclick="pdfNoteOpenIdx(${x.idx})">📄 PDF পড়ো</button>` : `<a href="${escapeHtml(n.content)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="text-decoration:none;margin-top:6px;">📄 খোলো</a>`)}
           </div>`; }).join('')}</div>`).join('')}
       </details>`;
     }).join('');
