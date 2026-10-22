@@ -4039,6 +4039,8 @@ function renderLanding(){
         <div class="feature-card" onclick="go(getLoggedStudent()?'studentDashboard':'studentAuth')"><span class="ic">📅</span><span class="lbl">উপস্থিতি নিশ্চিত করো</span></div>
         <div class="feature-card" onclick="go('faqList')"><span class="ic">❓</span><span class="lbl">সাধারণ জিজ্ঞাসা</span></div>
         <div class="feature-card" onclick="go('notesGate')"><span class="ic">📝</span><span class="lbl">ক্লাস নোট / স্লাইড</span></div>
+        <div class="feature-card" onclick="go('myBook')"><span class="ic">📘</span><span class="lbl">আমার বই<br><small style="font-weight:500; color:var(--pencil);">সূচিপত্র · সার্চ · ডাউনলোড</small></span></div> <!-- [v19] -->
+        <div class="feature-card" onclick="go('myAsks')"><span class="ic">📨</span><span class="lbl">স্যারের উত্তর<br><small style="font-weight:500; color:var(--pencil);">না পারা প্রশ্ন</small></span></div> <!-- [v19] -->
         <div class="feature-card" onclick="go(getLoggedStudent()?'studentDashboard':'masteryEntry')"><span class="ic">📊</span><span class="lbl">আমার প্রোগ্রেস</span></div>
         <div class="feature-card" onclick="go('couponEntry')"><span class="ic">🎁</span><span class="lbl">Treat Coupon</span></div>
         <div class="feature-card" onclick="go('writtenEntry')"><span class="ic">✍️</span><span class="lbl">Written CQ পরীক্ষা</span></div>
@@ -4301,6 +4303,7 @@ async function renderTeacherDashboard(){
   <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('visManage')">👥 কে কাকে দেখবে (অনুমতি)</button>
       </div>
       <button class="btn btn-gold btn-block" style="margin-top:10px;" onclick="go('classFiles')">📂 ক্লাস ফাইল (PDF) — সিলেবাস ট্যাগ · অ্যাসাইন · রিভিশন সংযোগ</button>
+      <button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="go('askInbox')">📨 ছাত্রদের প্রশ্ন<span id="abTBadge"></span></button>
     </div>
     <div class="card">
       <h2>তোমার পরীক্ষাসমূহ</h2>
@@ -9257,7 +9260,7 @@ async function postToScriptRaw(action, params){
   try{
     // [NEW] রিভিশন/প্ল্যান অ্যাকশনে ছাত্রের stok (বা শিক্ষক লগইন থাকলে tkey) নিজে থেকে যায় — সার্ভার যাচাই করে ছাত্র শুধু নিজের ডেটা পাবে
     let extra = {};
-    if(/^(revision|plan|voice)/.test(action)){
+    if(/^(revision|plan|voice|ask|book)/.test(action)){   // [v19] ask/book-এও ছাত্রের stok (বা শিক্ষকের tkey) যায়
       try{
         const tch = getLoggedTeacher(), stu = getLoggedStudent();
         if(tch) extra.tkey = TEACHER_PASSWORD;
@@ -9821,6 +9824,9 @@ function render(){
   else if(s==='hwCutManage') renderHwCutManage();
   else if(s==='visManage') renderVisManage();
   else if(s==='classFiles') renderClassFiles();   // [v18] ক্লাস ফাইল
+  else if(s==='myBook') renderMyBook();           // [v19] আমার বই
+  else if(s==='myAsks') renderMyAsks();           // [v19] স্যারের উত্তর
+  else if(s==='askInbox') renderAskInbox();       // [v19] শিক্ষকের ইনবক্স
   else if(s==='teacherNewExam') renderTeacherNewExam(state.editingExam);
   else if(s==='teacherResults') renderTeacherResults(state.code);
   else if(s==='studentEntry') renderStudentEntry();
@@ -12076,6 +12082,7 @@ window.doSmartSearch = async function(){
     el.innerHTML = `<div class="row" style="margin-top:12px;">
         <button class="btn ${good ? 'btn-outline' : 'btn-gold'}" onclick="revExplain()">💡 বুঝিয়ে দাও</button>
         <button class="btn btn-outline" onclick="revVariant()">🔁 একই ধরনের নতুন প্রশ্ন</button></div>
+      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="revAskTeacher()">👨‍🏫 পারলাম না — স্যারকে জানাও</button>
       <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="revNextBtn()">পরের প্রশ্ন →</button>`;
   }
   window.revExplain = async function(){
@@ -12083,10 +12090,17 @@ window.doSmartSearch = async function(){
     box.innerHTML = `<p class="hint">সহজ করে ভাবছি...</p>`;
     const res = await revWait(postToScriptRaw('revisionExplain', { topic:it.topic || '', text:q.text || '', options:JSON.stringify(q.options || []),
       correct:q.correct === undefined ? '' : q.correct, model:q.modelAnswerText || '', pre:(it.kind !== 'mcq' && !it.submitted) }));
+    if(res && res.status === 'success') it.__exp = String(res.text || '');   // [v19] স্যারকে জানাতে AI-র ব্যাখ্যাও পাঠানো যাবে
     box.innerHTML = (res && res.status === 'success')
       ? `<div style="white-space:pre-wrap;line-height:1.7;margin-top:10px;background:#F5F9FE;border-radius:10px;padding:12px;font-size:14px;">${escapeHtml(res.text)}</div>`
       : `<p class="hint" style="color:var(--red);">এখন বোঝাতে পারছি না, একটু পরে আবার চাপো।</p>`;
     renderAllMath(box);
+  };
+  window.revAskTeacher = function(){   // [v19] রিভিশনে না পারলে শিক্ষককে জানানো
+    const it = R().cur, q = it.q || it;
+    const opts = (q.options || []).map((o, j) => ['ক','খ','গ','ঘ'][j] + ') ' + o).join('\n');
+    const sj = it.subject && NOTES_SUBJECTS[it.subject] ? NOTES_SUBJECTS[it.subject].label : '';
+    cfAskOpen({ kind:'REV', refId:String(it.key || ''), topic:[sj, it.topic].filter(Boolean).join(' › '), question:String(q.text || '') + (opts ? '\n' + opts : ''), aiAnswer:it.__exp || '' });
   };
   window.revVariant = async function(){
     const r = R(), it = r.cur, q = it.q || it, box = document.getElementById('revExp');
@@ -12107,7 +12121,8 @@ window.doSmartSearch = async function(){
     r.stats.m++; if(good) r.stats.mc++;
     document.getElementById('revO' + j).style.background = good ? '#EBF7EE' : '#FDEEEE';
     document.getElementById('revO' + it.correct).style.background = '#EBF7EE';
-    postToScriptRaw('revisionLog', { slug:r.slug, date:todayStr(), kind:'mcq', itemKey:it.key, correct:good, tk:(it.subject||'') + '|' + (it.topic||'') });
+    const qq = it.q || it;   // [v20] শিক্ষক যাতে দেখতে পারেন AI কোন প্রশ্ন দিয়েছিল ও ছাত্র কোনটা বেছেছিল
+    postToScriptRaw('revisionLog', { slug:r.slug, date:todayStr(), kind:'mcq', itemKey:it.key, correct:good, tk:(it.subject||'') + '|' + (it.topic||''), qt:String(qq.text || ''), qo:JSON.stringify(qq.options || []), ch:j, ci:it.correct });
     revActions(good);
   };
 
@@ -12119,6 +12134,7 @@ window.doSmartSearch = async function(){
         <input type="file" id="revFile" accept="image/*" style="margin-bottom:10px;">
         <button class="btn btn-primary btn-block" id="revSend" onclick="revSubmitCq()">📤 জমা দাও</button>
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="revExplain()">💡 পারছি না — উদাহরণ দিয়ে বুঝিয়ে দাও</button>
+        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="revAskTeacher()">👨‍🏫 স্যারকে জানাও</button>
         <div id="revExp"></div>
         <div id="revRes" style="margin-top:12px;"></div>
         <a class="link-back" style="display:block;margin-top:10px;" onclick="revSkip()">এটা বাদ দিয়ে পরেরটা →</a></div>${creditFooter()}`;
@@ -13151,20 +13167,22 @@ window.doSmartSearch = async function(){
         const c = mine.filter(n => n._x.paper === p).length;
         return `<button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="notesPickPaper(${i})">📘 ${escapeHtml(p)} <span class="meta" style="color:#fff;opacity:.8;">(${c}টা নোট)</span></button>`;
       }).join('');
-      app.innerHTML = `${header('ক্লাস নোট / স্লাইড')}
+      app.innerHTML = `${header('ক্লাস নোট / স্লাইড')}<div id="abEmbedBook"></div>
         <div class="card"><h2>${NOTES_SUBJECTS[subject].label}</h2>
           <p class="hint">কোন পত্রের নোট দেখতে চাও?</p>
           ${btns || '<div class="empty-state">এখনো এই বিষয়ে কোনো নোট/স্লাইড যোগ করা হয়নি।</div>'}</div>
         <div class="center"><a class="link-back" onclick="go('notesSubject')">← ফিরে যাও</a></div>${creditFooter()}`;
+      if(window.abEmbedBook) abEmbedBook(subject);   // [v20] স্যারের দেওয়া ক্লাস ফাইলের বই
       return;
     }
     const mineHere = mine.filter(n => n._x.paper === paper);
-    app.innerHTML = `${header('ক্লাস নোট / স্লাইড')}
+    app.innerHTML = `${header('ক্লাস নোট / স্লাইড')}<div id="abEmbedBook"></div>
       <div class="card"><h2>${NOTES_SUBJECTS[subject].label}${papers.length > 1 || paper !== OTHER ? ' · ' + escapeHtml(paper) : ''}</h2>
         ${mineHere.length > 4 ? `<input type="text" id="notesSearch" placeholder="🔎 অধ্যায়/টপিক/শিরোনাম খোঁজো" oninput="drawNotesGroups()">` : ''}
         <div id="notesGroups"></div></div>
       <div class="center"><a class="link-back" onclick="${papers.length > 1 ? `go('notesList',{subject:'${subject}'})` : `go('notesSubject')`}">← ফিরে যাও</a></div>${creditFooter()}`;
     drawNotesGroups();
+    if(window.abEmbedBook) abEmbedBook(subject);   // [v20] স্যারের দেওয়া ক্লাস ফাইলের বই
   };
   window.notesPickPaper = function(i){
     const c = window.__notesListCtx; if(!c) return;
@@ -13912,11 +13930,12 @@ window.doSmartSearch = async function(){
     renderAllMath(app);
   }
   function hhAssigned(a){
+    try{ (window.__cfAskReg = window.__cfAskReg || {})[a.id] = a; }catch(e){}   // [v19] স্যারকে জানাতে প্রশ্নটা মনে রাখা
     const head = `<div class="meta"><span class="q-tag">${esc(a.chapter)} › ${esc(a.topic)}${a.subtopic ? ' › ' + esc(a.subtopic) : ''}</span> ডেডলাইন: ${esc(a.due)}</div>`;
     const body = `${a.text ? `<div class="q-text" style="margin-top:6px;">${esc(a.text)}</div>` : ''}${a.imageUrl ? `<img src="${driveImg(a.imageUrl)}" style="max-width:100%;border-radius:8px;margin:6px 0;">` : ''}`;
     if(a.status === 'checked') return `<div class="exam-item">${head}${body}<div style="margin-top:6px;">${chip('checked')}</div><div class="review-ans ${a.percent >= 50 ? 'right' : 'wrong'}" style="margin-top:6px;">${a.percent}% — ${esc(a.feedback)}</div></div>`;
     return `<div class="exam-item" id="hhA_${a.id}">${head}${body}<div style="margin:6px 0;">${chip('pending', a.overdue)}</div>
-      <button class="btn btn-primary btn-block" onclick="hhOpenForm('${a.id}')">✍️ সমাধান জমা দাও</button><div id="hhF_${a.id}"></div></div>`;
+      <button class="btn btn-primary btn-block" onclick="hhOpenForm('${a.id}')">✍️ সমাধান জমা দাও</button><div style="margin-top:6px;"><a class="link-back" onclick="hhAsk('${a.id}')">👨‍🏫 না পারলে স্যারকে জানাও</a></div><div id="hhF_${a.id}"></div></div>`;
   }
   function hhOwn(o){
     return `<div class="exam-item"><div class="meta"><span class="q-tag">${esc(o.chapter ? o.chapter + ' › ' : '')}${esc(o.topic)}${o.tagged ? '' : ' (ট্যাগ হচ্ছে...)'}</span> ${esc(o.date)}</div>
@@ -14035,7 +14054,7 @@ window.doSmartSearch = async function(){
     const L = ['ক', 'খ', 'গ', 'ঘ'];
     const cards = R.items.map((it, i) => {
       const head = `<div class="meta"><b>#${i + 1}</b> <span class="q-tag">${esc(it.chapter)} › ${esc(it.topic)}</span> ${it.kind === 'mcq' ? 'MCQ' : 'CQ'}</div>
-        <div class="q-text" style="margin-top:6px;white-space:pre-wrap;">${esc(it.text)}</div>${it.imageUrl ? `<img src="${driveImg(it.imageUrl)}" style="max-width:100%;border-radius:8px;margin:6px 0;">` : ''}`;
+        <div class="q-text" style="margin-top:6px;white-space:pre-wrap;">${esc(it.text)}</div>${it.imageUrl ? `<img src="${driveImg(it.imageUrl)}" style="max-width:100%;border-radius:8px;margin:6px 0;">` : ''}<div style="margin-top:6px;"><a class="link-back" onclick="srAsk('${it.id}')">👨‍🏫 না পারলে স্যারকে জানাও</a></div>`;
       if(it.kind === 'mcq'){
         const opts = it.options.map((o, j) => `<button class="btn btn-outline btn-block" style="text-align:left;margin:4px 0;${it.answered ? (j === it.correct ? 'border-color:var(--green);background:#EBF7EE;' : '') : ''}" ${it.answered ? 'disabled' : ''} onclick="srMcq('${it.id}', ${j})">${L[j]}) ${esc(o)}</button>`).join('');
         return `<div class="card" id="srC_${it.id}">${head}${opts}${it.answered ? `<div class="review-ans ${it.score === 100 ? 'right' : 'wrong'}">${it.score === 100 ? '✅ সঠিক' : '❌ ভুল — সঠিক উত্তর ' + L[it.correct]}</div>` : ''}</div>`;
@@ -14057,6 +14076,11 @@ window.doSmartSearch = async function(){
     else toast('সেভ হয়নি, আবার চেষ্টা করো');
   };
   window.srAdd = function(id, input){ R.pages[id] = R.pages[id] || []; addFiles(R.pages[id], input); srPg(id); };
+  window.srAsk = function(id){   // [v19] রিভিশন সেটে না পারলে শিক্ষককে জানানো
+    const it = (R.items || []).find(x => x.id === id); if(!it) return;
+    const opts = (it.options || []).map((o, j) => ['ক','খ','গ','ঘ'][j] + ') ' + o).join('\n');
+    cfAskOpen({ kind:'REV', refId:(R.set ? R.set.id : '') + ':' + id, topic:[it.chapter, it.topic].filter(Boolean).join(' › '), question:String(it.text || '') + (opts ? '\n' + opts : '') });
+  };
   window.srPgOp = function(id, i, d){ listOp(R.pages[id], i, d); srPg(id); };
   function srPg(id){ const el = document.getElementById('srP_' + id); if(el) el.innerHTML = pagesHtml(R.pages[id], `(function(i,d){srPgOp('${id}',i,d)})`); }
   window.srCq = async function(itemId){
@@ -16411,10 +16435,15 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     const ai = it.feedback ? `<details><summary>🤖 AI-র মন্তব্য দেখো</summary><div class="trk-ai">${escapeHtml(it.feedback)}</div></details>` : '';
     const rr = it.reviewReq ? `<div class="trk-note" style="color:#7B5A10;">🚩 ছাত্র রিভিউ চেয়েছে${it.reason ? ': ' + escapeHtml(it.reason) : ''}${it.resolved ? ' · ✅ নিষ্পত্তি হয়েছে' : ''}${it.tnote ? '<br>💬 শিক্ষকের উত্তর: ' + escapeHtml(it.tnote) : ''}</div>` : '';
     const nr = it.noReply ? `<div class="trk-note">ℹ️ এই দিনের শুধু সংখ্যা জমা আছে — AI-র উত্তর/খাতার ছবি সেভ হয়নি।</div>` : '';
+    const ql = (it.qList && it.qList.length) ? `<details><summary>❓ AI যে MCQ দিয়েছিল (${bnN(it.qList.length)}টা) — ছাত্র কী বেছেছিল</summary><div class="trk-q">${it.qList.map((x, i) => {   // [v20]
+      let o = []; try{ o = JSON.parse(x.o || '[]'); }catch(e){}
+      const L = ['ক', 'খ', 'গ', 'ঘ'];
+      return `<div style="margin:8px 0;padding-bottom:8px;border-bottom:1px dashed var(--rule);"><b>${bnN(i + 1)}. ${escapeHtml(x.t)}</b>${x.tk ? `<div class="meta">${escapeHtml(String(x.tk).replace('|', ' › '))}</div>` : ''}${o.map((tx, j) => `<div>${j === Number(x.ci) ? '✅' : (j === Number(x.ch) ? '❌' : '▫️')} ${L[j] || ''}) ${escapeHtml(tx)}${j === Number(x.ch) ? ' <i>(ছাত্রের উত্তর)</i>' : ''}</div>`).join('')}</div>`;
+    }).join('')}</div></details>` : '';
     return `<div class="trk-item k-${it.kind}" id="trkc_${idx}">
       <div class="trk-title">${k.ic} ${escapeHtml(it.title || '')}</div>
       <div class="trk-chips">${nm}${it.tag ? `<span class="trk-chip">${escapeHtml(it.tag)}</span>` : ''}<span>${dayLabel(it.date)}</span>${scoreChip(it)}${dup}${img}</div>
-      ${q}${ai}${rr}${nr}${fbHtml(it, idx)}
+      ${q}${ql}${ai}${rr}${nr}${fbHtml(it, idx)}
     </div>`;
   }
   function byDate(items, opts){
@@ -27842,6 +27871,507 @@ var PagePicker = (function () {
   return { mount: mount };
 })();
 window.PagePicker = PagePicker;
+</script>
+
+<script id="vk-askbook-v19">
+// ============================================================================
+// [v19] 📨 স্যারকে জানাও (রিভিশন/HW-তে না পারলে অ্যাপের ভেতর থেকেই শিক্ষককে প্রশ্ন; শিক্ষকের ইনবক্স + উত্তর)
+//       📘 আমার বই (ছাত্রকে পড়ানো ফাইল নিয়ে বইয়ের মতো সূচিপত্র · AI সার্চ (বাংলা/English/Banglish) · অ্যাপে পড়া · ডাউনলোড)
+// ============================================================================
+(function(){
+  if(window.__abLoaded) return; window.__abLoaded = true;
+
+  /* ---------------- CSS (ab- উপসর্গ) ---------------- */
+  (function(){
+    if(document.getElementById('ab-css')) return;
+    const st = document.createElement('style'); st.id = 'ab-css';
+    st.textContent = `
+      .ab-ov{ position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:flex-end; justify-content:center; z-index:9000; }
+      .ab-sheet{ background:#fff; color:var(--ink); width:100%; max-width:620px; max-height:92vh; overflow:auto; border-radius:18px 18px 0 0; padding:18px; }
+      body.dark .ab-sheet{ background:#1E293B; color:#F8FAFC; }
+      .ab-hint{ color:var(--pencil); font-size:13.5px; line-height:1.5; }
+      .ab-meta{ color:var(--pencil); font-size:12.5px; margin-top:4px; }
+      .ab-q{ white-space:pre-wrap; word-break:break-word; background:#F5F9FE; border-radius:10px; padding:10px 12px; font-size:14px; max-height:150px; overflow:auto; margin-top:8px; }
+      body.dark .ab-q{ background:#232C45; }
+      .ab-ta{ width:100%; min-height:84px; margin-top:8px; font-family:inherit !important; font-size:14px !important; }
+      .ab-chk{ display:flex; align-items:center; gap:8px; margin-top:10px; font-size:13.5px; cursor:pointer; }
+      .ab-chk input{ width:18px; height:18px; margin:0; flex:none; }
+      .ab-err{ color:var(--red); font-size:13px; margin-top:6px; }
+      .ab-item{ border-top:1px dashed var(--rule); padding:12px 0; }
+      .ab-tag{ display:inline-block; background:#EEF2FF; color:#3730A3; border-radius:999px; padding:2px 10px; font-size:12px; font-weight:700; margin-right:6px; }
+      body.dark .ab-tag{ background:#232C45; color:#C7D2FE; }
+      .ab-open{ background:#FFF7ED; color:#B45309; } body.dark .ab-open{ background:#2A2110; color:#FBBF24; }
+      .ab-done{ background:#DCFCE7; color:#166534; } body.dark .ab-done{ background:#14351F; color:#86EFAC; }
+      .ab-reply{ background:#EBF7EE; border-radius:10px; padding:10px 12px; margin-top:8px; white-space:pre-wrap; word-break:break-word; font-size:14px; }
+      body.dark .ab-reply{ background:#14351F; }
+      .ab-sm{ padding:6px 12px !important; font-size:13.5px !important; }
+      .ab-acts{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+      .ab-tabs{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin:0 0 12px; }
+      .ab-tabs button{ padding:10px 4px; font-size:14px; }
+      /* বই */
+      .ab-cover{ background:linear-gradient(135deg,#1F2A44,#33456B); color:#fff; border-radius:14px; padding:22px 18px; text-align:center; margin-bottom:12px; }
+      .ab-cover .t{ font-size:21px; font-weight:800; line-height:1.3; }
+      .ab-cover .s{ opacity:.85; margin-top:6px; font-size:14px; }
+      .ab-search{ display:flex; gap:8px; margin:0 0 12px; }
+      .ab-search input{ flex:1; min-width:0; }
+      .ab-pick{ display:block; width:100%; text-align:left; padding:14px 16px; margin:8px 0; border:1.5px solid var(--paper-edge); border-radius:12px; background:transparent; color:inherit; font:inherit; font-weight:700; cursor:pointer; }
+      .ab-pick small{ display:block; font-weight:500; color:var(--pencil); margin-top:2px; }
+      details.ab-ch{ border:1px solid var(--paper-edge); border-radius:12px; margin:8px 0; padding:0 12px; }
+      details.ab-ch > summary{ cursor:pointer; padding:12px 0; font-weight:700; list-style:none; }
+      details.ab-ch > summary::-webkit-details-marker{ display:none; }
+      details.ab-ch > summary::before{ content:'▸ '; } details.ab-ch[open] > summary::before{ content:'▾ '; }
+      details.ab-tp{ border-top:1px dashed var(--rule); padding:0; }
+      details.ab-tp > summary{ cursor:pointer; padding:10px 0; font-size:14px; list-style:none; }
+      details.ab-tp > summary::-webkit-details-marker{ display:none; }
+      details.ab-tp > summary::before{ content:'• '; }
+      .ab-file{ display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0 10px 14px; flex-wrap:wrap; }
+      .ab-file .n{ font-size:14px; min-width:0; overflow-wrap:anywhere; }
+      .ab-hit{ border:1px solid var(--paper-edge); border-radius:12px; padding:10px 12px; margin:8px 0; }
+      .ab-rd{ position:fixed; inset:0; z-index:99999; background:#525659; display:flex; flex-direction:column; }
+      .ab-rd .bar{ display:flex; gap:8px; align-items:center; padding:10px 12px; background:#fff; color:#111; border-bottom:1px solid #ddd; }
+      .ab-rd .bar b{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .ab-rd .body{ flex:1; overflow:auto; padding:8px; -webkit-overflow-scrolling:touch; }
+      .ab-pg{ background:#fff; margin:0 auto 8px; max-width:900px; min-height:200px; }
+      .ab-pg canvas{ display:block; width:100%; height:auto; }
+      .ab-rd .msg{ color:#fff; text-align:center; padding:30px 16px; }
+    `;
+    document.head.appendChild(st);
+  })();
+
+  /* ---------------- সহায়ক ---------------- */
+  const $ = id => document.getElementById(id);
+  const bn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  const say = m => { try{ toast(m); }catch(e){} };
+  function h(tag, attrs){
+    const el = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(k => {
+      if(k === 'class') el.className = attrs[k];
+      else if(k === 'text') el.textContent = attrs[k];
+      else el.setAttribute(k, attrs[k]);
+    });
+    for(let i = 2; i < arguments.length; i++){ const c = arguments[i]; if(c == null) continue; el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); }
+    return el;
+  }
+  const btn = (text, cls, fn) => { const b = h('button', { type:'button', class:'btn ' + (cls || 'btn-outline') + ' ab-sm', text:text }); if(fn) b.onclick = fn; return b; };
+  function fmtDate(iso){ if(!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('bn-BD', { day:'numeric', month:'short', year:'numeric' }); }
+  function stu(){ try{ const s = getLoggedStudent(); return (s && s.slug) ? s : null; }catch(e){ return null; } }
+  function errText(r){
+    const m = r && r.message;
+    return ({ friend_limited:'এই অ্যাকাউন্টে এটা চালু নেই', too_many:'আজকের জন্য অনেক প্রশ্ন পাঠানো হয়ে গেছে, কাল আবার পাঠাও', empty_input:'কিছু লিখে তারপর পাঠাও',
+      network:'নেট দেখো, তারপর আবার চেষ্টা করো', timeout:'সময় লেগে গেছে, আবার চেষ্টা করো', slow_down:'একটু পরে আবার খোঁজো (অনেকবার খোঁজা হয়েছে)', ai_busy:'AI এখন ব্যস্ত, একটু পরে চেষ্টা করো',
+      not_allowed:'এই অনুমতি নেই', not_found:'পাওয়া যায়নি', no_file:'ফাইলটা পাওয়া যায়নি', unknown_action:'সার্ভারে নতুন Code.gs ডিপ্লয় (New version) করা হয়নি',
+      server_error:'সার্ভারে সমস্যা, একটু পরে আবার চেষ্টা করো', bad_response:'সার্ভারে নতুন Code.gs ডিপ্লয় (New version) করা হয়নি' })[m] || 'হয়নি, আবার চেষ্টা করো';
+  }
+  async function sapi(action, params){
+    const s = stu(); if(!s){ go('studentAuth'); return { status:'error', message:'login' }; }
+    return await postToScriptRaw(action, Object.assign({ slug:s.slug }, params || {}));
+  }
+  async function tcall(action, params){
+    try{
+      const r = await fetch(SCRIPT_URL, { method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action:action, tkey:TEACHER_PASSWORD }, params || {})) });
+      return JSON.parse(await r.text());
+    }catch(e){ return { status:'error', message:'network' }; }
+  }
+  const KIND = { REV:'রিভিশন', HW:'HW', OTHER:'অন্যান্য' };
+  function math(el){ try{ renderAllMath(el); }catch(e){} }
+
+  /* ============================================================
+     ১) ছাত্র: স্যারকে জানাও (শিট)
+     ============================================================ */
+  window.cfAskOpen = function(ctx){
+    ctx = ctx || {};
+    if(!stu()){ say('আগে লগইন করো'); go('studentAuth'); return; }
+    const old = document.querySelector('.ab-ov'); if(old) old.remove();
+    const ov = h('div', { class:'ab-ov' });
+    const close = () => ov.remove();
+    const note = h('textarea', { class:'ab-ta', placeholder:'কোথায় আটকে গেছো বা কী বুঝছো না? (এক-দুই লাইন, না লিখলেও চলবে)' });
+    const withAi = h('input', { type:'checkbox' }); withAi.checked = true;
+    const err = h('div', { class:'ab-err' });
+    const send = btn('📨 পাঠাও', 'btn-primary');
+    const cancel = btn('বাতিল', 'btn-outline', close);
+    const sheet = h('div', { class:'ab-sheet' },
+      h('h2', { style:'font-size:18px;', text:'👨‍🏫 স্যারকে জানাও' }),
+      h('div', { class:'ab-hint', text:'প্রশ্নটা স্যারের কাছে চলে যাবে, উত্তর এলে "📨 স্যারের উত্তর" পাতায় দেখতে পাবে।' }),
+      ctx.topic ? h('div', { class:'ab-meta', text:'📌 ' + ctx.topic }) : null,
+      h('div', { class:'ab-q', text:ctx.question || '(প্রশ্ন নেই)' }),
+      note,
+      ctx.aiAnswer ? h('label', { class:'ab-chk' }, withAi, h('span', { text:'AI-র ব্যাখ্যাটাও সাথে পাঠাও (স্যার দেখবেন AI কী বলেছিল)' })) : null,
+      err,
+      h('div', { class:'row', style:'margin-top:14px;' }, cancel, send));
+    cancel.style.flex = '1'; send.style.flex = '1';
+    send.onclick = async function(){
+      const text = String(note.value || '').trim();
+      if(!String(ctx.question || '').trim() && !text){ err.textContent = 'কিছু লিখে তারপর পাঠাও।'; return; }
+      send.disabled = true; err.textContent = '';
+      const r = await sapi('askSend', { kind:ctx.kind || 'OTHER', refId:ctx.refId || '', topic:ctx.topic || '', question:ctx.question || '', note:text,
+        aiAnswer: (ctx.aiAnswer && withAi.checked) ? ctx.aiAnswer : '' });
+      send.disabled = false;
+      if(!r || r.status !== 'success'){ err.textContent = errText(r); return; }
+      sheet.textContent = '';
+      sheet.appendChild(h('h2', { style:'font-size:18px;', text:'✅ পাঠানো হয়েছে' }));
+      sheet.appendChild(h('div', { class:'ab-hint', text:'স্যার দেখে উত্তর দিলে "📨 স্যারের উত্তর" পাতায় পাবে। অ্যাপ খুললে জানিয়েও দেবে।' }));
+      const ok = btn('ঠিক আছে', 'btn-primary', close), go1 = btn('📨 আমার প্রশ্নগুলো', 'btn-outline', () => { close(); go('myAsks'); });
+      sheet.appendChild(h('div', { class:'row', style:'margin-top:14px;' }, go1, ok));
+    };
+    ov.appendChild(sheet);
+    ov.addEventListener('click', e => { if(e.target === ov) close(); });
+    document.body.appendChild(ov);
+  };
+
+  // HW (শিক্ষকের দেওয়া) থেকে — hhAssigned() প্রশ্নটা রেজিস্টারে রেখে যায়
+  window.hhAsk = function(id){
+    const a = (window.__cfAskReg || {})[id]; if(!a){ say('প্রশ্ন পাওয়া যায়নি'); return; }
+    cfAskOpen({ kind:'HW', refId:String(a.id), topic:[a.chapter, a.topic, a.subtopic].filter(Boolean).join(' › '), question:(a.text || '') + (a.imageUrl ? '\n(প্রশ্নটা ছবিতে — স্যারের দেওয়া HW)' : '') });
+  };
+
+  /* ============================================================
+     ২) ছাত্র: আমার প্রশ্ন ও স্যারের উত্তর
+     ============================================================ */
+  window.renderMyAsks = async function(){
+    if(!stu()){ go('studentAuth'); return; }
+    app.innerHTML = `${header('স্যারের উত্তর')}<div class="card center">লোড হচ্ছে...</div>`;
+    const r = await sapi('askMine', {});
+    if(!r || r.status !== 'success'){
+      app.innerHTML = `${header('স্যারের উত্তর')}<div class="card center"><p class="hint" style="color:var(--red);">${escapeHtml(errText(r))}</p><button class="btn btn-outline" onclick="renderMyAsks()">🔄 আবার চেষ্টা করো</button></div><div class="center"><a class="link-back" onclick="go('landing')">← হোমে ফিরে যাও</a></div>${creditFooter()}`;
+      return;
+    }
+    const items = r.items || [];
+    app.innerHTML = `${header('স্যারের উত্তর')}<div class="card"><h2>📨 স্যারকে পাঠানো প্রশ্ন</h2><p class="ab-hint">রিভিশন বা HW-তে না পারলে "👨‍🏫 স্যারকে জানাও" চাপলে এখানে জমা হয়।</p><div id="abAsks"></div></div><div class="center"><a class="link-back" onclick="go('landing')">← হোমে ফিরে যাও</a></div>${creditFooter()}`;
+    const box = $('abAsks');
+    if(!items.length) box.appendChild(h('div', { class:'ab-hint', style:'margin-top:10px;', text:'এখনো কোনো প্রশ্ন পাঠাওনি।' }));
+    items.forEach(a => {
+      const rep = a.status === 'REPLIED';
+      const it = h('div', { class:'ab-item' },
+        h('div', {}, h('span', { class:'ab-tag', text:KIND[a.kind] || 'অন্যান্য' }), h('span', { class:'ab-tag ' + (rep ? 'ab-done' : 'ab-open'), text:rep ? '✅ স্যারের উত্তর এসেছে' : '⏳ স্যার দেখবেন' })),
+        a.topic ? h('div', { class:'ab-meta', text:'📌 ' + a.topic }) : null,
+        h('div', { class:'ab-q', text:a.question || '' }),
+        a.note ? h('div', { class:'ab-meta', text:'তোমার কথা: ' + a.note }) : null,
+        h('div', { class:'ab-meta', text:'🗓️ ' + fmtDate(a.createdAt) }),
+        rep ? h('div', { class:'ab-reply' }, h('b', { text:'👨‍🏫 স্যারের উত্তর:' }), h('div', { text:a.reply })) : null);
+      box.appendChild(it);
+    });
+    math(box);
+    if(r.unseen > 0) sapi('askSeen', {});          // দেখা হয়ে গেলে "নতুন উত্তর" জানানো বন্ধ
+  };
+
+  /* ============================================================
+     ৩) শিক্ষক: ছাত্রদের প্রশ্নের ইনবক্স
+     ============================================================ */
+  window.renderAskInbox = async function(){
+    if(!currentTeacher){ go('landing'); return; }
+    const filt = window.__abFilt || 'OPEN';
+    app.innerHTML = `${header('ছাত্রদের প্রশ্ন')}<div class="card center">লোড হচ্ছে...</div>`;
+    const r = await tcall('askList', { filter: filt === 'ALL' ? '' : filt });
+    if(!r || r.status !== 'success'){
+      app.innerHTML = `${header('ছাত্রদের প্রশ্ন')}<div class="card center"><p class="hint" style="color:var(--red);">${escapeHtml(errText(r))}</p><button class="btn btn-outline" onclick="renderAskInbox()">🔄 আবার চেষ্টা করো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেল</a></div>${creditFooter()}`;
+      return;
+    }
+    app.innerHTML = `${header('ছাত্রদের প্রশ্ন')}
+      <div class="card"><h2>📨 ছাত্রদের প্রশ্ন</h2>
+        <p class="ab-hint">রিভিশন বা HW-তে না পেরে ছাত্ররা যা পাঠিয়েছে। উত্তর লিখে পাঠালে ছাত্র তার পাতায় দেখবে।</p>
+        <div class="ab-tabs"><button type="button" id="abTO"></button><button type="button" id="abTR"></button><button type="button" id="abTA"></button></div>
+        <div id="abList"></div></div>
+      <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেল</a></div>${creditFooter()}`;
+    [['abTO', 'OPEN', '⏳ অপেক্ষমাণ (' + bn(r.open) + ')'], ['abTR', 'REPLIED', '✅ উত্তর দেওয়া'], ['abTA', 'ALL', 'সব']].forEach(x => {
+      const b = $(x[0]); b.textContent = x[2]; b.className = 'btn ' + (filt === x[1] ? 'btn-primary' : 'btn-outline');
+      b.onclick = () => { window.__abFilt = x[1]; renderAskInbox(); };
+    });
+    const list = $('abList');
+    const items = r.items || [];
+    if(!items.length) list.appendChild(h('div', { class:'ab-hint', text:filt === 'OPEN' ? 'এখন কোনো অপেক্ষমাণ প্রশ্ন নেই ✅' : 'কিছু নেই।' }));
+    items.forEach(a => list.appendChild(inboxCard(a)));
+    math(list);
+  };
+  function inboxCard(a){
+    const rep = a.status === 'REPLIED';
+    const card = h('div', { class:'ab-item' });
+    card.appendChild(h('div', {}, h('span', { class:'ab-tag', text:'👤 ' + a.name }), h('span', { class:'ab-tag', text:KIND[a.kind] || 'অন্যান্য' }), h('span', { class:'ab-tag ' + (rep ? 'ab-done' : 'ab-open'), text:rep ? '✅ উত্তর দেওয়া' : '⏳ অপেক্ষমাণ' })));
+    if(a.topic) card.appendChild(h('div', { class:'ab-meta', text:'📌 ' + a.topic }));
+    card.appendChild(h('div', { class:'ab-q', text:a.question || '' }));
+    if(a.note) card.appendChild(h('div', { class:'ab-meta', text:'ছাত্রের কথা: ' + a.note }));
+    if(a.aiAnswer){ const d = h('details', { style:'margin-top:6px;' }, h('summary', { text:'🤖 AI যা বলেছিল' }), h('div', { class:'ab-q', text:a.aiAnswer })); card.appendChild(d); }
+    card.appendChild(h('div', { class:'ab-meta', text:'🗓️ ' + fmtDate(a.createdAt) }));
+    if(rep) card.appendChild(h('div', { class:'ab-reply' }, h('b', { text:'তোমার উত্তর:' }), h('div', { text:a.reply })));
+    const ta = h('textarea', { class:'ab-ta', placeholder:rep ? 'উত্তর বদলাতে চাইলে নতুন করে লেখো…' : 'ছাত্রকে উত্তর লেখো…' });
+    const err = h('div', { class:'ab-err' });
+    const send = btn(rep ? '✏️ উত্তর বদলাও' : '✅ উত্তর পাঠাও', 'btn-primary', async () => {
+      const text = String(ta.value || '').trim();
+      if(!text){ err.textContent = 'আগে উত্তর লেখো।'; return; }
+      send.disabled = true; err.textContent = '';
+      const r = await tcall('askReply', { id:a.id, reply:text });
+      send.disabled = false;
+      if(!r || r.status !== 'success'){ err.textContent = errText(r); return; }
+      say('উত্তর পাঠানো হয়েছে ✅'); renderAskInbox();
+    });
+    card.appendChild(ta); card.appendChild(err); card.appendChild(h('div', { class:'ab-acts' }, send));
+    return card;
+  }
+
+  /* ============================================================
+     ৪) ছাত্র: আমার বই
+     ============================================================ */
+  const B = { files:[], tree:null, subject:null, paper:null, hits:null, q:'', lock:false };   // lock = নোট/স্লাইডের ভেতরে বিষয় ঠিক করা আছে
+  const blobCache = {};
+
+  const toLatinDigits = s => String(s).replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d));
+  const norm = s => toLatinDigits(String(s || '').toLowerCase()).replace(/[\s\-_.,:;()\[\]|›]+/g, ' ').trim();
+
+  function buildTree(files){
+    const subj = {}, loose = [];
+    files.forEach(f => {
+      const leaves = (f.tags || []).filter(t => t.leaf);
+      if(!leaves.length){ loose.push(f); return; }
+      leaves.forEach(t => {
+        const s = String(t.path || '').split(' › ');
+        const S = s[0] || 'অন্যান্য', P = s[1] || '—', C = s[2] || 'অন্যান্য', T = s.slice(3).join(' › ') || '(পুরো অধ্যায়)';
+        subj[S] = subj[S] || {}; subj[S][P] = subj[S][P] || {}; subj[S][P][C] = subj[S][P][C] || {};
+        const arr = (subj[S][P][C][T] = subj[S][P][C][T] || []);
+        if(!arr.some(x => x.hash === f.hash)) arr.push(f);
+      });
+    });
+    return { subj:subj, loose:loose };
+  }
+  // নোটের বিষয়ের নাম ("পদার্থবিজ্ঞান (Physics)") আর সিলেবাসের বিষয় ("পদার্থবিজ্ঞান") মিলানো
+  const stripP = s => norm(String(s || '').replace(/\(.*?\)/g, ''));
+  const subjMatch = (label, syl) => { const a = stripP(label), b = stripP(syl); return !!a && !!b && a === b; };
+  const chNo = name => { const m = toLatinDigits(name).match(/(\d+)/); return m ? Number(m[1]) : 999; };
+
+  window.renderMyBook = async function(){
+    if(!stu()){ go('studentAuth'); return; }
+    app.innerHTML = `${header('আমার বই')}<div class="card center">লোড হচ্ছে...</div>`;
+    const r = await sapi('bookIndex', {});
+    if(!r || r.status !== 'success'){
+      app.innerHTML = `${header('আমার বই')}<div class="card center"><p class="hint" style="color:var(--red);">${escapeHtml(errText(r))}</p><button class="btn btn-outline" onclick="renderMyBook()">🔄 আবার চেষ্টা করো</button></div><div class="center"><a class="link-back" onclick="go('landing')">← হোমে ফিরে যাও</a></div>${creditFooter()}`;
+      return;
+    }
+    B.files = r.files || []; B.tree = buildTree(B.files); B.subject = null; B.paper = null; B.hits = null; B.q = '';
+    B.files = r.files || []; B.tree = buildTree(B.files); B.subject = null; B.paper = null; B.hits = null; B.q = ''; B.lock = false;
+    app.innerHTML = `${header('আমার বই')}
+      <div class="card" id="abBook">${bookShell(false)}</div>
+      <div class="center"><a class="link-back" onclick="go('landing')">← হোমে ফিরে যাও</a></div>${creditFooter()}`;
+    wireBook(); drawBook();
+  };
+  function bookShell(embed){
+    return `<h2>📘 ${embed ? 'আমার বই (স্যারের দেওয়া ক্লাস ফাইল)' : 'আমার বই'}</h2>
+        <p class="ab-hint">স্যার তোমাকে যে ফাইলগুলো দিয়েছেন সেগুলো বইয়ের মতো সাজানো। টপিকে চাপলে সেই টপিকের ফাইল খুলবে। অ্যাপের বাইরেও পড়তে ডাউনলোড করতে পারবে।</p>
+        <div class="ab-search"><input type="text" id="abQ" placeholder="খোঁজো — বাংলা, English বা Banglish (যেমন: kulomber sutro)"><button type="button" class="btn btn-primary ab-sm" id="abGo">🔎 খোঁজো</button></div>
+        <div id="abBody"></div>`;
+  }
+  function wireBook(){
+    $('abGo').onclick = doSearch;
+    $('abQ').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); doSearch(); } });
+  }
+
+  // নোট/স্লাইডের ভেতরে (বিষয় ঠিক করা): পুরোনো নোট-তালিকার ওপরে ক্লাস ফাইলের বই
+  window.abEmbedBook = async function(subjectKey){
+    const host = $('abEmbedBook'); if(!host || !stu()) return;
+    try{ if(typeof isFriendStud === 'function' && isFriendStud(getLoggedStudent())) return; }catch(e){}
+    const NS = (typeof NOTES_SUBJECTS !== 'undefined') ? NOTES_SUBJECTS : (window.NOTES_SUBJECTS || {});
+    const label = (NS[subjectKey] || {}).label || '';
+    const r = await sapi('bookIndex', {});
+    if(!host.isConnected || !r || r.status !== 'success' || !(r.files || []).length) return;
+    const files = r.files, tree = buildTree(files);
+    const sub = Object.keys(tree.subj).find(s => subjMatch(label, s)); if(!sub) return;
+    B.files = files; B.tree = tree; B.subject = sub; B.hits = null; B.q = ''; B.lock = true;
+    const ps = Object.keys(tree.subj[sub]); B.paper = ps.length === 1 ? ps[0] : null;
+    host.className = 'card'; host.innerHTML = bookShell(true);
+    wireBook(); drawBook();
+    // বই আছে — তাই পুরোনো তালিকার "এখনো কিছু নেই / কিছু পাওয়া যায়নি" লেখা আর দেখানো ঠিক না
+    const nx = host.nextElementSibling;
+    if(nx && nx.classList.contains('card')){
+      nx.querySelectorAll('.empty-state').forEach(e => e.remove());
+      if(!nx.querySelector('button, details, a.btn')) nx.style.display = 'none';
+    }
+  };
+
+  function drawBook(){
+    const body = $('abBody'); if(!body) return; body.textContent = '';
+    if(B.hits){ drawHits(body); return; }
+    if(!B.files.length){
+      body.appendChild(h('div', { class:'ab-hint', text:'এখনো তোমার নামে কোনো ফাইল দেওয়া হয়নি। স্যার ফাইল অ্যাসাইন করলে এখানে বই আকারে দেখা যাবে।' })); return;
+    }
+    const subs = Object.keys(B.tree.subj);
+    if(!B.subject){
+      subs.forEach(s => {
+        const n = Object.keys(B.tree.subj[s]).reduce((a, p) => a + Object.keys(B.tree.subj[s][p]).length, 0);
+        const b = h('button', { type:'button', class:'ab-pick' }, h('span', { text:'📘 ' + s }), h('small', { text:bn(n) + 'টা অধ্যায়' }));
+        b.onclick = () => { B.subject = s; const ps = Object.keys(B.tree.subj[s]); B.paper = ps.length === 1 ? ps[0] : null; drawBook(); };
+        body.appendChild(b);
+      });
+      if(B.tree.loose.length) body.appendChild(looseBlock());
+      return;
+    }
+    if(!B.lock) body.appendChild(btn('← বিষয়', 'btn-outline', () => { B.subject = null; B.paper = null; drawBook(); }));
+    else if(B.paper && Object.keys(B.tree.subj[B.subject]).length > 1) body.appendChild(btn('← পত্র', 'btn-outline', () => { B.paper = null; drawBook(); }));
+    if(!B.paper){
+      Object.keys(B.tree.subj[B.subject]).forEach(p => {
+        const b = h('button', { type:'button', class:'ab-pick' }, h('span', { text:'📖 ' + p }), h('small', { text:bn(Object.keys(B.tree.subj[B.subject][p]).length) + 'টা অধ্যায়' }));
+        b.onclick = () => { B.paper = p; drawBook(); };
+        body.appendChild(b);
+      });
+      return;
+    }
+    const me = (stu() || {}).name || '';
+    body.appendChild(h('div', { class:'ab-cover', style:'margin-top:10px;' }, h('div', { class:'t', text:B.subject }), h('div', { class:'s', text:B.paper + (me ? ' · ' + me : '') })));
+    body.appendChild(h('div', { class:'ab-hint', style:'margin:4px 0 6px;font-weight:700;', text:'📑 সূচিপত্র' }));
+    const chapters = B.tree.subj[B.subject][B.paper];
+    Object.keys(chapters).sort((a, b) => chNo(a) - chNo(b) || a.localeCompare(b)).forEach(c => {
+      const topics = chapters[c];
+      const det = h('details', { class:'ab-ch' }, h('summary', { text:c }));
+      Object.keys(topics).sort((a, b) => a.localeCompare(b, undefined, { numeric:true })).forEach(t => {
+        const td = h('details', { class:'ab-tp' }, h('summary', { text:t + ' (' + bn(topics[t].length) + ')' }));
+        topics[t].forEach(f => td.appendChild(fileRow(f)));
+        det.appendChild(td);
+      });
+      if(Object.keys(topics).length === 1) det.open = true;
+      body.appendChild(det);
+    });
+    if(!B.lock && B.tree.loose.length) body.appendChild(looseBlock());
+  }
+  function looseBlock(){
+    const det = h('details', { class:'ab-ch' }, h('summary', { text:'📎 অন্যান্য ফাইল (' + bn(B.tree.loose.length) + ')' }));
+    B.tree.loose.forEach(f => det.appendChild(fileRow(f)));
+    return det;
+  }
+  function fileRow(f){
+    return h('div', { class:'ab-file' }, h('span', { class:'n', text:'📄 ' + f.title }),
+      h('span', { class:'ab-acts', style:'margin:0;' }, btn('📖 পড়ো', 'btn-primary', () => openReader(f)), btn('⬇️ ডাউনলোড', 'btn-outline', () => downloadFile(f))));
+  }
+
+  /* ---- সার্চ (বাংলা / English / Banglish) ---- */
+  function localHits(q){
+    const words = norm(q).split(' ').filter(Boolean); if(!words.length) return [];
+    return B.files.filter(f => { const hay = norm(f.title + ' ' + (f.tags || []).map(t => t.path).join(' ')); return words.every(w => hay.indexOf(w) >= 0); });
+  }
+  async function doSearch(){
+    const q = String(($('abQ') || {}).value || '').trim();
+    if(!q){ B.hits = null; B.q = ''; drawBook(); return; }
+    B.q = q;
+    const body = $('abBody'); body.textContent = ''; body.appendChild(h('div', { class:'ab-hint', text:'🔎 খোঁজা হচ্ছে… (Banglish হলেও AI বুঝে নেবে)' }));
+    const loc = localHits(q);
+    const r = await sapi('bookSearch', { query:q });
+    if(B.q !== q) return;                                  // মাঝে নতুন খোঁজা শুরু হলে পুরোনোটা বাদ
+    const seen = {}, out = [];
+    ((r && r.status === 'success') ? (r.hashes || []) : []).forEach(hh => { const f = B.files.find(x => x.hash === hh); if(f && !seen[hh]){ seen[hh] = 1; out.push(f); } });
+    loc.forEach(f => { if(!seen[f.hash]){ seen[f.hash] = 1; out.push(f); } });
+    B.hits = { list:out, err:(r && r.status !== 'success' && !out.length) ? errText(r) : '' };
+    drawBook();
+  }
+  function drawHits(body){
+    const clear = btn('✕ খোঁজা মুছো', 'btn-outline', () => { B.hits = null; B.q = ''; const i = $('abQ'); if(i) i.value = ''; drawBook(); });
+    body.appendChild(clear);
+    body.appendChild(h('div', { class:'ab-hint', style:'margin:8px 0;font-weight:700;', text:'🔎 "' + B.q + '" — ' + bn(B.hits.list.length) + 'টা ফাইল' }));
+    if(B.hits.err) body.appendChild(h('div', { class:'ab-err', text:B.hits.err }));
+    if(!B.hits.list.length && !B.hits.err) body.appendChild(h('div', { class:'ab-hint', text:'কিছু পাওয়া যায়নি। অন্য শব্দে খুঁজে দেখো।' }));
+    B.hits.list.forEach(f => {
+      const leaf = (f.tags || []).filter(t => t.leaf).slice(0, 3).map(t => String(t.path).split(' › ').slice(-3).join(' › '));
+      body.appendChild(h('div', { class:'ab-hit' }, h('div', { style:'font-weight:700;', text:'📄 ' + f.title }),
+        leaf.length ? h('div', { class:'ab-meta', text:leaf.join('  |  ') }) : null,
+        h('div', { class:'ab-acts' }, btn('📖 পড়ো', 'btn-primary', () => openReader(f)), btn('⬇️ ডাউনলোড', 'btn-outline', () => downloadFile(f)))));
+    });
+  }
+
+  /* ---- ফাইল আনা / ডাউনলোড ---- */
+  function b64ToBytes(b64){ const bin = atob(b64), u = new Uint8Array(bin.length); for(let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+  async function fetchPdf(f){
+    if(blobCache[f.hash]) return blobCache[f.hash];
+    const r = await sapi('bookFile', { hash:f.hash });
+    if(!r || r.status !== 'success' || !r.base64) throw new Error(errText(r));
+    const bytes = b64ToBytes(r.base64);
+    blobCache[f.hash] = { bytes:bytes, fileName:r.fileName || (f.title + '.pdf') };
+    return blobCache[f.hash];
+  }
+  function saveBytes(bytes, name){
+    const url = URL.createObjectURL(new Blob([bytes], { type:'application/pdf' }));
+    const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+  async function downloadFile(f){
+    say('ডাউনলোড হচ্ছে…');
+    try{ const p = await fetchPdf(f); saveBytes(p.bytes, p.fileName); }
+    catch(e){ say(e.message || 'ডাউনলোড হয়নি'); }
+  }
+
+  /* ---- অ্যাপের ভেতরে পড়া (PDF.js, cdnjs থেকে) ---- */
+  function loadPdfJs(){
+    if(window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if(window.__abPdfJs) return window.__abPdfJs;
+    window.__abPdfJs = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      s.onload = () => { try{ window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; res(window.pdfjsLib); }catch(e){ rej(e); } };
+      s.onerror = () => { window.__abPdfJs = null; rej(new Error('pdfjs')); };
+      document.head.appendChild(s);
+    });
+    return window.__abPdfJs;
+  }
+  async function openReader(f){
+    const old = document.querySelector('.ab-rd'); if(old) old.remove();
+    const body = h('div', { class:'body' }, h('div', { class:'msg', text:'ফাইল আনা হচ্ছে…' }));
+    const closeBtn = h('button', { type:'button', class:'btn btn-danger', style:'padding:6px 12px;', text:'✕' });
+    const dl = h('button', { type:'button', class:'btn btn-outline', style:'padding:6px 10px;', text:'⬇️ ডাউনলোড' });
+    dl.onclick = () => downloadFile(f);
+    const rd = h('div', { class:'ab-rd' }, h('div', { class:'bar' }, h('b', { text:f.title }), dl, closeBtn), body);
+    let doc = null, io = null;
+    closeBtn.onclick = () => { try{ if(io) io.disconnect(); if(doc) doc.destroy(); }catch(e){} rd.remove(); };
+    document.body.appendChild(rd);
+    let p;
+    try{ p = await fetchPdf(f); }catch(e){ body.textContent = ''; body.appendChild(h('div', { class:'msg', text:e.message || 'ফাইল আনা যায়নি' })); return; }
+    try{
+      const lib = await loadPdfJs();
+      doc = await lib.getDocument({ data:p.bytes.slice() }).promise;
+      const first = await doc.getPage(1);
+      const w = Math.max(280, Math.min(body.clientWidth || 360, 900) - 16);
+      const vp1 = first.getViewport({ scale:1 }), scale = w / vp1.width, dpr = Math.min(window.devicePixelRatio || 1, 2);
+      body.textContent = '';
+      const holders = [];
+      for(let i = 1; i <= doc.numPages; i++){ const d = h('div', { class:'ab-pg' }); d.dataset.p = String(i); d.style.height = Math.round(vp1.height * scale) + 'px'; body.appendChild(d); holders.push(d); }
+      io = new IntersectionObserver(es => es.forEach(async e => {
+        if(!e.isIntersecting) return; const d = e.target; if(d.dataset.done) return; d.dataset.done = '1'; io.unobserve(d);
+        try{
+          const pg = await doc.getPage(Number(d.dataset.p)), vp = pg.getViewport({ scale:scale * dpr });
+          const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
+          await pg.render({ canvasContext:cv.getContext('2d'), viewport:vp }).promise;
+          d.style.height = 'auto'; d.appendChild(cv);
+        }catch(err){ d.textContent = 'পাতা দেখানো যায়নি'; }
+      }), { root:body, rootMargin:'900px 0px' });
+      holders.forEach(d => io.observe(d));
+    }catch(e){
+      body.textContent = '';
+      body.appendChild(h('div', { class:'msg' }, h('div', { text:'অ্যাপের ভেতরে ফাইলটা দেখানো গেল না (নেট বা ব্রাউজার সমস্যা)।' }), h('div', { style:'margin-top:12px;' }, btn('⬇️ ডাউনলোড করে পড়ো', 'btn-primary', () => downloadFile(f)))));
+    }
+  }
+
+  /* ============================================================
+     ৫) নোটিফিকেশন: স্যারের নতুন উত্তর / ড্যাশবোর্ডে অপেক্ষমাণ প্রশ্নের সংখ্যা
+     ============================================================ */
+  async function pingStudent(){
+    try{
+      const s = stu(); if(!s || (typeof isFriendStud === 'function' && isFriendStud(getLoggedStudent()))) return;
+      const r = await postToScriptRaw('askMine', { slug:s.slug });
+      if(r && r.status === 'success' && r.unseen > 0){
+        const key = 'ab_unseen_' + r.unseen;
+        if(!sessionStorage.getItem(key)){ sessionStorage.setItem(key, '1'); say('📨 স্যার তোমার ' + bn(r.unseen) + 'টা প্রশ্নের উত্তর দিয়েছেন'); }
+      }
+    }catch(e){}
+  }
+  async function pingTeacher(){
+    try{
+      if(!currentTeacher) return;
+      const r = await tcall('askCount', {});
+      const el = $('abTBadge'); if(el && r && r.status === 'success') el.textContent = r.open ? ' (' + bn(r.open) + ')' : '';
+    }catch(e){}
+  }
+  const _go2 = go;
+  go = function(screen, data){
+    const r = _go2.apply(this, arguments);
+    try{
+      if(screen === 'landing') setTimeout(pingStudent, 600);
+      if(screen === 'teacherDashboard') setTimeout(pingTeacher, 400);
+    }catch(e){}
+    return r;
+  };
+})();
 </script>
 
 </body>
