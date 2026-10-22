@@ -4300,6 +4300,7 @@ async function renderTeacherDashboard(){
         <button class="btn btn-outline btn-block" onclick="go('hwCutManage')">🛡️ HW মিসের কাটা</button>
   <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('visManage')">👥 কে কাকে দেখবে (অনুমতি)</button>
       </div>
+      <button class="btn btn-gold btn-block" style="margin-top:10px;" onclick="go('classFiles')">📂 ক্লাস ফাইল (PDF) — সিলেবাস ট্যাগ · অ্যাসাইন · রিভিশন সংযোগ</button>
     </div>
     <div class="card">
       <h2>তোমার পরীক্ষাসমূহ</h2>
@@ -9819,6 +9820,7 @@ function render(){
   else if(s==='myTeacherFb') renderMyTeacherFb();
   else if(s==='hwCutManage') renderHwCutManage();
   else if(s==='visManage') renderVisManage();
+  else if(s==='classFiles') renderClassFiles();   // [v18] ক্লাস ফাইল
   else if(s==='teacherNewExam') renderTeacherNewExam(state.editingExam);
   else if(s==='teacherResults') renderTeacherResults(state.code);
   else if(s==='studentEntry') renderStudentEntry();
@@ -27157,6 +27159,689 @@ window.voiceToggle = function(){
   };
 
 })();
+</script>
+
+<script id="vk-classfiles-v18">
+// ============================================================================
+// [v18] 📂 ক্লাস ফাইল (PDF) — AI দিয়ে সিলেবাসের ঠিক টপিকে ট্যাগ · অ্যাসাইন · "পড়া হয়েছে" তালিকা · রিভিশন সেশনের প্রশ্ন
+// (আগের আলাদা ছোট পেজ index v53 এখানে মূল অ্যাপের ভেতরে মার্জ করা — পিনের বদলে শিক্ষকের লগইন/tkey, google.script.run-এর বদলে SCRIPT_URL)
+// + PagePicker: একাধিক পাতার ছবি তোলা/বাছার কম্পোনেন্ট (window.PagePicker.mount(...))
+// ============================================================================
+(function(){
+  if(window.__cfLoaded) return; window.__cfLoaded = true;
+
+  /* ---------------- CSS (সব ক্লাস cf-/pp- দিয়ে শুরু, তাই মূল অ্যাপের কিছুর সাথে মেলে না) ---------------- */
+  (function injectCss(){
+    if(document.getElementById('cf-css')) return;
+    const st = document.createElement('style'); st.id = 'cf-css';
+    st.textContent = `
+      .cf-tabs{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin:0 0 12px; }
+      .cf-tabs button{ padding:10px 4px; font-size:14px; }
+      .cf-stus{ max-height:220px; overflow:auto; border:1px solid var(--paper-edge); border-radius:10px; padding:6px 10px; }
+      .cf-stus label{ display:flex; align-items:center; gap:8px; padding:5px 0; cursor:pointer; font-size:14px; }
+      .cf-stus input[type=checkbox]{ width:18px; height:18px; margin:0; flex:none; }
+      .cf-file{ display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 10px; border:1px dashed var(--rule); border-radius:10px; margin-top:6px; font-size:14px; }
+      .cf-file .nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .cf-sm{ padding:6px 12px !important; font-size:13.5px !important; }
+      .cf-item{ border-top:1px dashed var(--rule); padding:12px 0; }
+      .cf-title{ font-weight:700; font-size:16px; }
+      .cf-path{ color:var(--pencil); font-size:12.5px; margin-top:3px; }
+      .cf-meta{ color:var(--pencil); font-size:12.5px; margin-top:4px; }
+      .cf-hint{ color:var(--pencil); font-size:13.5px; line-height:1.5; }
+      .cf-warn{ background:#FFF7ED; color:#B45309; border-radius:10px; padding:8px 10px; font-size:13px; margin-top:6px; }
+      body.dark .cf-warn{ background:#2A2110; color:#FBBF24; }
+      .cf-err{ color:var(--red); font-size:13px; margin-top:4px; }
+      .cf-prog{ padding:10px 0; color:var(--pencil); font-size:14px; border-top:1px dashed var(--rule); }
+      .cf-spin{ display:inline-block; width:12px; height:12px; border:2px solid var(--rule); border-top-color:var(--ink); border-radius:50%; animation:cfsp .8s linear infinite; vertical-align:-1px; margin-right:6px; }
+      body.dark .cf-spin{ border-top-color:#F8FAFC; }
+      @keyframes cfsp{ to{ transform:rotate(360deg); } }
+      .cf-badge{ display:inline-block; font-size:12px; font-weight:700; border-radius:999px; padding:2px 10px; margin-top:4px; }
+      .cf-badge-new{ background:#DCFCE7; color:#166534; }
+      .cf-badge-dup{ background:#FEF3C7; color:#92400E; }
+      body.dark .cf-badge-new{ background:#14351F; color:#86EFAC; }
+      body.dark .cf-badge-dup{ background:#3A2A08; color:#FCD34D; }
+      .cf-schips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+      .cf-schip{ background:#EEF2FF; color:#3730A3; border-radius:999px; padding:3px 4px 3px 10px; font-size:13px; display:inline-flex; align-items:center; gap:2px; }
+      body.dark .cf-schip{ background:#232C45; color:#C7D2FE; }
+      .cf-schip button{ padding:0 7px; border:none; background:transparent; color:inherit; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
+      .cf-acts{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+      .cf-sum{ background:#EEF2FF; color:#3730A3; border-radius:12px; padding:10px 12px; margin-top:12px; font-size:13px; }
+      body.dark .cf-sum{ background:#232C45; color:#C7D2FE; }
+      .cf-sum b{ display:block; margin-bottom:4px; }
+      .cf-sum .ln{ margin-top:3px; }
+      details.cf-ses{ border-top:1px dashed var(--rule); padding:10px 0; }
+      details.cf-ses summary{ cursor:pointer; font-weight:700; }
+      .cf-qrow{ margin-top:8px; padding:8px 10px; border:1px solid var(--paper-edge); border-radius:10px; font-size:14px; }
+      .cf-qrow .qt{ white-space:pre-wrap; word-break:break-word; }
+      .cf-qtag{ display:inline-block; background:#EEF2FF; color:#3730A3; border-radius:999px; padding:1px 9px; font-size:12px; margin-right:6px; }
+      body.dark .cf-qtag{ background:#232C45; color:#C7D2FE; }
+      .cf-ov{ position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:flex-end; justify-content:center; z-index:9000; }
+      .cf-sheet{ background:#fff; color:var(--ink); width:100%; max-width:620px; max-height:90vh; overflow:auto; border-radius:18px 18px 0 0; padding:18px; }
+      body.dark .cf-sheet{ background:#1E293B; color:#F8FAFC; }
+      .cf-chips{ display:flex; flex-direction:column; gap:6px; margin-top:10px; }
+      .cf-chip{ background:#EEF2FF; color:#3730A3; border-radius:10px; padding:7px 10px; font-size:13px; display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
+      body.dark .cf-chip{ background:#232C45; color:#C7D2FE; }
+      .cf-chip button{ padding:0 8px; border:none; background:transparent; color:inherit; font-size:16px; cursor:pointer; }
+      .btn.cf-danger{ color:var(--red); }
+      body.dark .btn-outline.cf-danger{ color:#F87171 !important; }
+      /* PagePicker */
+      .pp { display: block; }
+      .pp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-bottom: 10px; }
+      .pp-item { position: relative; border: 1px solid #d0d5dd; border-radius: 10px; overflow: hidden; background: #f2f4f7; }
+      .pp-item img { display: block; width: 100%; height: 120px; object-fit: cover; }
+      .pp-badge { position: absolute; left: 6px; top: 6px; background: rgba(0,0,0,.65); color: #fff; border-radius: 999px; padding: 0 8px; font-size: 12px; }
+      .pp-x { position: absolute; right: 4px; top: 4px; border: none; background: rgba(0,0,0,.65); color: #fff; border-radius: 999px; width: 24px; height: 24px; cursor: pointer; }
+      .pp-mv { display: flex; }
+      .pp-mv button { flex: 1; border: none; border-top: 1px solid #d0d5dd; background: #fff; padding: 4px 0; cursor: pointer; }
+      .pp-mv button:disabled { opacity: .35; cursor: default; }
+      .pp-busy { display: flex; align-items: center; justify-content: center; height: 150px; font-size: 13px; color: #667085; }
+      .pp-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .pp-btns button { padding: 11px 8px; border-radius: 10px; border: 1px solid #d0d5dd; background: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+      .pp-note { margin-top: 8px; font-size: 13px; color: #667085; min-height: 18px; }
+      .pp-note.err { color: #b42318; }
+      body.dark .pp-item { border-color: #2a3347; background: #232c45; }
+      body.dark .pp-mv button { background: #181f2e; color: #e8ecf4; border-color: #2a3347; }
+      body.dark .pp-btns button { background: #181f2e; color: #e8ecf4; border-color: #2a3347; }
+      body.dark .pp-busy, body.dark .pp-note { color: #9aa5b8; }
+    `;
+    document.head.appendChild(st);
+  })();
+
+  /* ---------------- ছোট সহায়ক ---------------- */
+  let SYL = [], STUDENTS = [], pending = [], busy = false, ASSIGN = [];
+  const MAX_BYTES = 12 * 1024 * 1024;
+  const $ = id => document.getElementById(id);
+
+  // নিরাপদ এলিমেন্ট বানানো (AI/ফাইলের নাম সবসময় textContent দিয়ে বসে)
+  function h(tag, attrs){
+    const el = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(k => {
+      if(k === 'class') el.className = attrs[k];
+      else if(k === 'text') el.textContent = attrs[k];
+      else el.setAttribute(k, attrs[k]);
+    });
+    for(let i = 2; i < arguments.length; i++){
+      const c = arguments[i];
+      if(c == null) continue;
+      el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    }
+    return el;
+  }
+  const say = msg => { try{ toast(msg); }catch(e){} };
+
+  // সার্ভার কল: সবসময় শিক্ষকের tkey সহ
+  async function cfCall(action, params){
+    try{
+      const r = await fetch(SCRIPT_URL, { method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({ action: action, tkey: TEACHER_PASSWORD }, params || {})) });
+      const j = JSON.parse(await r.text());
+      if(j && j.status === 'success') return j;
+      let m = (j && j.message) || 'ব্যর্থ হয়েছে';
+      if(m === 'not_allowed') m = 'শিক্ষকের অনুমতি মেলেনি (tkey)';
+      else if(m === 'unknown_action' || m === 'server_error') m = 'সার্ভারে সমস্যা — নতুন Code.gs ডিপ্লয় (New version) করেছো তো?';
+      return { ok:false, status:'error', message:m };
+    }catch(e){
+      return { ok:false, status:'error', message:'সংযোগ হয়নি — নেট দেখো, আর নতুন Code.gs ডিপ্লয় করেছো তো?' };
+    }
+  }
+
+  function fmtSize(n){ return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+  function fmtDate(iso){
+    if(!iso) return '';
+    const d = new Date(iso);
+    return isNaN(d) ? '' : d.toLocaleDateString('bn-BD', { day:'numeric', month:'short', year:'numeric' });
+  }
+  function readB64(file){
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(',')[1]);
+      r.onerror = () => reject(new Error('ফাইল পড়া যায়নি'));
+      r.readAsDataURL(file);
+    });
+  }
+  // দুবার চাপলে কাজ হবে (alert/confirm ছাড়াই নিরাপদ নিশ্চিতকরণ)
+  function twoTap(btn, label, action){
+    let armed = false, timer = null; const orig = btn.textContent;
+    btn.onclick = function(){
+      if(!armed){ armed = true; btn.textContent = label; timer = setTimeout(() => { armed = false; btn.textContent = orig; }, 4000); return; }
+      clearTimeout(timer); armed = false; btn.textContent = orig; action();
+    };
+  }
+  const btn = (text, cls, fn) => { const b = h('button', { type:'button', class:'btn ' + (cls || 'btn-outline') + ' cf-sm', text: text }); if(fn) b.onclick = fn; return b; };
+
+  /* ---------------- মূল পেজ ---------------- */
+  window.renderClassFiles = async function(){
+    if(!currentTeacher){ go('landing'); return; }
+    app.innerHTML = `${header('ক্লাস ফাইল')}<div class="card center">লোড হচ্ছে...</div>`;
+    const r = await cfCall('cfInit');
+    if(!r || r.status !== 'success'){
+      app.innerHTML = `${header('ক্লাস ফাইল')}<div class="card center"><p class="hint" style="color:var(--red);">${escapeHtml((r && r.message) || 'লোড করা যায়নি')}</p><button class="btn btn-outline" onclick="renderClassFiles()">🔄 আবার চেষ্টা করো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেল</a></div>${creditFooter()}`;
+      return;
+    }
+    SYL = r.syllabus || []; STUDENTS = r.students || []; ASSIGN = [];
+    app.innerHTML = `
+      ${header('ক্লাস ফাইল')}
+      <div style="margin:0 0 12px 0;"><button type="button" class="btn btn-outline" style="padding:8px 14px; font-size:13.5px;" onclick="go('teacherDashboard')">← শিক্ষক প্যানেল</button></div>
+      <div class="card" id="cfRoot">
+        <h2>📂 ক্লাস ফাইল (PDF)</h2>
+        <p class="hint">PDF দিন, AI বইয়ের সূচিপত্র থেকে ঠিক টপিক ট্যাগ করে দেবে। AI নিজে টপিকের নাম বানায় না — স্থির তালিকা থেকে বাছে। ট্যাগ হলে সেই ছাত্রের রিভিশনে ওই টপিক "পড়া হয়েছে" ধরা হয়।</p>
+        <div class="cf-tabs">
+          <button type="button" class="btn btn-primary" id="cfBtnUp">⬆️ আপলোড</button>
+          <button type="button" class="btn btn-outline" id="cfBtnAs">📚 অ্যাসাইন</button>
+          <button type="button" class="btn btn-outline" id="cfBtnRv">🔁 রিভিশন</button>
+        </div>
+
+        <div id="cfTabUp">
+          <label class="field-label">ছাত্র বাছাই করো</label>
+          <div class="cf-stus" id="cfStus"></div>
+          <div class="row" style="margin-top:10px;">
+            <button type="button" class="btn btn-outline" id="cfSelAll" style="flex:1;">সবাইকে বাছো</button>
+            <button type="button" class="btn btn-outline" id="cfSelNone" style="flex:1;">বাছাই মুছো</button>
+          </div>
+          <label class="field-label" style="margin-top:14px;" for="cfChapter">অধ্যায় (ঐচ্ছিক)</label>
+          <select id="cfChapter"></select>
+          <p class="hint" style="margin-top:6px;">অধ্যায় বেছে দিলে ট্যাগ আরও নির্ভুল ও দ্রুত হয়। না দিলে AI নিজেই ধরবে।</p>
+          <label class="field-label">PDF ফাইল (প্রতিটা সর্বোচ্চ ১২ MB)</label>
+          <input type="file" id="cfFile" accept="application/pdf,.pdf" multiple hidden>
+          <button type="button" class="btn btn-outline btn-block" id="cfPick">📄 PDF বাছাই করো</button>
+          <div id="cfFiles"></div>
+          <button type="button" class="btn btn-primary btn-block" id="cfGo" style="margin-top:14px;">⬆️ আপলোড করো ও AI দিয়ে সাজাও</button>
+          <div id="cfItems" style="margin-top:16px;"></div>
+          <button type="button" class="btn btn-gold btn-block" id="cfMore" style="margin-top:14px;">➕ আরও PDF যোগ করো</button>
+        </div>
+
+        <div id="cfTabAs" hidden>
+          <label class="field-label" for="cfAsStu">ছাত্র অনুযায়ী দেখো</label>
+          <select id="cfAsStu"></select>
+          <div id="cfAsSum"></div>
+          <div id="cfAsList" style="margin-top:16px;"></div>
+        </div>
+
+        <div id="cfTabRv" hidden>
+          <label class="field-label" for="cfRvStu">ছাত্র</label>
+          <select id="cfRvStu"></select>
+          <p class="hint" style="margin-top:6px;">রিভিশনে ছাত্রকে কোন প্রশ্ন দেওয়া হয়েছিল, সেশন ধরে দেখুন।</p>
+          <div id="cfRvList" style="margin-top:12px;"></div>
+        </div>
+      </div>
+      ${creditFooter()}`;
+    wire();
+    (r.untagged || []).forEach(u => addUntaggedCard(u));
+  };
+
+  function wire(){
+    pending = []; busy = false;
+    renderStudents(); renderChapterSelect();
+    $('cfBtnUp').onclick = () => showTab('up');
+    $('cfBtnAs').onclick = () => showTab('as');
+    $('cfBtnRv').onclick = () => showTab('rv');
+    $('cfSelAll').onclick = () => document.querySelectorAll('.cf-stu').forEach(c => { c.checked = true; });
+    $('cfSelNone').onclick = () => document.querySelectorAll('.cf-stu').forEach(c => { c.checked = false; });
+    $('cfPick').onclick = () => $('cfFile').click();
+    $('cfMore').onclick = () => $('cfFile').click();
+    $('cfFile').onchange = onFilesChosen;
+    $('cfGo').onclick = doUpload;
+    $('cfAsStu').onchange = renderAssignments;
+    $('cfRvStu').onchange = loadRevision;
+  }
+
+  /* ---------------- ছাত্র / অধ্যায় ---------------- */
+  function renderStudents(){
+    const box = $('cfStus'); box.textContent = '';
+    if(!STUDENTS.length){ box.appendChild(h('div', { class:'cf-hint', text:'কোনো ছাত্র পাওয়া যায়নি (Students শিট খালি)।' })); return; }
+    STUDENTS.forEach(s => {
+      const cb = h('input', { type:'checkbox', class:'cf-stu', value:s.name });
+      box.appendChild(h('label', {}, cb, h('span', { text:s.name })));
+    });
+  }
+  function renderChapterSelect(){
+    const sel = $('cfChapter'); sel.textContent = '';
+    sel.appendChild(h('option', { value:'', text:'— AI নিজে ঠিক করবে —' }));
+    SYL.forEach(b => {
+      const g = h('optgroup', { label: b.subject + ' · ' + b.paper });
+      b.chapters.forEach(c => g.appendChild(h('option', { value:c.id, text:'অধ্যায়-' + c.no + ': ' + c.name })));
+      sel.appendChild(g);
+    });
+  }
+
+  /* ---------------- ফাইল বাছাই + আপলোড ---------------- */
+  function onFilesChosen(e){
+    Array.prototype.slice.call(e.target.files).forEach(f => {
+      if(f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)){ say(f.name + ': শুধু PDF চলবে'); return; }
+      if(f.size > MAX_BYTES){ say(f.name + ': ১২ MB-এর বেশি, অধ্যায় ধরে ভাগ করুন'); return; }
+      const dup = pending.some(p => p.name === f.name && p.size === f.size && p.lastModified === f.lastModified);
+      if(!dup) pending.push(f);
+    });
+    e.target.value = '';
+    renderPending();
+  }
+  function renderPending(){
+    const box = $('cfFiles'); if(!box) return; box.textContent = '';
+    pending.forEach((f, i) => {
+      const rm = h('button', { type:'button', class:'btn btn-outline cf-sm', text:'✕', title:'বাদ দিন' });
+      rm.onclick = () => { pending.splice(i, 1); renderPending(); };
+      box.appendChild(h('div', { class:'cf-file' }, h('span', { class:'nm', text: f.name + ' (' + fmtSize(f.size) + ')' }), rm));
+    });
+  }
+  async function doUpload(){
+    if(busy) return;
+    const names = Array.prototype.slice.call(document.querySelectorAll('.cf-stu:checked')).map(c => c.value);
+    if(!pending.length) return say('আগে PDF বাছাই করুন');
+    if(!names.length) return say('অন্তত একজন ছাত্র বাছুন');
+    busy = true; $('cfGo').disabled = true;
+    const chapterId = $('cfChapter').value || null;
+    const failed = [], total = pending.length, queue = pending.slice();
+    for(let i = 0; i < total; i++){
+      const f = queue[i];
+      const items = () => $('cfItems');               // অন্য পেজে চলে গেলেও আপলোড চলতে থাকবে, শুধু ছবি আঁকা বাদ
+      const prog = h('div', { class:'cf-prog' }, h('span', { class:'cf-spin' }), 'ফাইল ' + (i + 1) + '/' + total + ': ' + f.name + ' — AI পড়ছে… (পেজ বন্ধ কোরো না)');
+      if(items()) items().prepend(prog);
+      try{
+        const b64 = await readB64(f);
+        const r = await cfCall('cfUpload', { fileName:f.name, mimeType:'application/pdf', base64:b64, chapterId:chapterId, studentNames:names });
+        prog.remove();
+        if(!r || r.status !== 'success'){ failed.push(f); if(items()) items().prepend(errorCard(f.name, r && r.message)); }
+        else if(items()) items().prepend(resultCard(r));
+      }catch(e){
+        prog.remove(); failed.push(f); if(items()) items().prepend(errorCard(f.name, e.message));
+      }
+    }
+    pending = failed; renderPending();
+    busy = false; if($('cfGo')) $('cfGo').disabled = false;
+  }
+
+  /* ---------------- ফলাফল কার্ড ---------------- */
+  function resultCard(r){
+    const tagged = r.fileStatus === 'TAGGED';
+    const card = h('div', { class:'cf-item' });
+    card.appendChild(h('div', { class:'cf-title', text:(tagged ? '✅ ' : '⚠️ ') + (r.title || 'নামহীন ফাইল') }));
+    if(r.duplicate) card.appendChild(h('span', { class:'cf-badge cf-badge-dup', text:'♻️ ডুপ্লিকেট (হুবহু একই ফাইল)' }));
+    else if(r.isNew) card.appendChild(h('span', { class:'cf-badge cf-badge-new', text:'🆕 নতুন ফাইল' }));
+    (r.tags || []).filter(t => t.leaf).forEach(t => card.appendChild(h('div', { class:'cf-path', text: t.path + (t.files > 1 ? ' · এই টপিকে মোট ' + t.files + 'টা ফাইল' : '') })));
+    if(r.students && r.students.length) card.appendChild(h('div', { class:'cf-meta', text:'👥 ' + r.students.join(', ') }));
+    if(r.duplicate) card.appendChild(h('div', { class:'cf-meta', text:r.message }));
+    else if(!tagged) card.appendChild(h('div', { class:'cf-warn', text:r.message || 'ট্যাগ হয়নি (ট্যাগ ছাড়া রিভিশনে আসবে না)।' }));
+    if(r.sameName && r.sameName.length) card.appendChild(h('div', { class:'cf-meta', text:'ℹ️ একই নামের আরেকটা ফাইল আগে আছে, কিন্তু কনটেন্ট আলাদা, তাই আলাদা ফাইল হিসেবে রাখা হয়েছে।' }));
+    const b = btn(tagged ? '✏️ ট্যাগ বদলাও' : '🏷️ নিজে ট্যাগ করো', 'btn-outline', () => openPicker(r.fileHash, r.title, (r.tags || []).filter(t => t.leaf), fresh => {
+      const nc = resultCard(fresh); if(card.parentNode) card.parentNode.replaceChild(nc, card);
+    }));
+    b.style.marginTop = '8px';
+    card.appendChild(b);
+    return card;
+  }
+  function errorCard(name, msg){
+    return h('div', { class:'cf-item' }, h('div', { class:'cf-title', text:'❌ ' + name }), h('div', { class:'cf-err', text: msg || 'আপলোড হয়নি, আবার চেষ্টা করুন।' }));
+  }
+  function addUntaggedCard(u){
+    const items = $('cfItems'); if(!items) return;
+    const card = h('div', { class:'cf-item' });
+    card.appendChild(h('div', { class:'cf-title', text:'⚠️ ' + (u.title || u.fileName) }));
+    card.appendChild(h('div', { class:'cf-warn', text:'সেভ হয়েছে, কিন্তু ট্যাগ হয়নি (ট্যাগ ছাড়া রিভিশনে আসবে না)।' }));
+    if(u.students && u.students.length) card.appendChild(h('div', { class:'cf-meta', text:'👥 ' + u.students.join(', ') }));
+    const b = btn('🏷️ নিজে ট্যাগ করো', 'btn-outline', () => openPicker(u.fileHash, u.title || u.fileName, [], fresh => {
+      const nc = resultCard(fresh); if(card.parentNode) card.parentNode.replaceChild(nc, card);
+    }));
+    b.style.marginTop = '8px';
+    card.appendChild(b);
+    items.appendChild(card);
+  }
+
+  /* ---------------- নিজে ট্যাগ করার শিট ---------------- */
+  function fill(sel, list, first){
+    sel.textContent = '';
+    if(first) sel.appendChild(h('option', { value:'', text:first }));
+    list.forEach(it => sel.appendChild(h('option', { value:it.value, text:it.text })));
+  }
+  function openPicker(hash, title, existing, onSaved){
+    const chosen = (existing || []).map(t => ({ id:t.id, path:t.path }));
+    const sBook = h('select'), sCh = h('select'), sTopic = h('select'), sSub = h('select');
+    const chips = h('div', { class:'cf-chips' }), err = h('div', { class:'cf-err' });
+    const curBook = () => SYL[Number(sBook.value)];
+    const curChapter = () => { const b = curBook(); return b && b.chapters[Number(sCh.value)]; };
+    const curTopic = () => { const c = curChapter(); return c && c.topics[Number(sTopic.value)]; };
+    function onTopic(){ const t = curTopic(); const subs = (t && t.subs) || [];
+      fill(sSub, subs.map((s, i) => ({ value:i, text:s.no + ' ' + s.name })), subs.length ? '— শুধু টপিক —' : '— সাব-টপিক নেই —'); }
+    function onChapter(){ const c = curChapter(); fill(sTopic, c.topics.map((t, i) => ({ value:i, text:t.no + ' ' + t.name }))); onTopic(); }
+    function onBook(){ const b = curBook(); fill(sCh, b.chapters.map((c, i) => ({ value:i, text:'অধ্যায়-' + c.no + ': ' + c.name }))); onChapter(); }
+    sBook.onchange = onBook; sCh.onchange = onChapter; sTopic.onchange = onTopic;
+    fill(sBook, SYL.map((b, i) => ({ value:i, text:b.subject + ' · ' + b.paper })));
+    onBook();
+    function renderChips(){
+      chips.textContent = '';
+      chosen.forEach((c, i) => {
+        const x = h('button', { type:'button', text:'✕', title:'বাদ দিন' });
+        x.onclick = () => { chosen.splice(i, 1); renderChips(); };
+        chips.appendChild(h('div', { class:'cf-chip' }, h('span', { text:c.path }), x));
+      });
+    }
+    renderChips();
+    const add = btn('➕ এই ট্যাগ যোগ করো', 'btn-outline', () => {
+      const b = curBook(), c = curChapter(), t = curTopic(); if(!t) return;
+      const sIdx = sSub.value, s = (sIdx !== '' && t.subs) ? t.subs[Number(sIdx)] : null, node = s || t;
+      if(chosen.some(x => x.id === node.id)) return say('এটা আগেই যোগ করা আছে');
+      chosen.push({ id:node.id, path: b.subject + ' › ' + b.paper + ' › অধ্যায়-' + c.no + ': ' + c.name + ' › ' + t.no + ' ' + t.name + (s ? ' › ' + s.no + ' ' + s.name : '') });
+      renderChips();
+    });
+    add.style.cssText = 'width:100%;margin-top:12px;';
+    const ov = h('div', { class:'cf-ov' });
+    const close = () => ov.remove();
+    const cancel = btn('বাতিল', 'btn-outline', close);
+    const save = btn('সেভ করো', 'btn-primary', async () => {
+      if(!chosen.length){ err.textContent = 'অন্তত একটা ট্যাগ যোগ করুন।'; return; }
+      save.disabled = true; err.textContent = '';
+      const r = await cfCall('cfSetTags', { fileHash:hash, tagIds: chosen.map(c => c.id) });
+      save.disabled = false;
+      if(!r || r.status !== 'success'){ err.textContent = (r && r.message) || 'সেভ হয়নি'; return; }
+      close(); if(onSaved) onSaved(r); say('ট্যাগ সেভ হয়েছে');
+    });
+    const lab = t => h('label', { class:'field-label', style:'margin-top:12px;', text:t });
+    const sheet = h('div', { class:'cf-sheet' },
+      h('h2', { style:'font-size:18px;', text:'🏷️ নিজে ট্যাগ করো' }),
+      h('div', { class:'cf-hint', text:title || '' }),
+      lab('বই'), sBook, lab('অধ্যায়'), sCh, lab('টপিক'), sTopic, lab('সাব-টপিক (থাকলে)'), sSub,
+      add, chips, err,
+      h('div', { class:'row', style:'margin-top:14px;' }, cancel, save));
+    cancel.style.flex = '1'; save.style.flex = '1';
+    ov.appendChild(sheet);
+    ov.addEventListener('click', e => { if(e.target === ov) close(); });
+    document.body.appendChild(ov);
+  }
+
+  /* ---------------- ট্যাব ---------------- */
+  function showTab(which){
+    $('cfTabUp').hidden = which !== 'up';
+    $('cfTabAs').hidden = which !== 'as';
+    $('cfTabRv').hidden = which !== 'rv';
+    [['cfBtnUp', 'up'], ['cfBtnAs', 'as'], ['cfBtnRv', 'rv']].forEach(function(x){ $(x[0]).className = 'btn ' + (which === x[1] ? 'btn-primary' : 'btn-outline'); });
+    if(which === 'as') loadAssignments();
+    if(which === 'rv') loadRevision();
+  }
+  function fillStudentSelect(sel){
+    const keep = sel.value; sel.textContent = '';
+    sel.appendChild(h('option', { value:'', text:'সব ছাত্র' }));
+    STUDENTS.forEach(s => sel.appendChild(h('option', { value:s.name, text:s.name })));
+    sel.value = keep || '';
+  }
+
+  /* ---------------- অ্যাসাইন করা ফাইলের তালিকা ---------------- */
+  async function loadAssignments(){
+    const list = $('cfAsList'); list.textContent = '';
+    list.appendChild(h('div', { class:'cf-prog' }, h('span', { class:'cf-spin' }), 'লোড হচ্ছে…'));
+    const r = await cfCall('cfListAssignments');
+    if(!$('cfAsList')) return;
+    if(!r || r.status !== 'success'){ list.textContent = ''; list.appendChild(h('div', { class:'cf-err', text:(r && r.message) || 'লোড হয়নি' })); return; }
+    ASSIGN = r.files || [];
+    fillStudentSelect($('cfAsStu'));
+    renderAssignments();
+  }
+  const SRC_LABEL = { FILE:'📄 ফাইল', HW:'📝 HW', MCQ:'✅ MCQ' };
+  let sumSeq = 0;
+  async function renderSummary(name){
+    const box = $('cfAsSum'); if(!box) return; box.textContent = '';
+    if(!name) return;
+    const my = ++sumSeq;
+    box.appendChild(h('div', { class:'cf-hint', text:'টপিক তালিকা লোড হচ্ছে…' }));
+    const r = await cfCall('cfStudentTaught', { student:name });
+    if(my !== sumSeq || !$('cfAsSum')) return;                     // মাঝখানে অন্য ছাত্র বাছলে পুরোনোটা বাদ
+    box.textContent = '';
+    if(!r || r.status !== 'success'){ box.appendChild(h('div', { class:'cf-err', text:(r && r.message) || 'লোড হয়নি' })); return; }
+    const topics = r.topics || [];
+    const wrap = h('div', { class:'cf-sum' }, h('b', { text: name + ' — রিভিশনে এই টপিকগুলো থেকে প্রশ্ন আসবে (পড়া হয়েছে): ' + topics.length + 'টা' }));
+    if(!topics.length) wrap.appendChild(h('div', { class:'ln', text:'এখনো কোনো টপিক নেই। ফাইল অ্যাসাইন, HW জমা বা MCQ পরীক্ষা হলে যোগ হবে।' }));
+    topics.forEach(t => {
+      const src = (t.sources || []).map(x => SRC_LABEL[x] || x).join(' ');
+      wrap.appendChild(h('div', { class:'ln', text:'• ' + t.path + (src ? '  [' + src + ']' : '') }));
+    });
+    box.appendChild(wrap);
+  }
+  function renderAssignments(){
+    const name = $('cfAsStu').value;
+    renderSummary(name);
+    const list = $('cfAsList'); list.textContent = '';
+    const files = ASSIGN.filter(f => !name || f.students.indexOf(name) >= 0);
+    if(!files.length){ list.appendChild(h('div', { class:'cf-hint', text:'কোনো ফাইল নেই।' })); return; }
+    files.forEach(f => list.appendChild(assignCard(f)));
+  }
+  function assignCard(f){
+    const tagged = (f.tags || []).length > 0;
+    const card = h('div', { class:'cf-item' });
+    card.appendChild(h('div', { class:'cf-title', text:(tagged ? '✅ ' : '⚠️ ') + (f.title || f.fileName) }));
+    const d = fmtDate(f.createdAt);
+    if(d) card.appendChild(h('div', { class:'cf-meta', text:'🗓️ ' + d }));
+    (f.tags || []).filter(t => t.leaf).forEach(t => card.appendChild(h('div', { class:'cf-path', text:t.path })));
+    if(!tagged) card.appendChild(h('div', { class:'cf-warn', text:'ট্যাগ নেই (ট্যাগ ছাড়া রিভিশনে আসবে না)।' }));
+
+    const chips = h('div', { class:'cf-schips' });
+    if(!f.students.length) chips.appendChild(h('span', { class:'cf-hint', text:'কোনো ছাত্র অ্যাসাইন করা নেই' }));
+    f.students.forEach(n => {
+      const x = h('button', { type:'button', text:'✕', title:n + ' কে বাদ দিন' });
+      twoTap(x, '?', () => saveStudents(f, f.students.filter(s => s !== n)));
+      chips.appendChild(h('span', { class:'cf-schip' }, h('span', { text:n }), x));
+    });
+    card.appendChild(chips);
+
+    const acts = h('div', { class:'cf-acts' });
+    acts.appendChild(btn('👥 ছাত্র বদলাও', 'btn-outline', () => openStuEd(f)));
+    acts.appendChild(btn('✏️ ট্যাগ বদলাও', 'btn-outline', () => openPicker(f.fileHash, f.title || f.fileName, (f.tags || []).filter(t => t.leaf), () => loadAssignments())));
+    if(f.driveUrl){
+      const a = h('a', { class:'btn btn-outline cf-sm', href:f.driveUrl, target:'_blank', rel:'noopener', text:'📄 PDF খোলো' });
+      a.style.textDecoration = 'none';
+      acts.appendChild(a);
+    }
+    const del = btn('🗑️ মুছো', 'btn-outline cf-danger');
+    twoTap(del, 'নিশ্চিত? আবার চাপুন', async () => {
+      const r = await cfCall('cfDeleteFile', { fileHash:f.fileHash });
+      if(!r || r.status !== 'success') return say((r && r.message) || 'মোছা যায়নি');
+      say('ফাইল মুছে গেছে'); loadAssignments();
+    });
+    acts.appendChild(del);
+    card.appendChild(acts);
+    return card;
+  }
+  async function saveStudents(f, names){
+    const r = await cfCall('cfUpdateStudents', { fileHash:f.fileHash, names:names });
+    if(!r || r.status !== 'success') return say((r && r.message) || 'সেভ হয়নি');
+    f.students = r.students;
+    renderAssignments();
+    say('ছাত্র তালিকা বদলেছে');
+  }
+
+  /* ছাত্র বদলাও শিট */
+  function openStuEd(f){
+    const box = h('div', { class:'cf-stus' });
+    const names = STUDENTS.map(s => s.name);
+    f.students.forEach(n => { if(names.indexOf(n) < 0) names.push(n); });    // তালিকার বাইরের পুরোনো নামও দেখাবে
+    names.forEach(n => {
+      const cb = h('input', { type:'checkbox', class:'cf-sechk', value:n }); cb.checked = f.students.indexOf(n) >= 0;
+      box.appendChild(h('label', {}, cb, h('span', { text:n })));
+    });
+    const ov = h('div', { class:'cf-ov' }); const close = () => ov.remove();
+    const cancel = btn('বাতিল', 'btn-outline', close);
+    const save = btn('সেভ করো', 'btn-primary', async () => {
+      const picked = Array.prototype.slice.call(box.querySelectorAll('.cf-sechk:checked')).map(c => c.value);
+      save.disabled = true; await saveStudents(f, picked); save.disabled = false; close();
+    });
+    cancel.style.flex = '1'; save.style.flex = '1';
+    ov.appendChild(h('div', { class:'cf-sheet' },
+      h('h2', { style:'font-size:18px;', text:'👥 ছাত্র বদলাও' }),
+      h('div', { class:'cf-hint', text:f.title || f.fileName }), box,
+      h('div', { class:'row', style:'margin-top:14px;' }, cancel, save)));
+    ov.addEventListener('click', e => { if(e.target === ov) close(); });
+    document.body.appendChild(ov);
+  }
+
+  /* ---------------- রিভিশন ইতিহাস ---------------- */
+  async function loadRevision(){
+    fillStudentSelect($('cfRvStu'));
+    const list = $('cfRvList'); list.textContent = '';
+    list.appendChild(h('div', { class:'cf-prog' }, h('span', { class:'cf-spin' }), 'লোড হচ্ছে…'));
+    const r = await cfCall('cfRevisionHistory', { student: $('cfRvStu').value });
+    if(!$('cfRvList')) return;
+    list.textContent = '';
+    if(!r || r.status !== 'success'){ list.appendChild(h('div', { class:'cf-err', text:(r && r.message) || 'লোড হয়নি' })); return; }
+    const sessions = r.sessions || [];
+    if(!sessions.length){ list.appendChild(h('div', { class:'cf-hint', text:'এখনো কোনো রিভিশন সেশনের প্রশ্ন সেভ হয়নি। নতুন সেশন থেকে সেভ হবে।' })); return; }
+    sessions.forEach(ses => list.appendChild(sessionCard(ses)));
+  }
+  function sessionCard(ses){
+    const mcq = ses.items.filter(q => q.type === 'MCQ').length, cq = ses.items.filter(q => q.type === 'CQ').length;
+    const det = h('details', { class:'cf-ses' }, h('summary', { text: ses.student + ' · ' + fmtDate(ses.createdAt) + ' · MCQ ' + mcq + 'টা, CQ ' + cq + 'টা' }));
+    ses.items.forEach((q, i) => {
+      const row = h('div', { class:'cf-qrow' });
+      row.appendChild(h('div', {}, h('span', { class:'cf-qtag', text:(i + 1) + '. ' + (q.type || 'প্রশ্ন') }), q.qId ? h('span', { class:'cf-hint', text:q.qId }) : null));
+      row.appendChild(h('div', { class:'qt', text:q.text || '(প্রশ্নের লেখা সেভ হয়নি)' }));
+      if(q.topicPath) row.appendChild(h('div', { class:'cf-path', text:q.topicPath }));
+      det.appendChild(row);
+    });
+    if(ses.pages && ses.pages.length){
+      const acts = h('div', { class:'cf-acts' });
+      ses.pages.forEach(pg => { const a = h('a', { class:'btn btn-outline cf-sm', href:pg.url, target:'_blank', rel:'noopener', text:'📎 পাতা ' + pg.page }); a.style.textDecoration = 'none'; acts.appendChild(a); });
+      det.appendChild(acts);
+    }
+    return det;
+  }
+})();
+
+// ============================================================================
+// PagePicker — HW / রিভিশনের জন্য একাধিক পাতার ছবি তোলা বা বাছাইয়ের কম্পোনেন্ট (আগের PagePicker.html থেকে হুবহু, শুধু CSS ওপরে)
+//   var picker = PagePicker.mount(document.getElementById('hwPages'), { max: 15 });
+//   var pages = await picker.getPages();   // [{ base64, mimeType:'image/jpeg', name }, ...] পাতার ক্রমে
+//   picker.clear();
+//   সার্ভারে (Code.gs): cfSaveSubmissionPages_(student, 'HW', hwId, pages)
+// ============================================================================
+var PagePicker = (function () {
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  function loadImage(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('ছবি খোলা যায়নি')); };
+      img.src = url;
+    });
+  }
+
+  // ছবি ছোট করে JPEG Blob বানায় (ফোনের ছবির ঘোরানো দিক ঠিক রেখে)
+  async function compress(file, maxEdge, quality) {
+    var src;
+    try { src = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+    catch (e) { src = await loadImage(file); }
+    var w = src.width || src.naturalWidth, h = src.height || src.naturalHeight;
+    var scale = Math.min(1, maxEdge / Math.max(w, h));
+    var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+    var canvas = document.createElement('canvas');
+    canvas.width = cw; canvas.height = ch;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cw, ch);      // PNG-র স্বচ্ছ অংশ সাদা হবে
+    ctx.drawImage(src, 0, 0, cw, ch);
+    if (src.close) src.close();
+    return new Promise(function (resolve, reject) {
+      canvas.toBlob(function (b) { b ? resolve(b) : reject(new Error('ছবি ছোট করা যায়নি')); }, 'image/jpeg', quality);
+    });
+  }
+
+  function blobToBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(String(r.result).split(',')[1]); };
+      r.onerror = function () { reject(new Error('পড়া যায়নি')); };
+      r.readAsDataURL(blob);
+    });
+  }
+
+  function mount(root, opts) {
+    opts = opts || {};
+    var MAX = opts.max || 15, EDGE = opts.maxEdge || 1600, Q = opts.quality || 0.82;
+    var items = [];          // { id, blob, url, name }  (ক্রম = পাতার ক্রম)
+    var seq = 0, busy = 0;
+
+    root.textContent = '';
+    var wrap = el('div', 'pp');
+    var grid = el('div', 'pp-grid');
+    var btns = el('div', 'pp-btns');
+    var bCam = el('button', '', '📷 ছবি তোলো'); bCam.type = 'button';
+    var bGal = el('button', '', '🖼️ গ্যালারি থেকে'); bGal.type = 'button';
+    var note = el('div', 'pp-note');
+    var inCam = document.createElement('input'); inCam.type = 'file'; inCam.accept = 'image/*'; inCam.setAttribute('capture', 'environment'); inCam.hidden = true;
+    var inGal = document.createElement('input'); inGal.type = 'file'; inGal.accept = 'image/*'; inGal.multiple = true; inGal.hidden = true;
+    btns.appendChild(bCam); btns.appendChild(bGal);
+    wrap.appendChild(grid); wrap.appendChild(btns); wrap.appendChild(note); wrap.appendChild(inCam); wrap.appendChild(inGal);
+    root.appendChild(wrap);
+
+    function say(msg, isErr) { note.textContent = msg || ''; note.className = 'pp-note' + (isErr ? ' err' : ''); }
+    function changed() { render(); if (opts.onChange) opts.onChange(items.length); }
+
+    function render() {
+      grid.textContent = '';
+      items.forEach(function (it, i) {
+        var box = el('div', 'pp-item');
+        var img = document.createElement('img'); img.src = it.url; img.alt = 'পাতা ' + (i + 1);
+        var badge = el('span', 'pp-badge', 'পাতা ' + (i + 1));
+        var x = el('button', 'pp-x', '✕'); x.type = 'button'; x.title = 'বাদ দিন';
+        x.onclick = function () { URL.revokeObjectURL(it.url); items.splice(items.indexOf(it), 1); changed(); };
+        var mv = el('div', 'pp-mv');
+        var l = el('button', '', '◀'); l.type = 'button'; l.disabled = i === 0;
+        var r = el('button', '', '▶'); r.type = 'button'; r.disabled = i === items.length - 1;
+        l.onclick = function () { var k = items.indexOf(it); if (k > 0) { items.splice(k, 1); items.splice(k - 1, 0, it); changed(); } };
+        r.onclick = function () { var k = items.indexOf(it); if (k < items.length - 1) { items.splice(k, 1); items.splice(k + 1, 0, it); changed(); } };
+        mv.appendChild(l); mv.appendChild(r);
+        box.appendChild(img); box.appendChild(badge); box.appendChild(x); box.appendChild(mv);
+        grid.appendChild(box);
+      });
+      for (var b = 0; b < busy; b++) grid.appendChild(el('div', 'pp-item pp-busy', 'প্রসেস হচ্ছে…'));
+      if (!busy) say(items.length ? items.length + 'টা পাতা তৈরি (সর্বোচ্চ ' + MAX + ')' : '');
+    }
+
+    async function addFiles(fileList) {
+      var files = Array.prototype.slice.call(fileList || []).filter(function (f) { return /^image\//.test(f.type) || /\.(jpe?g|png|webp|heic)$/i.test(f.name); });
+      if (!files.length) return say('শুধু ছবি বাছুন', true);
+      var room = MAX - items.length - busy;
+      if (room <= 0) return say('সর্বোচ্চ ' + MAX + 'টা পাতা', true);
+      var skipped = files.length - room;
+      files = files.slice(0, room);
+      busy += files.length; render();
+      var failed = 0;
+      // একটার পর একটা (ফোনে মেমরি বাঁচাতে), ক্রম ঠিক রেখে
+      for (var i = 0; i < files.length; i++) {
+        try {
+          var blob = await compress(files[i], EDGE, Q);
+          items.push({ id: ++seq, blob: blob, url: URL.createObjectURL(blob), name: files[i].name });
+        } catch (e) { failed++; }
+        busy--; render();
+      }
+      if (failed || skipped > 0) say((failed ? failed + 'টা ছবি পড়া যায়নি। ' : '') + (skipped > 0 ? skipped + 'টা বাদ গেছে (সীমা ' + MAX + 'টা)।' : ''), true);
+      if (opts.onChange) opts.onChange(items.length);
+    }
+
+    bCam.onclick = function () { inCam.click(); };
+    bGal.onclick = function () { inGal.click(); };
+    inCam.onchange = function () { addFiles(inCam.files); inCam.value = ''; };
+    inGal.onchange = function () { addFiles(inGal.files); inGal.value = ''; };
+
+    return {
+      count: function () { return items.length; },
+      isBusy: function () { return busy > 0; },
+      addFiles: addFiles,
+      getPages: async function () {
+        var out = [];
+        for (var i = 0; i < items.length; i++) {
+          out.push({ base64: await blobToBase64(items[i].blob), mimeType: 'image/jpeg', name: 'page' + (i + 1) + '.jpg' });
+        }
+        return out;
+      },
+      clear: function () { items.forEach(function (it) { URL.revokeObjectURL(it.url); }); items = []; changed(); }
+    };
+  }
+
+  return { mount: mount };
+})();
+window.PagePicker = PagePicker;
 </script>
 
 </body>
