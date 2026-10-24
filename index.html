@@ -27931,6 +27931,21 @@ window.voiceToggle = function(){
     });
   }
 
+  // 📕 শিক্ষকের জন্য আসল বইয়ের মতো পাতা-ওল্টানো ভিউ (শুধু দেখা; ক্রম বদলাতে নিচের তালিকায় ▲▼)
+  function openBook(S, chapters, bdMap){
+    if(!window.VKBook) return say('বই ভিউ লোড হয়নি');
+    const Fm = (f, tag) => ({ title:f.title || f.fileName, kind:effKind(f), pg:tag ? pgLabel(f, tag) : '', data:f });
+    const chs = Object.keys(chapters).sort((a, b) => chNum(a) - chNum(b) || a.localeCompare(b)).map(C => ({
+      name:C, board:(bdMap[S + '|' + C] || []).map(f => Fm(f)),
+      topics:Object.keys(chapters[C]).sort((a, b) => a.localeCompare(b, undefined, { numeric:true })).map(T => {
+        const items = chapters[C][T];
+        return { name:T, files:items.filter(x => effKind(x.f) !== 'qset').concat(items.filter(x => effKind(x.f) === 'qset')).map(x => Fm(x.f, x.tag)) };
+      }) }));
+    const parts = S.split(' · ');
+    window.VKBook.open({ title:parts[0], sub:parts.slice(1).join(' · '), owner:($('cfAsStu') && $('cfAsStu').value) || 'সব ছাত্র', chapters:chs },
+      { readLabel:'📄 PDF খোলো', noDownload:true, onRead:f => { if(f.driveUrl) window.open(f.driveUrl, '_blank', 'noopener'); else say('PDF লিংক নেই'); } });
+  }
+
   // বই আকারে: বিষয় › অধ্যায় › টপিক › ফাইল (ছাত্রের "আমার বই"-এর মতো)
   function drawBookView(list, files){
     const subj = {}, loose = [], bd = {};
@@ -27949,6 +27964,7 @@ window.voiceToggle = function(){
     const sKeys = Object.keys(subj);
     sKeys.forEach(S => {
       const dS = mkDet('S|' + S, '📘 ' + S, sKeys.length === 1);
+      const rbb = btn('📕 বই হিসেবে দেখো (পাতা ওল্টানো)', 'btn-primary', () => openBook(S, subj[S], bd)); rbb.style.margin = '2px 0 8px'; dS.appendChild(rbb);
       const chapters = subj[S];
       Object.keys(chapters).sort((a, b) => chNum(a) - chNum(b) || a.localeCompare(b)).forEach(C => {
         const topics = chapters[C], tKeys = Object.keys(topics).sort((a, b) => a.localeCompare(b, undefined, { numeric:true }));
@@ -28182,6 +28198,246 @@ var PagePicker = (function () {
   return { mount: mount };
 })();
 window.PagePicker = PagePicker;
+</script>
+
+<script id="vk-realbook">
+// ============================================================================
+// 📕 VKBook — আসল বইয়ের মতো পাতা ওল্টানো ভিউয়ার (ছাত্রের "আমার বই" ও শিক্ষকের বই-ভিউ দুজনেই ব্যবহার করে)
+//   VKBook.open({ title, sub, owner, chapters:[{ name, board:[F], topics:[{ name, files:[F] }] }] }, { onRead, onDownload, readLabel, noDownload })
+//   F = { title, kind:'notes'|'qset'|'board', pg:'পৃষ্ঠা ৩–৭' | '', data:<আসল ফাইল> }
+// প্রচ্ছদ → সূচিপত্র → প্রতি অধ্যায়ের ওপেনার (🎯 বোর্ড প্রশ্নসহ) → টপিক-পাতা → শেষ। সোয়াইপ/বোতাম/কিবোর্ড তিন ভাবেই ওল্টানো যায়।
+// ============================================================================
+(function(){
+  if(window.VKBook) return;
+  const bn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; };
+  const ICON = { notes:'📄', qset:'📝', board:'🎯' };
+  const reduced = () => { try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){ return false; } };
+
+  (function css(){
+    if(document.getElementById('vkb-css')) return;
+    const st = document.createElement('style'); st.id = 'vkb-css';
+    st.textContent = `
+      .vkb-ov{ position:fixed; inset:0; z-index:9400; display:flex; flex-direction:column; align-items:center; background:radial-gradient(ellipse at 50% 25%, #26395a 0%, #0d1626 72%); color:#e8ecf4; }
+      .vkb-top{ width:100%; max-width:620px; display:flex; align-items:center; gap:8px; padding:10px 12px; padding-top:max(10px, env(safe-area-inset-top)); box-sizing:border-box; }
+      .vkb-top b{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14.5px; }
+      .vkb-x{ border:none; background:rgba(255,255,255,.13); color:#fff; border-radius:10px; padding:7px 12px; font:inherit; font-weight:700; cursor:pointer; }
+      .vkb-wrap{ flex:1; min-height:0; width:100%; display:flex; align-items:center; justify-content:center; padding:4px 12px; box-sizing:border-box; }
+      .vkb-stage{ position:relative; width:min(94vw, 540px); height:100%; max-height:760px; perspective:1900px; touch-action:pan-y; }
+      .vkb-pg{ position:absolute; inset:0; display:none; box-sizing:border-box; border-radius:4px 12px 12px 4px; color:#2b2118; transform-origin:left center; backface-visibility:hidden; -webkit-backface-visibility:hidden; overflow:hidden;
+        background:#fbf5e6; background-image:linear-gradient(90deg, rgba(60,40,10,.20) 0, rgba(60,40,10,.06) 16px, transparent 38px), linear-gradient(180deg, rgba(255,255,255,.5), rgba(150,120,60,.06));
+        box-shadow:0 14px 34px rgba(0,0,0,.5), 3px 3px 0 -1px #efe3c6, 6px 6px 0 -2px #e6d8b3, 9px 9px 0 -3px #ddcd9f; }
+      .vkb-pg.out{ animation:vkbOut .66s cubic-bezier(.55,.1,.3,1) forwards; }
+      .vkb-pg.in{ animation:vkbIn .66s cubic-bezier(.55,.1,.3,1) forwards; }
+      .vkb-pg.out::after, .vkb-pg.in::after{ content:''; position:absolute; inset:0; pointer-events:none; background:linear-gradient(90deg, rgba(0,0,0,0), rgba(0,0,0,.38)); }
+      .vkb-pg.out::after{ animation:vkbShade .66s forwards; } .vkb-pg.in::after{ animation:vkbShade .66s reverse forwards; }
+      @keyframes vkbOut{ from{ transform:rotateY(0deg); } to{ transform:rotateY(-110deg); } }
+      @keyframes vkbIn{ from{ transform:rotateY(-110deg); } to{ transform:rotateY(0deg); } }
+      @keyframes vkbShade{ from{ opacity:0; } to{ opacity:1; } }
+      .vkb-in{ position:absolute; inset:0; padding:20px 18px 40px 30px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+      .vkb-rh{ display:flex; justify-content:space-between; gap:10px; font-size:11px; color:#8a7a5c; border-bottom:1px solid #e3d6b4; padding-bottom:5px; margin-bottom:12px; }
+      .vkb-rh span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .vkb-pn{ position:absolute; bottom:11px; left:0; right:0; text-align:center; font-size:12px; color:#8a7a5c; pointer-events:none; }
+      .vkb-pg.cover{ background:linear-gradient(135deg, #0B2239, #153b63); color:#fff; border-left:12px solid #061423; box-shadow:0 14px 34px rgba(0,0,0,.55), 3px 3px 0 -1px #0a1d33, 6px 6px 0 -2px #08192c; }
+      .vkb-cv{ height:100%; display:flex; flex-direction:column; justify-content:center; padding:26px 24px 26px 22px; box-sizing:border-box; }
+      .vkb-cv .br{ position:absolute; top:22px; left:24px; color:#2BB5A0; font-weight:800; font-size:15px; }
+      .vkb-cv .ttl{ font-size:34px; font-weight:800; line-height:1.25; }
+      .vkb-cv .sub{ margin-top:8px; font-size:17px; opacity:.9; }
+      .vkb-cv .ln{ width:54%; height:3px; background:#2BB5A0; margin:18px 0 14px; border-radius:3px; }
+      .vkb-cv .own{ font-size:14px; opacity:.85; }
+      .vkb-cv .hint{ position:absolute; left:0; right:0; bottom:20px; text-align:center; font-size:12.5px; opacity:.7; }
+      .vkb-h1{ font-size:21px; font-weight:800; margin:0 0 10px; }
+      .vkb-toc-row{ display:flex; align-items:flex-end; width:100%; text-align:left; background:transparent; border:none; border-radius:8px; padding:8px 4px; color:inherit; font:inherit; font-size:14.5px; cursor:pointer; }
+      .vkb-toc-row:active{ background:rgba(180,140,60,.16); }
+      .vkb-toc-row .no{ font-weight:800; color:#a4741a; white-space:nowrap; margin-right:8px; }
+      .vkb-toc-row .nm{ font-weight:600; min-width:0; overflow-wrap:anywhere; }
+      .vkb-toc-row .bd{ font-size:11px; margin-left:6px; white-space:nowrap; color:#0f7e6e; font-weight:700; }
+      .vkb-toc-row .dots{ flex:1; min-width:14px; border-bottom:2px dotted #c9b98f; margin:0 6px 5px; }
+      .vkb-toc-row .pn{ font-weight:700; color:#6b5a3c; }
+      .vkb-bign{ font-size:70px; font-weight:800; line-height:1; color:#2BB5A0; margin-top:10px; }
+      .vkb-chl{ font-size:12.5px; font-weight:800; letter-spacing:.5px; color:#a4741a; margin-top:4px; }
+      .vkb-cht{ font-size:25px; font-weight:800; line-height:1.3; margin:6px 0 8px; }
+      .vkb-rule{ width:50%; height:3px; background:#2BB5A0; border-radius:3px; margin:8px 0 10px; }
+      .vkb-stat{ font-size:13px; color:#6b5a3c; }
+      .vkb-bd{ margin-top:16px; border-left:4px solid #2BB5A0; background:rgba(43,181,160,.12); border-radius:8px; padding:8px 10px 4px; }
+      .vkb-bd .h{ font-weight:800; font-size:13.5px; padding:2px 0 4px; }
+      .vkb-tp{ margin-bottom:12px; }
+      .vkb-tp .h{ font-weight:800; font-size:14.5px; color:#7a4f10; border-bottom:1px dashed #d8c796; padding-bottom:3px; margin-bottom:4px; }
+      .vkb-tp .h small{ font-weight:500; color:#8a7a5c; }
+      .vkb-file{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 8px; padding:6px 0; }
+      .vkb-file .t{ flex:1 1 150px; min-width:0; font-size:14px; line-height:1.4; overflow-wrap:anywhere; }
+      .vkb-file .pg{ display:inline-block; margin-left:6px; background:#fde9b0; color:#7a4f10; border-radius:999px; padding:0 8px; font-size:11.5px; font-weight:700; white-space:nowrap; }
+      .vkb-file .a{ display:flex; gap:6px; }
+      .vkb-btn{ border:1.5px solid #cdbb8c; background:#fff8e4; color:#4a3512; border-radius:9px; padding:5px 10px; font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
+      .vkb-btn.pri{ background:#1F2A44; border-color:#1F2A44; color:#fff; }
+      .vkb-end{ text-align:center; padding-top:60px; } .vkb-end .big{ font-size:26px; font-weight:800; margin-bottom:6px; }
+      .vkb-tabs{ width:100%; max-width:620px; display:flex; gap:6px; overflow-x:auto; padding:6px 12px 2px; box-sizing:border-box; -webkit-overflow-scrolling:touch; }
+      .vkb-tab{ flex:none; border:1.5px solid rgba(255,255,255,.22); background:rgba(255,255,255,.07); color:#e8ecf4; border-radius:999px; padding:5px 12px; font:inherit; font-size:12.5px; font-weight:700; cursor:pointer; white-space:nowrap; }
+      .vkb-tab.on{ background:#D4A017; color:#1a1a1a; border-color:#D4A017; }
+      .vkb-ctl{ width:100%; max-width:620px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 12px; padding-bottom:max(12px, env(safe-area-inset-bottom)); box-sizing:border-box; }
+      .vkb-arr{ border:none; background:rgba(255,255,255,.14); color:#fff; border-radius:12px; width:54px; height:42px; font-size:18px; cursor:pointer; }
+      .vkb-arr:disabled{ opacity:.3; cursor:default; }
+      .vkb-ind{ flex:1; text-align:center; font-size:13px; opacity:.9; cursor:pointer; }
+    `;
+    document.head.appendChild(st);
+  })();
+
+  function chParts(name){
+    const m = String(name || '').match(/^\s*অধ্যায়[-\s]*([0-9০-৯]+)\s*[:：]?\s*(.*)$/);
+    return m ? { no:m[1], title:m[2] || name } : { no:'', title:String(name || '') };
+  }
+
+  // মডেল → পাতার তালিকা (প্রচ্ছদ, সূচিপত্র, অধ্যায়-ওপেনার, টপিক-পাতা, শেষ)
+  function paginate(model){
+    const TOC_PER = 10, FILE_COST = 1.7, HEAD_COST = 1.3, BUDGET = 11;
+    const chs = model.chapters || [], content = [], starts = [];
+    chs.forEach((ch, ci) => {
+      const cp = chParts(ch.name), board = ch.board || [], seen = {};
+      let nF = 0; const cnt = f => { if(!seen[f.title + '|' + (f.data && (f.data.hash || f.data.fileHash) || '')]){ seen[f.title + '|' + (f.data && (f.data.hash || f.data.fileHash) || '')] = 1; nF++; } };
+      board.forEach(cnt); (ch.topics || []).forEach(t => t.files.forEach(cnt));
+      starts[ci] = content.length;
+      content.push({ type:'opener', ci, cp, ch, board:board.slice(0, 5), nT:(ch.topics || []).length, nF:nF });
+      for(let i = 5; i < board.length; i += 9) content.push({ type:'boardmore', ci, cp, ch, board:board.slice(i, i + 9) });
+      let cur = null, used = 0;
+      const np = () => { cur = { type:'topics', ci, cp, ch, blocks:[] }; used = 0; content.push(cur); };
+      np();
+      (ch.topics || []).forEach(tp => {
+        const files = tp.files.slice(); let first = true;
+        while(files.length){
+          if(cur.blocks.length && used + HEAD_COST + FILE_COST > BUDGET) np();
+          const room = Math.max(1, Math.floor((BUDGET - used - HEAD_COST) / FILE_COST));
+          const take = files.splice(0, room);
+          cur.blocks.push({ name:tp.name, cont:!first, files:take });
+          used += HEAD_COST + FILE_COST * take.length; first = false;
+          if(files.length) np();
+        }
+      });
+      if(!cur.blocks.length) content.splice(content.indexOf(cur), 1);
+    });
+    const tocN = Math.max(1, Math.ceil(chs.length / TOC_PER)), base = 1 + tocN;
+    const pages = [{ type:'cover' }];
+    for(let i = 0; i < tocN; i++) pages.push({ type:'toc', part:i, parts:tocN, rows:chs.map((ch, ci) => ({ ch, ci, page:base + starts[ci] })).slice(i * TOC_PER, (i + 1) * TOC_PER) });
+    content.forEach(p => pages.push(p));
+    pages.push({ type:'end' });
+    return { pages:pages, chapterPage:chs.map((c, ci) => base + starts[ci]), tocPage:1 };
+  }
+
+  function open(model, opts){
+    opts = opts || {};
+    const old = document.querySelector('.vkb-ov'); if(old) old.remove();
+    const P = paginate(model), pages = P.pages, S = { cur:0, busy:false };
+    const ov = el('div', 'vkb-ov'), top = el('div', 'vkb-top');
+    const x = el('button', 'vkb-x', '✕ বন্ধ');
+    top.appendChild(el('b', '', '📕 ' + (model.title || 'বই') + (model.sub ? ' · ' + model.sub : ''))); top.appendChild(x);
+    const wrap = el('div', 'vkb-wrap'), stage = el('div', 'vkb-stage'); wrap.appendChild(stage);
+    const tabs = el('div', 'vkb-tabs'), ctl = el('div', 'vkb-ctl');
+    const prev = el('button', 'vkb-arr', '◀'), next = el('button', 'vkb-arr', '▶'), ind = el('div', 'vkb-ind');
+    ctl.appendChild(prev); ctl.appendChild(ind); ctl.appendChild(next);
+    ov.appendChild(top); ov.appendChild(wrap); ov.appendChild(tabs); ov.appendChild(ctl);
+    document.body.appendChild(ov);
+
+    const els = [];
+    function fileRow(F){
+      const row = el('div', 'vkb-file'), t = el('div', 't');
+      t.appendChild(document.createTextNode((ICON[F.kind] || '📄') + ' ' + F.title));
+      if(F.pg) t.appendChild(el('span', 'pg', F.pg));
+      const a = el('div', 'a');
+      const rd = el('button', 'vkb-btn pri', opts.readLabel || '📖 পড়ো'); rd.type = 'button'; rd.onclick = e => { e.stopPropagation(); if(opts.onRead) opts.onRead(F.data); };
+      a.appendChild(rd);
+      if(!opts.noDownload){ const dl = el('button', 'vkb-btn', '⬇️'); dl.type = 'button'; dl.title = 'ডাউনলোড'; dl.onclick = e => { e.stopPropagation(); if(opts.onDownload) opts.onDownload(F.data); }; a.appendChild(dl); }
+      row.appendChild(t); row.appendChild(a); return row;
+    }
+    function head(inner, p){ inner.appendChild((() => { const rh = el('div', 'vkb-rh'); rh.appendChild(el('span', '', (p.cp && p.cp.no ? 'অধ্যায় ' + p.cp.no + ' · ' : '') + (p.cp ? p.cp.title : ''))); rh.appendChild(el('span', '', model.title || '')); return rh; })()); }
+    function build(i){
+      const p = pages[i], pg = el('div', 'vkb-pg' + (p.type === 'cover' ? ' cover' : '')), inner = el('div', 'vkb-in');
+      if(p.type === 'cover'){
+        const cv = el('div', 'vkb-cv');
+        cv.appendChild(el('div', 'br', "Samiu's Tuition")); cv.appendChild(el('div', 'ttl', model.title || 'বই')); cv.appendChild(el('div', 'sub', model.sub || ''));
+        cv.appendChild(el('div', 'ln')); if(model.owner) cv.appendChild(el('div', 'own', model.owner)); cv.appendChild(el('div', 'hint', '◀ সোয়াইপ করে বা ▶ চেপে পাতা ওল্টাও'));
+        pg.appendChild(cv); return pg;
+      }
+      if(p.type === 'toc'){
+        inner.appendChild(el('div', 'vkb-h1', '📑 সূচিপত্র' + (p.parts > 1 ? ' (' + bn(p.part + 1) + '/' + bn(p.parts) + ')' : '')));
+        if(!p.rows.length) inner.appendChild(el('div', 'vkb-stat', 'এখনো কোনো অধ্যায় নেই।'));
+        p.rows.forEach(r => {
+          const cp = chParts(r.ch.name), b = el('button', 'vkb-toc-row'); b.type = 'button';
+          b.appendChild(el('span', 'no', cp.no ? 'অধ্যায় ' + cp.no : '•')); b.appendChild(el('span', 'nm', cp.title));
+          if((r.ch.board || []).length) b.appendChild(el('span', 'bd', '🎯' + bn(r.ch.board.length)));
+          b.appendChild(el('span', 'dots')); b.appendChild(el('span', 'pn', bn(r.page)));
+          b.onclick = () => go(r.page); inner.appendChild(b);
+        });
+      } else if(p.type === 'opener'){
+        head(inner, p);
+        inner.appendChild(el('div', 'vkb-chl', p.cp.no ? 'অধ্যায়' : 'অধ্যায়')); if(p.cp.no) inner.appendChild(el('div', 'vkb-bign', p.cp.no));
+        inner.appendChild(el('div', 'vkb-cht', p.cp.title)); inner.appendChild(el('div', 'vkb-rule'));
+        inner.appendChild(el('div', 'vkb-stat', bn(p.nT) + 'টি টপিক · ' + bn(p.nF) + 'টি ফাইল'));
+        if(p.board.length){
+          const bd = el('div', 'vkb-bd'); bd.appendChild(el('div', 'h', '🎯 এই অধ্যায়ের বোর্ড সংক্ষিপ্ত প্রশ্ন (' + bn((p.ch.board || []).length) + ')'));
+          p.board.forEach(F => bd.appendChild(fileRow(F))); inner.appendChild(bd);
+          if((p.ch.board || []).length > 5) inner.appendChild(el('div', 'vkb-stat', 'আরও বোর্ড প্রশ্ন পরের পাতায় ▶'));
+        } else inner.appendChild(el('div', 'vkb-stat', 'টপিকগুলো পরের পাতা থেকে ▶'));
+      } else if(p.type === 'boardmore'){
+        head(inner, p);
+        const bd = el('div', 'vkb-bd'); bd.appendChild(el('div', 'h', '🎯 বোর্ড সংক্ষিপ্ত প্রশ্ন (চলছে)')); p.board.forEach(F => bd.appendChild(fileRow(F))); inner.appendChild(bd);
+      } else if(p.type === 'topics'){
+        head(inner, p);
+        p.blocks.forEach(b => {
+          const tp = el('div', 'vkb-tp'), h = el('div', 'h', b.name); if(b.cont) h.appendChild(el('small', '', '  (আগের পাতা থেকে)'));
+          tp.appendChild(h); b.files.forEach(F => tp.appendChild(fileRow(F))); inner.appendChild(tp);
+        });
+      } else if(p.type === 'end'){
+        const e = el('div', 'vkb-end'); e.appendChild(el('div', 'big', '— সমাপ্ত —')); e.appendChild(el('div', 'vkb-stat', 'আরও ফাইল স্যার দিলে এখানে যোগ হবে।'));
+        const b = el('button', 'vkb-btn pri', '☰ সূচিপত্রে ফিরে যাও'); b.style.marginTop = '16px'; b.onclick = () => go(P.tocPage); e.appendChild(b); inner.appendChild(e);
+      }
+      pg.appendChild(inner);
+      if(p.type !== 'end') pg.appendChild(el('div', 'vkb-pn', bn(i)));
+      return pg;
+    }
+    function pageEl(i){ if(!els[i]){ els[i] = build(i); stage.appendChild(els[i]); } return els[i]; }
+
+    const tabBtns = [];
+    const tocTab = el('button', 'vkb-tab', '☰ সূচি'); tocTab.type = 'button'; tocTab.onclick = () => go(P.tocPage); tabs.appendChild(tocTab);
+    (model.chapters || []).forEach((ch, ci) => {
+      const cp = chParts(ch.name), t = el('button', 'vkb-tab', cp.no ? 'অধ্যায় ' + cp.no : cp.title.slice(0, 12)); t.type = 'button'; t.title = cp.title;
+      t.onclick = () => go(P.chapterPage[ci]); tabs.appendChild(t); tabBtns[ci] = t;
+    });
+    function update(){
+      const p = pages[S.cur];
+      ind.textContent = S.cur === 0 ? '📕 প্রচ্ছদ — সূচিপত্র দেখতে চাপো' : 'পৃষ্ঠা ' + bn(S.cur) + ' / ' + bn(pages.length - 1);
+      prev.disabled = S.cur === 0; next.disabled = S.cur >= pages.length - 1;
+      tocTab.classList.toggle('on', p.type === 'toc');
+      tabBtns.forEach((t, ci) => t.classList.toggle('on', p.ci === ci));
+      const act = p.ci != null && tabBtns[p.ci]; if(act && act.scrollIntoView){ try{ act.scrollIntoView({ inline:'center', block:'nearest' }); }catch(e){} }
+    }
+    function go(to){
+      if(S.busy || to < 0 || to >= pages.length || to === S.cur) return;
+      const a = pageEl(S.cur), b = pageEl(to), fwd = to > S.cur;
+      S.busy = true;
+      const finish = () => { if(!S.busy) return; a.style.display = 'none'; a.classList.remove('out', 'in'); b.classList.remove('out', 'in'); a.style.zIndex = ''; b.style.zIndex = ''; S.cur = to; S.busy = false; update(); };
+      b.style.display = 'block';
+      if(reduced()){ finish(); return; }
+      if(fwd){ b.style.zIndex = 1; a.style.zIndex = 2; a.classList.add('out'); a.addEventListener('animationend', finish, { once:true }); }
+      else { b.style.zIndex = 3; a.style.zIndex = 2; b.classList.add('in'); b.addEventListener('animationend', finish, { once:true }); }
+      setTimeout(finish, 1000);
+    }
+    prev.onclick = () => go(S.cur - 1); next.onclick = () => go(S.cur + 1);
+    ind.onclick = () => go(P.tocPage);
+    let sx = 0, sy = 0, st = 0;
+    stage.addEventListener('touchstart', e => { const t = e.touches[0]; sx = t.clientX; sy = t.clientY; st = Date.now(); }, { passive:true });
+    stage.addEventListener('touchend', e => {
+      const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+      if(Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4 && Date.now() - st < 900){ go(S.cur + (dx < 0 ? 1 : -1)); }
+      else if(S.cur === 0 && Math.abs(dx) < 10 && Math.abs(dy) < 10) go(1);                 // প্রচ্ছদে ট্যাপ = বই খোলা
+    }, { passive:true });
+    const onKey = e => { if(e.key === 'ArrowRight') go(S.cur + 1); else if(e.key === 'ArrowLeft') go(S.cur - 1); else if(e.key === 'Escape') close(); };
+    function close(){ document.removeEventListener('keydown', onKey); ov.remove(); }
+    x.onclick = close; document.addEventListener('keydown', onKey);
+    pageEl(0).style.display = 'block'; update();
+    return { go:go, close:close };
+  }
+
+  window.VKBook = { open:open, _paginate:paginate };
+})();
 </script>
 
 <script id="vk-askbook-v19">
@@ -28526,6 +28782,17 @@ window.PagePicker = PagePicker;
     }
   };
 
+  // 📕 আসল বইয়ের মতো পাতা-ওল্টানো ভিউ (সব ফাইল, কোনো ফিল্টার ছাড়া)
+  function realBookModel(S, P){
+    const tree = buildTree(B.files), chapters = (tree.subj[S] || {})[P] || {};
+    const Fm = f => ({ title:f.title, kind:effKind(f), pg:pgLabel(f), data:f });
+    return { title:S, sub:P, owner:((stu() || {}).name || ''), chapters:Object.keys(chapters).sort((a, b) => chNo(a) - chNo(b) || a.localeCompare(b)).map(c => ({
+      name:c, board:(tree.board[S + '|' + P + '|' + c] || []).map(Fm),
+      topics:Object.keys(chapters[c]).sort((a, b) => a.localeCompare(b, undefined, { numeric:true })).map(t => ({ name:t,
+        files:chapters[c][t].filter(f => effKind(f) !== 'qset').concat(chapters[c][t].filter(f => effKind(f) === 'qset')).map(Fm) })) })) };
+  }
+  function openRealBook(S, P){ if(!window.VKBook) return say('বই ভিউ লোড হয়নি'); window.VKBook.open(realBookModel(S, P), { onRead:f => openReader(f), onDownload:f => downloadFile(f) }); }
+
   function drawBook(){
     const body = $('abBody'); if(!body) return; body.textContent = '';
     if(B.hits){ drawHits(body); return; }
@@ -28559,6 +28826,8 @@ window.PagePicker = PagePicker;
     }
     const me = (stu() || {}).name || '';
     body.appendChild(h('div', { class:'ab-cover', style:'margin-top:10px;' }, h('div', { class:'t', text:B.subject }), h('div', { class:'s', text:B.paper + (me ? ' · ' + me : '') })));
+    const rb = btn('📕 বই খুলে পড়ো (পাতা ওল্টানো)', 'btn-primary', () => openRealBook(B.subject, B.paper)); rb.style.cssText = 'width:100%;margin:2px 0 10px;padding:12px !important;font-size:15px !important;';
+    body.appendChild(rb);
     body.appendChild(h('div', { class:'ab-hint', style:'margin:4px 0 6px;font-weight:700;', text:'📑 সূচিপত্র' }));
     const chapters = B.tree.subj[B.subject][B.paper];
     Object.keys(chapters).sort((a, b) => chNo(a) - chNo(b) || a.localeCompare(b)).forEach(c => {
