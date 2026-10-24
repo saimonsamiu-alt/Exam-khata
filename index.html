@@ -12968,11 +12968,11 @@ window.doSmartSearch = async function(){
 
   // ---------------- [v25] শিক্ষক: অধ্যায় অনুযায়ী রিভিশন ম্যাটেরিয়াল আপলোড (PDF / প্রশ্ন / HTML কোড) ----------------
   async function revUploadRender(){
-    app.innerHTML = header('অধ্যায় অনুযায়ী আপলোড') + `<div class="card center">লোড হচ্ছে...</div>`;
+    app.innerHTML = header('রিভিশন আপলোড') + `<div class="card center">লোড হচ্ছে...</div>`;
     const [tax, studs] = await Promise.all([loadTax(true), listStudentsRemote()]);
     window.__ruStuds = studs;
     const U = window.__ru = window.__ru || { tab:'pdf' };
-    app.innerHTML = `${header('অধ্যায় অনুযায়ী আপলোড')}
+    app.innerHTML = `${header('রিভিশন আপলোড')}
       <div class="card"><h2>📥 রিভিশন ম্যাটেরিয়াল — অধ্যায় বেছে আপলোড</h2>
         <p class="hint">আগে অধ্যায় বাছো, তারপর PDF / প্রশ্ন / HTML কোড — যেটা খুশি দাও। ওই অধ্যায়ের রিভিশনে এগুলো অগ্রাধিকার পাবে (ডিফল্ট ৮৫% সময়, বদলাতে "রিভিশনে শিক্ষকের অংশ" থেকে)।</p>
         ${tax.length ? '' : `<p class="hint" style="color:var(--red);">আগে "বই TOC" থেকে সূচিপত্র ইম্পোর্ট করো — তাহলে অধ্যায়/টপিক বাছতে পারবে।</p>`}
@@ -13341,7 +13341,7 @@ window.doSmartSearch = async function(){
   function injectRx(){
     const t = document.querySelector('#app button[data-revt]');
     if(t && t.parentElement && !t.parentElement.querySelector('[data-rx]')){
-      [['📥 অধ্যায় অনুযায়ী আপলোড (PDF / প্রশ্ন / HTML)', () => go('revUpload')], ['📖 বই TOC / Taxonomy', revTaxOpen], ['📌 HW অ্যাসাইন করো', revAsgOpen], ['🎚️ রিভিশন কন্ট্রোল', revOvOpen], ['⚖️ রিভিশনে শিক্ষকের অংশ (%)', revMixOpen], ['⭐ সাপ্তাহিক গুরুত্বপূর্ণ টপিক', revWkOpen]].forEach(([label, fn]) => {
+      [['📥 রিভিশন আপলোড (অধ্যায় অনুযায়ী)', () => go('revUpload')], ['📖 বই TOC / Taxonomy', revTaxOpen], ['📌 HW অ্যাসাইন করো', revAsgOpen], ['🎚️ রিভিশন কন্ট্রোল', revOvOpen], ['⚖️ রিভিশনে শিক্ষকের অংশ (%)', revMixOpen], ['⭐ সাপ্তাহিক গুরুত্বপূর্ণ টপিক', revWkOpen]].forEach(([label, fn]) => {
         const b = document.createElement('button'); b.className = 'btn btn-outline btn-block'; b.setAttribute('data-rx', '1');
         b.textContent = label; b.onclick = fn; t.parentElement.appendChild(b);
       });
