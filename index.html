@@ -12718,7 +12718,7 @@ window.doSmartSearch = async function(){
 (function(){
   const __rx = render;
   render = function(){
-    const m = { revTaxonomy:revTaxRender, revAssign:revAsgRender, revOverride:revOvRender, revToday:revTodayRender, revWeekly:revWkRender, revMix:revMixRender }[state.screen];
+    const m = { revTaxonomy:revTaxRender, revAssign:revAsgRender, revOverride:revOvRender, revToday:revTodayRender, revWeekly:revWkRender, revMix:revMixRender, revUpload:revUploadRender }[state.screen];
     if(m){ syncLogoutFab(); m(); return; }
     __rx();
   };
@@ -12965,6 +12965,98 @@ window.doSmartSearch = async function(){
     toast(r && r.status === 'success' ? 'সেভ হয়েছে ✅' : 'সেভ হয়নি, আবার চেষ্টা করো'); revMixRender();
   };
   window.revMixSaveCh = function(i){ const c = (window.__mixChs || [])[i]; if(!c) return; window.revMixSave(c.key, document.getElementById('mxC' + i).value); };
+
+  // ---------------- [v25] শিক্ষক: অধ্যায় অনুযায়ী রিভিশন ম্যাটেরিয়াল আপলোড (PDF / প্রশ্ন / HTML কোড) ----------------
+  async function revUploadRender(){
+    app.innerHTML = header('অধ্যায় অনুযায়ী আপলোড') + `<div class="card center">লোড হচ্ছে...</div>`;
+    const [tax, studs] = await Promise.all([loadTax(true), listStudentsRemote()]);
+    window.__ruStuds = studs;
+    const U = window.__ru = window.__ru || { tab:'pdf' };
+    app.innerHTML = `${header('অধ্যায় অনুযায়ী আপলোড')}
+      <div class="card"><h2>📥 রিভিশন ম্যাটেরিয়াল — অধ্যায় বেছে আপলোড</h2>
+        <p class="hint">আগে অধ্যায় বাছো, তারপর PDF / প্রশ্ন / HTML কোড — যেটা খুশি দাও। ওই অধ্যায়ের রিভিশনে এগুলো অগ্রাধিকার পাবে (ডিফল্ট ৮৫% সময়, বদলাতে "রিভিশনে শিক্ষকের অংশ" থেকে)।</p>
+        ${tax.length ? '' : `<p class="hint" style="color:var(--red);">আগে "বই TOC" থেকে সূচিপত্র ইম্পোর্ট করো — তাহলে অধ্যায়/টপিক বাছতে পারবে।</p>`}
+        <label class="field-label">বিষয়</label><select id="ruSubj" onchange="ruFill('subj')">${subjOpts(U.subj || 'physics')}</select>
+        <label class="field-label">অধ্যায়</label><select id="ruChap" onchange="ruFill('chap')"></select>
+        <label class="field-label">টপিক (ঐচ্ছিক)</label><select id="ruTopic"></select>
+        <label class="field-label">কার জন্য</label><select id="ruStud"><option value="">সব ছাত্র</option>${studs.map(x => `<option value="${x.slug}">${escapeHtml(x.name)}</option>`).join('')}</select>
+        <div style="display:flex;gap:6px;margin-top:12px;">
+          <button class="btn" id="ruT_pdf" style="flex:1" onclick="ruTab('pdf')">📄 PDF</button>
+          <button class="btn" id="ruT_q" style="flex:1" onclick="ruTab('q')">❓ প্রশ্ন</button>
+          <button class="btn" id="ruT_html" style="flex:1" onclick="ruTab('html')">🧩 HTML কোড</button></div>
+        <div id="ruBody" style="margin-top:12px;"></div></div>
+      <div class="center"><a class="link-back" onclick="go('revMix')">⚖️ রিভিশনে শিক্ষকের অংশ (%)</a> · <a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+    ruFill('subj'); ruTab(U.tab || 'pdf');
+  }
+  window.revUploadRender = revUploadRender;
+  window.ruFill = function(level){
+    const tax = window.__revTax || [], s = val('ruSubj'), set = (id, h) => { const e = document.getElementById(id); if(e) e.innerHTML = h; };
+    const keepC = val('ruChap');
+    if(level === 'subj'){
+      const chs = uniq(tax.filter(t => t.subject === s).map(t => t.chapter));
+      set('ruChap', chs.length ? chs.map(c => `<option ${c === keepC ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('') : `<option value="">— এই বিষয়ে অধ্যায় নেই —</option>`);
+    }
+    const c = val('ruChap');
+    set('ruTopic', `<option value="">— টপিক নির্দিষ্ট নয় —</option>` + uniq(tax.filter(t => t.subject === s && t.chapter === c).map(t => t.topic)).map(x => `<option>${escapeHtml(x)}</option>`).join(''));
+  };
+  function ruCtx(){
+    const c = { subject:val('ruSubj'), chapter:val('ruChap'), topic:val('ruTopic'), stud:val('ruStud') };
+    if(!c.chapter){ toast('আগে অধ্যায় বাছো'); return null; }
+    return c;
+  }
+  window.ruTab = function(t){
+    window.__ru = window.__ru || {}; window.__ru.tab = t;
+    ['pdf', 'q', 'html'].forEach(k => { const b = document.getElementById('ruT_' + k); if(b) b.className = 'btn ' + (k === t ? 'btn-primary' : 'btn-outline'); });
+    const el = document.getElementById('ruBody'); if(!el) return;
+    if(t === 'pdf') el.innerHTML = `<p class="hint">PDF (ক্লাস নোট / প্রশ্নের সংকলন) — ১২ MB পর্যন্ত, একসাথে অনেকগুলো দিতে পারো। সব ফাইল বাছা অধ্যায়ে বসবে।</p>
+      <input type="file" id="ruPdf" accept="application/pdf,.pdf" multiple style="margin-bottom:8px;">
+      <input type="text" id="ruPdfTitle" placeholder="শিরোনাম (ঐচ্ছিক — একটা ফাইল হলে)">
+      <button class="btn btn-primary btn-block" id="ruGo" onclick="ruSavePdf()" style="margin-top:8px;">📤 PDF আপলোড করো</button><div id="ruRes" style="margin-top:8px;"></div>`;
+    else if(t === 'q') el.innerHTML = `<p class="hint">প্রশ্নের ছবি / PDF / HTML ফাইল / পেস্ট করা লেখা — CQ বা MCQ। প্রশ্নগুলো এই অধ্যায়ে আপনা-আপনি ট্যাগ হবে, প্রিভিউয়ে দেখে বদলাতে পারবে, আর প্রতিটা প্রশ্নে চিত্র/ড্রয়িং জুড়তে পারবে।</p>
+      <button class="btn btn-primary btn-block" onclick="ruOpenQ()">❓ প্রশ্ন আপলোড খোলো (এই অধ্যায়ের জন্য)</button>`;
+    else el.innerHTML = `<p class="hint">নিজের বানানো HTML কোড (স্লাইড/নোট) পেস্ট করো। স্লাইড আলাদা করতে একটা লাইনে <b>---</b> দাও।</p>
+      <input type="text" id="ruHtmlTitle" placeholder="শিরোনাম (যেমন: ভেক্টর — কোণ নির্ণয়)">
+      <textarea id="ruHtml" style="min-height:240px;font-family:monospace;font-size:13px;" placeholder="<h2>...</h2> <p>...</p>"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;"><button class="btn btn-outline" style="flex:1" onclick="ruPreview()">👁️ প্রিভিউ</button><button class="btn btn-primary" style="flex:1" id="ruGo" onclick="ruSaveHtml()">💾 সেভ করো</button></div>
+      <div id="ruPrev" style="margin-top:8px;"></div><div id="ruRes" style="margin-top:8px;"></div>`;
+  };
+  window.ruPreview = function(){
+    const c = val('ruHtml'); const el = document.getElementById('ruPrev'); if(!c.trim()){ el.innerHTML = ''; return; }
+    el.innerHTML = `<iframe sandbox="" style="width:100%;height:320px;border:1px solid var(--rule);border-radius:8px;background:#fff;"></iframe>`;
+    el.firstChild.srcdoc = c.split(/\n\s*---\s*\n/).join('<hr>');
+  };
+  async function ruApply(id, c){
+    const r = await postToScriptRaw('revisionNoteChapter', { id, subject:c.subject, chapter:c.chapter, topic:c.topic });
+    if(c.stud) await postToScriptRaw('revisionNoteAssignSet', { id, slugs:c.stud });
+    return r && r.status === 'success';
+  }
+  window.ruSavePdf = async function(){
+    const c = ruCtx(); if(!c) return;
+    const files = [...((document.getElementById('ruPdf') || {}).files || [])]; if(!files.length){ toast('আগে PDF বাছো'); return; }
+    const title = files.length === 1 ? val('ruPdfTitle').trim() : '', box = document.getElementById('ruRes'), btn = document.getElementById('ruGo'); btn.disabled = true; box.innerHTML = '';
+    const toB64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(new Error('read')); r.readAsDataURL(f); });
+    for(let i = 0; i < files.length; i++){
+      const f = files[i], line = document.createElement('div'); line.className = 'review-block'; box.appendChild(line);
+      if(f.size > 12 * 1024 * 1024){ line.innerHTML = `❌ <b>${escapeHtml(f.name)}</b> — ১২ MB-এর বেশি`; continue; }
+      line.innerHTML = `⏳ <b>${escapeHtml(f.name)}</b> আপলোড হচ্ছে (${i + 1}/${files.length})... পেজ বন্ধ কোরো না`;
+      let res; try{ res = await postToScriptRaw('pdfNoteSave', { tkey:TEACHER_PASSWORD, pdfBase64:await toB64(f), fileName:f.name, title, subject:c.subject, slugs:c.stud }); }catch(e){ res = null; }
+      if(!res || res.status !== 'success'){ line.innerHTML = `❌ <b>${escapeHtml(f.name)}</b> — আপলোড হয়নি (${escapeHtml((res && res.message) || 'সংযোগ সমস্যা')})`; continue; }
+      const ok = await ruApply(res.id, c);
+      line.innerHTML = ok ? `✅ <b>${escapeHtml(f.name)}</b> → ${escapeHtml(c.chapter)}${c.topic ? ' › ' + escapeHtml(c.topic) : ''}` : `⚠️ <b>${escapeHtml(f.name)}</b> আপলোড হয়েছে কিন্তু অধ্যায় বসেনি — Apps Script নতুন version Deploy করা আছে তো?`;
+    }
+    btn.disabled = false;
+  };
+  window.ruSaveHtml = async function(){
+    const c = ruCtx(); if(!c) return;
+    const content = val('ruHtml'); if(content.trim().length < 10){ toast('HTML কোড পেস্ট করো'); return; }
+    const title = val('ruHtmlTitle').trim() || c.topic || c.chapter, box = document.getElementById('ruRes'), btn = document.getElementById('ruGo'); btn.disabled = true; box.innerHTML = '⏳ সেভ হচ্ছে...';
+    const res = await postToScriptRaw('saveNote', { id:'', subject:c.subject, title, type:'html', content });
+    if(!res || res.status === 'error' || !res.id){ box.innerHTML = `<span style="color:var(--red)">❌ সেভ হয়নি</span>`; btn.disabled = false; return; }
+    const ok = await ruApply(res.id, c);
+    box.innerHTML = ok ? `<div style="color:var(--green);font-weight:700;">✅ সেভ হয়েছে → ${escapeHtml(c.chapter)}${c.topic ? ' › ' + escapeHtml(c.topic) : ''}</div>` : `<span style="color:#9B6A15;">⚠️ সেভ হয়েছে কিন্তু অধ্যায় বসেনি — Apps Script নতুন version Deploy করা আছে তো?</span>`;
+    btn.disabled = false;
+  };
+  window.ruOpenQ = function(){ const c = ruCtx(); if(c) window.bkOpenFor(c.subject, c.chapter, c.topic, c.stud); };
 
   // ---------------- শিক্ষক ৩: টপিকের স্তর override ----------------
   window.revOvOpen = function(){ go('revOverride'); };
@@ -13249,7 +13341,7 @@ window.doSmartSearch = async function(){
   function injectRx(){
     const t = document.querySelector('#app button[data-revt]');
     if(t && t.parentElement && !t.parentElement.querySelector('[data-rx]')){
-      [['📖 বই TOC / Taxonomy', revTaxOpen], ['📌 HW অ্যাসাইন করো', revAsgOpen], ['🎚️ রিভিশন কন্ট্রোল', revOvOpen], ['⚖️ রিভিশনে শিক্ষকের অংশ (%)', revMixOpen], ['⭐ সাপ্তাহিক গুরুত্বপূর্ণ টপিক', revWkOpen]].forEach(([label, fn]) => {
+      [['📥 অধ্যায় অনুযায়ী আপলোড (PDF / প্রশ্ন / HTML)', () => go('revUpload')], ['📖 বই TOC / Taxonomy', revTaxOpen], ['📌 HW অ্যাসাইন করো', revAsgOpen], ['🎚️ রিভিশন কন্ট্রোল', revOvOpen], ['⚖️ রিভিশনে শিক্ষকের অংশ (%)', revMixOpen], ['⭐ সাপ্তাহিক গুরুত্বপূর্ণ টপিক', revWkOpen]].forEach(([label, fn]) => {
         const b = document.createElement('button'); b.className = 'btn btn-outline btn-block'; b.setAttribute('data-rx', '1');
         b.textContent = label; b.onclick = fn; t.parentElement.appendChild(b);
       });
@@ -13658,7 +13750,9 @@ window.doSmartSearch = async function(){
   }
 
   // ---------------- স্ক্রিন ১: বাল্ক আপলোড ----------------
-  window.bulkOpen = function(){ W.files.forEach(f => f.url && URL.revokeObjectURL(f.url)); W.files = []; W.text = ''; W.textUsed = ''; W.chunks = []; resetRun(); W.busy = false; go('bulkUpload'); };
+  window.W_clearForce = function(){ W.force = null; bkRender(); };
+  window.bkOpenFor = function(subject, chapter, topic, slug){ W.files.forEach(f => f.url && URL.revokeObjectURL(f.url)); W.files = []; W.text = ''; W.textUsed = ''; W.chunks = []; resetRun(); W.busy = false; W.subject = subject; W.force = { subject, chapter, topic:topic || '' }; W.dest.type = 'rev'; W.dest.slug = slug || ''; go('bulkUpload'); };
+  window.bulkOpen = function(){ W.force = null; W.files.forEach(f => f.url && URL.revokeObjectURL(f.url)); W.files = []; W.text = ''; W.textUsed = ''; W.chunks = []; resetRun(); W.busy = false; go('bulkUpload'); };
   async function bkRender(){
     const isText = W.src === 'text';
     app.innerHTML = `${header('বাল্ক প্রশ্ন যোগ')}
@@ -13669,6 +13763,7 @@ window.doSmartSearch = async function(){
           <button class="btn ${W.kind === 'mcq' ? 'btn-primary' : 'btn-outline'}" style="flex:1" onclick="bkKind('mcq')">🔘 MCQ</button>
         </div>
         <p class="hint">${W.kind === 'cq' ? (isText ? 'একাধিক সৃজনশীল প্রশ্ন একসাথে পেস্ট করতে পারো — প্রশ্নগুলোর মাঝে একটা ফাঁকা লাইন বা "প্রশ্ন ১", "১." দিলে AI ভালো আলাদা করে। মডেল উত্তর থাকলে সেটাও ধরবে।' : 'প্রতিটা প্রশ্নের জন্য এক বা একাধিক পাতা — একই প্রশ্নের পরের পাতায় "↳ আগের প্রশ্নের পরের পাতা" টিক দাও।') : (isText ? 'অনেকগুলো MCQ একসাথে পেস্ট করো (প্রতিটায় ৪টা অপশন)। সঠিক উত্তর লেখায় থাকলে AI ধরবে, না থাকলে প্রিভিউয়ে তুমি বেছে দেবে।' : 'একটা ছবিতে অনেকগুলো MCQ থাকলে AI আলাদা করে নেবে। সঠিক উত্তর ছবিতে না থাকলে প্রিভিউয়ে তুমি বেছে দেবে।')}</p>
+        ${W.force ? `<p class="hint" style="background:#EAF6EE;border-radius:8px;padding:8px;">📚 অধ্যায় বাছা আছে: <b>${esc(W.force.chapter)}</b>${W.force.topic ? ' › ' + esc(W.force.topic) : ''} — সব প্রশ্ন এখানেই বসবে। <a class="link-back" onclick="W_clearForce()">✕ সরাও</a></p>` : ''}
         <label class="field-label">বিষয় (জানা থাকলে বাছো — ট্যাগ বেশি নির্ভুল হয়)</label>
         <select id="bkSubj" onchange="bkSetSubj(this.value)">${subjOpts(W.subject, '— AI ঠিক করুক (মিশ্র বিষয়) —')}</select>
         <label class="field-label">🏷️ বোর্ড / ভর্তি-পরীক্ষার ট্যাগ (ঐচ্ছিক — সব প্রশ্নে বসবে)</label>
@@ -13844,6 +13939,10 @@ window.doSmartSearch = async function(){
         it.tagTried = true; const t = r.tags[i];
         if(t){ it.tag = { subject:t.subject, chapter:t.chapter, topic:t.topic, subs:t.subs || [] }; bkRegister(it.tag); if(t.isNew) W.known.push({ subject:t.subject, chapter:t.chapter, topic:t.topic }); }
       });
+    }
+    if(W.force){   // [v25] অধ্যায় বেছে আপলোড: অধ্যায় (আর টপিক বাছা থাকলে সেটাও) শিক্ষকের বাছাই অনুযায়ী বসে
+      W.items.forEach(x => { const t0 = x.tag || {}; x.tag = { subject:W.force.subject, chapter:W.force.chapter, topic:W.force.topic || t0.topic || W.force.chapter, subs:(W.force.topic ? [] : (t0.subs || [])) }; bkRegister(x.tag); x.tagTried = true; });
+      aiDown = false;
     }
     W.busy = false;
     const prog = document.getElementById('bkProg');
