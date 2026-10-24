@@ -2924,6 +2924,25 @@ body.dark input[type=text], body.dark input[type=number], body.dark input[type=p
   }
 body.dark .bubble-opt:hover { background: #334155 !important; }
 body.dark .bubble-opt .opt-text { color: #F8FAFC !important; }
+/* [REV] MCQ ফলাফল: সঠিক = সবুজ, ভুল = লাল (dark-mode hover-কে হারিয়ে) */
+.bubble-opt.rev-right, body.dark .bubble-opt.rev-right, body.dark .bubble-opt.rev-right:hover, .bubble-opt.rev-right:hover { background:#16A34A !important; box-shadow:0 0 0 2px #22C55E; }
+.bubble-opt.rev-wrong, body.dark .bubble-opt.rev-wrong, body.dark .bubble-opt.rev-wrong:hover, .bubble-opt.rev-wrong:hover { background:#DC2626 !important; box-shadow:0 0 0 2px #EF4444; }
+.bubble-opt.rev-right .opt-text, .bubble-opt.rev-wrong .opt-text, body.dark .bubble-opt.rev-right .opt-text, body.dark .bubble-opt.rev-wrong .opt-text { color:#fff !important; font-weight:700; }
+.bubble-opt.rev-right .bubble, .bubble-opt.rev-wrong .bubble { background:#fff !important; border-color:#fff !important; color:#111 !important; }
+.cqf-box { border:2px dashed rgba(127,127,127,0.65); border-radius:6px; padding:8px 12px; font-weight:800; font-size:15px; margin:0 0 10px 0; }
+.cqf-single { display:flex; gap:10px; align-items:flex-start; }
+.cqf-sbody { flex:1; line-height:1.9; font-size:15.5px; }
+.cqf-head { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 10px 0; }
+.cqf-chip { border:1.5px dashed rgba(127,127,127,0.6); border-radius:6px; padding:3px 10px; font-weight:800; font-size:14px; }
+.cqf-chip.cqf-tag { border-style:solid; font-weight:600; opacity:0.85; }
+.cqf-lead { border-left:4px solid var(--gold, #D4A017); background:rgba(212,160,23,0.10); padding:10px 12px; border-radius:6px; margin:0 0 12px 0; line-height:1.8; font-weight:600; }
+.cqf-row { display:flex; gap:10px; align-items:flex-start; padding:10px 0; border-top:1px dashed rgba(127,127,127,0.35); }
+.cqf-row:first-of-type { border-top:none; }
+.cqf-lab { flex:0 0 auto; width:28px; height:28px; border-radius:50%; background:var(--gold, #D4A017); color:#1a1a1a; font-weight:800; display:flex; align-items:center; justify-content:center; }
+.cqf-body { flex:1; line-height:1.85; font-size:15px; }
+.cqf-mark { flex:0 0 auto; font-weight:800; opacity:0.8; padding-left:6px; }
+.rev-verdict { margin-top:12px; padding:12px 14px; border-radius:10px; font-weight:700; font-size:15px; color:#fff; }
+.rev-verdict.good { background:#16A34A; } .rev-verdict.bad { background:#DC2626; }
 body.dark .btn-outline { color: #F8FAFC !important; border-color: #334155 !important; }
 body.dark .btn-primary { background: #F8FAFC !important; color: #0F172A !important; }
 body.dark .btn-primary:hover { box-shadow: 0 4px 14px -4px rgba(255,255,255,0.4); }
@@ -11971,7 +11990,7 @@ window.doSmartSearch = async function(){
     revRender();
     const res = await postToScriptRaw('revisionBuild', { slug:stud.slug, subjects:subs.join(','), weekly:'1' });
     if(!res || res.status !== 'success'){ toast('লোড হয়নি, আবার চেষ্টা করো'); window.__rev = { phase:'setup' }; revRender(); return; }
-    R().pool = res;
+    R().pool = revExpandPool(res);
     revBeginSeg();
   };
 
@@ -11992,7 +12011,7 @@ window.doSmartSearch = async function(){
     revRender();
     const res = await postToScriptRaw('revisionBuild', { slug:stud.slug, subjects:subs.join(',') });
     if(!res || res.status !== 'success'){ toast('লোড হয়নি, আবার চেষ্টা করো'); window.__rev = { phase:'setup' }; revRender(); return; }
-    R().pool = res;
+    R().pool = revExpandPool(res);
     revBeginSeg();
   };
 
@@ -12001,7 +12020,7 @@ window.doSmartSearch = async function(){
     if(r.timer) clearInterval(r.timer);
     r.timer = setInterval(() => {
       if(state.screen !== 'revision' || !R() || R() !== r){ clearInterval(r.timer); return; }
-      if(r.paused || r.busy) return;   // [NEW] AI লোড/চেক হওয়ার সময় টাইমার থামে
+      if(r.paused || r.busy){ const pe = document.getElementById('revT'); if(pe) pe.textContent = fmtTime(Math.max(0, r.remaining)) + ' ⏸'; return; }   // [NEW] AI লোড/চেক হওয়ার সময় টাইমার থামে (⏸ দেখায়)
       r.remaining--; localStorage.setItem(doneKey(), doneSec() + 1);
       const el = document.getElementById('revT'); if(el) el.textContent = fmtTime(Math.max(0, r.remaining));
       if(r.remaining <= 0){ r.over = true; clearInterval(r.timer); }
@@ -12009,10 +12028,97 @@ window.doSmartSearch = async function(){
     revNext();
   }
 
+
+  // [REV] CQ প্রশ্ন সাজিয়ে দেখানো: উদ্দীপক বক্স + ক/খ/গ/ঘ আলাদা লাইন + মান ডানে
+  function revFmt(raw){
+    let t = String(raw || '').replace(/\r/g, '').trim();
+    const nl = s => escapeHtml(s).replace(/\n/g, '<br>');
+    let head = '';
+    const hm = t.match(/^প্রশ্ন\s*([০-৯0-9]+)\s*(?:[।.►]|$)\s*/);
+    if(hm){ head += `<span class="cqf-chip">প্রশ্ন ${escapeHtml(hm[1])}</span>`; t = t.slice(hm[0].length); }
+    t = t.replace(/\[([^\]\$\\]{1,40})\]/g, (x, tg) => { head += `<span class="cqf-chip cqf-tag">${escapeHtml(tg.trim())}</span>`; return ''; }).replace(/[ \t]{2,}/g, ' ').trim();
+    if(head) head = `<div class="cqf-head">${head}</div>`;
+    const re = /(^|\s)(ক|খ|গ|ঘ)[.।]\s+/g, idx = []; let m;
+    while((m = re.exec(t))) idx.push({ i:m.index + m[1].length, lab:m[2], end:re.lastIndex });
+    if(idx.length < 2) return `${head}<div class="q-text" style="line-height:1.8;">${nl(t)}</div>`;
+    const MK = { 'ক':'১', 'খ':'২', 'গ':'৩', 'ঘ':'৪' }, showMk = true;
+    const lead = t.slice(0, idx[0].i).trim();
+    const rows = idx.map((x, k) => {
+      const body = t.slice(x.end, k + 1 < idx.length ? idx[k + 1].i : t.length).trim();
+      return `<div class="cqf-row"><div class="cqf-lab">${x.lab}</div><div class="cqf-body">${nl(body)}</div>${showMk ? `<div class="cqf-mark">${MK[x.lab]}</div>` : ''}</div>`;
+    }).join('');
+    return `${head}${lead ? `<div class="cqf-lead">${nl(lead)}</div>` : ''}${rows}`;
+  }
+
+  // [REV] CQ ভেঙে ১টা ১টা অংশ (শুধু গ ও ঘ — ৩/৪ মার্ক) আলাদা প্রশ্ন বানায়; ক/খ রিভিশনে আসে না
+  function revParseQ(raw){
+    let t = String(raw || '').replace(/\r/g, '').trim(), num = '', tags = [];
+    const hm = t.match(/^প্রশ্ন\s*([০-৯0-9]+)\s*([।.►])?\s*/);
+    if(hm){
+      num = hm[1]; t = t.slice(hm[0].length);
+      if(hm[2] === '►'){
+        const pm = t.search(/(^|\s)(ক|খ|গ|ঘ)[.।]\s/), nlI = t.indexOf('\n');
+        const end = (nlI >= 0 && (pm < 0 || nlI <= pm)) ? nlI : pm;
+        if(end > 0){ tags.push(t.slice(0, end).trim()); t = t.slice(end).trim(); }
+      }
+    }
+    t = t.replace(/\[([^\]\$\\]{1,40})\]/g, (x, tg) => { tags.push(tg.trim()); return ''; }).replace(/[ \t]{2,}/g, ' ').trim();
+    const re = /(^|\s)(ক|খ|গ|ঘ)[.।]\s+/g, idx = []; let m;
+    while((m = re.exec(t))) idx.push({ i:m.index + m[1].length, lab:m[2], end:re.lastIndex });
+    const parts = idx.map((x, k) => ({ lab:x.lab, body:t.slice(x.end, k + 1 < idx.length ? idx[k + 1].i : t.length).trim() }));
+    return { num, tags, lead: idx.length ? t.slice(0, idx[0].i).trim() : t, parts };
+  }
+
+  function revExpandPool(P){
+    if(!P) return P;
+    const marker = /(?=প্রশ্ন\s*[০-৯0-9]+\s*(?:[।.►]|$))/, MARK = { 'গ':'৩', 'ঘ':'৪' };
+    ['mcqWeak','mcqEasy','cqWeak','cqEasy'].forEach(k => {
+      const out = [];
+      (P[k] || []).forEach(it => {
+        const q = it.q;
+        if(!q || it.kind === 'mcq' || !q.text){ out.push(it); return; }
+        const whole = String(q.text);
+        let segs = whole.split(marker).map(s => s.trim()).filter(s => /^প্রশ্ন\s*[০-৯0-9]+/.test(s));
+        const multi = segs.length >= 2;
+        if(!multi) segs = [whole];
+        const made = [];
+        segs.forEach((seg, n) => {
+          const p = revParseQ(seg), gh = p.parts.filter(x => x.lab === 'গ' || x.lab === 'ঘ'), sibs = [];
+          if(!gh.length){ if(multi && !revBlob({ text:seg })) made.push(Object.assign({}, it, { key:it.key + '#' + (n + 1), q:Object.assign({}, q, { text:seg, modelAnswerText:'', modelAnswerImageUrl:'' }) })); return; }
+          gh.forEach(x => {
+            const body = (x.lab === 'ঘ' && p.lead && !/^উদ্দীপক/.test(x.body) ? p.lead + '\n' : (x.lab === 'গ' && p.lead && /উদ্দীপক/.test(x.body) ? p.lead + '\n' : '')) + x.body;
+            const nq = Object.assign({}, q, { text:body });
+            if(multi){ nq.modelAnswerText = ''; nq.modelAnswerImageUrl = ''; }
+            const ni = Object.assign({}, it, { key:it.key + (multi ? '#' + (n + 1) : '') + '#' + x.lab, baseKey:multi ? '' : it.key, q:nq, split:true,
+              cqp:{ num:p.num, tags:p.tags, lab:x.lab, body:body, mark:MARK[x.lab] } });
+            sibs.push(ni); made.push(ni);
+          });
+          if(sibs.length === 2 && sibs[0].cqp.lab === 'গ') sibs[0].sib = sibs[1];   // গ-র পরেই ঘ
+        });
+        if(made.length) made.forEach(x => out.push(x)); else out.push(it);
+      });
+      P[k] = out;
+    });
+    return P;
+  }
+
+  // [REV] একটা অংশ (গ/ঘ) ছবির মতো সাজিয়ে: ওপরে ড্যাশ-বক্সে প্রশ্ন নম্বর ► পরীক্ষার নাম, নিচে অংশ + ডানে মার্ক
+  function revFmtPart(c){
+    const head = (c.num || c.tags.length) ? `<div class="cqf-box">${c.num ? 'প্রশ্ন ' + escapeHtml(c.num) : ''}${c.num && c.tags.length ? ' ► ' : ''}${escapeHtml(c.tags.join(', '))}</div>` : '';
+    return `${head}<div class="cqf-single"><div class="cqf-sbody"><b>${c.lab}.</b> ${escapeHtml(c.body).replace(/\n/g, '<br>')}</div><div class="cqf-mark">${c.mark}</div></div>`;
+  }
+
+  // [REV] অনেকগুলো প্রশ্ন একসাথে জোড়া লাগানো "বিশাল" প্রশ্ন রিভিশনে দেখানো হবে না
+  function revBlob(it){
+    const t = String((it.q && it.q.text) || it.text || '');
+    return t.length > 1200 || (t.match(/প্রশ্ন\s*[০-৯0-9]+\s*[।.]/g) || []).length >= 3;
+  }
+
   function revPick(){
     const r = R(); if(r.over) return null;
+    if(r.follow){ const f = r.follow; r.follow = null; if(!r.used[f.key]){ r.used[f.key] = 1; return f; } }   // [REV] গ-র পরে ওই প্রশ্নের ঘ
     const sub = r.segs[r.si].subs, P = r.pool;
-    const ok = i => !r.used[i.key] && (i.subject ? sub.indexOf(i.subject) !== -1 : !!(i.amb && i.amb.length && i.amb.every(x => sub.indexOf(x) !== -1)));
+    const ok = i => !r.used[i.key] && !revBlob(i) && (i.subject ? sub.indexOf(i.subject) !== -1 : !!(i.amb && i.amb.length && i.amb.every(x => sub.indexOf(x) !== -1)));
     r.seen = r.seen || {};
     const get = k => { const a = (P[k] || []).filter(ok), f = a.filter(i => !r.seen[i.tk]); return f.length ? f : a; };
     r.tog ^= 1;                                   // দুর্বল ↔ সহজ পালাক্রমে
@@ -12031,7 +12137,7 @@ window.doSmartSearch = async function(){
         it = cand.length ? cand[Math.floor(Math.random() * cand.length)] : l[0];
         r.started = true; localStorage.setItem('rev_first_last', it.key);
       }
-      r.used[it.key] = 1; r.seen[it.tk] = 1; return it; } }
+      r.used[it.key] = 1; r.seen[it.tk] = 1; if(it.sib && !r.used[it.sib.key]) r.follow = it.sib; return it; } }
     return null;
   }
 
@@ -12119,16 +12225,22 @@ window.doSmartSearch = async function(){
     const r = R(), it = r.cur; if(it.answered) return; it.answered = true;
     const good = j === it.correct;
     r.stats.m++; if(good) r.stats.mc++;
-    document.getElementById('revO' + j).style.background = good ? '#EBF7EE' : '#FDEEEE';
-    document.getElementById('revO' + it.correct).style.background = '#EBF7EE';
+    document.getElementById('revO' + it.correct).classList.add('rev-right');
+    if(!good) document.getElementById('revO' + j).classList.add('rev-wrong');
+    document.querySelectorAll('#revAct').length; const _opts = it.options || [];
     const qq = it.q || it;   // [v20] শিক্ষক যাতে দেখতে পারেন AI কোন প্রশ্ন দিয়েছিল ও ছাত্র কোনটা বেছেছিল
     postToScriptRaw('revisionLog', { slug:r.slug, date:todayStr(), kind:'mcq', itemKey:it.key, correct:good, tk:(it.subject||'') + '|' + (it.topic||''), qt:String(qq.text || ''), qo:JSON.stringify(qq.options || []), ch:j, ci:it.correct });
     revActions(good);
+    const _ra = document.getElementById('revAct');
+    if(_ra) _ra.insertAdjacentHTML('afterbegin', good
+      ? `<div class="rev-verdict good">✅ সঠিক! দারুণ হয়েছে</div>`
+      : `<div class="rev-verdict bad">❌ ভুল হয়েছে — সঠিক উত্তর: ${['ক','খ','গ','ঘ'][it.correct] || ''}) ${escapeHtml(String(_opts[it.correct] == null ? '' : _opts[it.correct]))}</div>`);
+    if(navigator.vibrate) try{ navigator.vibrate(good ? 40 : [60, 40, 60]); }catch(e){}
   };
 
   function revCq(it, q){
     app.innerHTML = `${header('রিভিশন')}${bar(it)}
-      <div class="card"><div class="q-text">${escapeHtml(q.text || '')}</div>
+      <div class="card">${it.cqp ? revFmtPart(it.cqp) : revFmt(q.text || '')}
         ${q.imageUrl ? `<img src="${driveImg(q.imageUrl)}" style="max-width:100%;border-radius:8px;margin-bottom:10px;">` : ''}
         <p class="hint">খাতায় সমাধান করে ছবি তুলে জমা দাও — AI মডেল উত্তরের সাথে মিলিয়ে দেখবে।</p>
         <input type="file" id="revFile" accept="image/*" style="margin-bottom:10px;">
@@ -12149,7 +12261,7 @@ window.doSmartSearch = async function(){
     const out = document.getElementById('revRes'), btn = document.getElementById('revSend');
     btn.disabled = true; out.innerHTML = `<p class="hint">চেক হচ্ছে...</p>`;
     const c = await revWait(compressImageFile(f, 1200, 0.75));
-    const res = await revWait(postToScriptRaw('revisionGradeCq', { slug:r.slug, date:todayStr(), itemKey:it.key, tk:(it.subject||'') + '|' + (it.topic||''), question:JSON.stringify(it.q), base64:c.base64, mimeType:c.mimeType }));
+    const res = await revWait(postToScriptRaw('revisionGradeCq', { slug:r.slug, date:todayStr(), itemKey:(it.baseKey || it.key), tk:(it.subject||'') + '|' + (it.topic||''), question:JSON.stringify(it.q), base64:c.base64, mimeType:c.mimeType }));
     if(!res || res.status !== 'success'){ btn.disabled = false; out.innerHTML = `<p class="hint" style="color:var(--red);">${gradeErrMsg(res)}</p>`; return; }
     r.stats.cq.push(res.percent);
     out.innerHTML = `<div class="review-ans ${res.percent >= 90 ? 'right' : 'wrong'}">🤖 ${res.percent}% — ${escapeHtml(res.feedback)}</div>
