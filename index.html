@@ -14776,7 +14776,7 @@ window.doSmartSearch = async function(){
         const opts = it.options.map((o, j) => `<button class="btn btn-outline btn-block" style="text-align:left;margin:4px 0;${it.answered ? (j === it.correct ? 'border-color:var(--green);background:#EBF7EE;' : '') : ''}" ${it.answered ? 'disabled' : ''} onclick="srMcq('${it.id}', ${j})">${L[j]}) ${esc(o)}</button>`).join('');
         return `<div class="card" id="srC_${it.id}">${head}${opts}${it.answered ? `<div class="review-ans ${it.score === 100 ? 'right' : 'wrong'}">${it.score === 100 ? '✅ সঠিক' : '❌ ভুল — সঠিক উত্তর ' + L[it.correct]}</div>` : ''}</div>`;
       }
-      return `<div class="card" id="srC_${it.id}">${head}${it.answered ? `<div style="margin-top:6px;">${chip('checked')} <b>${it.score}%</b></div>` : `
+      return `<div class="card" id="srC_${it.id}">${head}${it.answered ? `<div style="margin-top:6px;">${chip('checked')} <b>${it.score}%</b></div>${it.feedback ? `<div class="review-ans ${it.score >= 50 ? 'right' : 'wrong'}" style="margin-top:6px;">🤖 ${esc(it.feedback)}</div>` : ''}${it.ansUrl ? `<a href="${driveImg(it.ansUrl)}" target="_blank" class="link-back">🖼️ আমার খাতার ছবি</a>` : ''}` : `
         <input type="file" accept="image/*" multiple onchange="srAdd('${it.id}', this)" style="margin:8px 0;"><div id="srP_${it.id}"></div>
         <button class="btn btn-primary btn-block" id="srB_${it.id}" onclick="srCq('${it.id}')">📤 খাতার ছবি জমা দাও</button>`}<div id="srR_${it.id}" style="margin-top:8px;"></div></div>`;
     }).join('');
