@@ -13208,15 +13208,31 @@ window.doSmartSearch = async function(){
     const used = (res && res.used) || [], saved = (res && res.saved) || [];
     window.__revOvSaved = saved;
     const dv = localStorage.getItem('rev_ov_daily') || 20, pv = localStorage.getItem('rev_ov_per') || 3;
-    el.innerHTML = `<label class="field-label" style="margin-top:12px;">এই ছাত্র যে বিষয়গুলো রিভিশন করে</label>
+    el.innerHTML = `<div id="ovAct" style="margin-top:12px;"></div><label class="field-label" style="margin-top:12px;">এই ছাত্র যে বিষয়গুলো রিভিশন করে</label>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">${Object.keys(NOTES_SUBJECTS).map(k => `<label style="display:flex;gap:4px;align-items:center;cursor:pointer;font-size:14px;"><input type="checkbox" data-ovs="${k}" ${used.indexOf(k) !== -1 ? 'checked' : ''} onchange="revOvSubjChange()" style="display:inline-block;width:auto;margin:0;">${NOTES_SUBJECTS[k].icon} ${NOTES_SUBJECTS[k].label}</label>`).join('')}</div>
       <div class="meta" style="margin-top:4px;">${saved.length ? 'সেভ করা আছে' : '⚠️ এই ছাত্রের বিষয় এখনো সেভ করা নেই, তাই সব বিষয় দেখাচ্ছে'} · <a class="link-back" onclick="revOvSaveSubjects()">💾 এই বিষয়গুলোই এই ছাত্রের জন্য সেভ করো</a></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
         <div style="flex:1;min-width:130px;"><label class="field-label">ছাত্র রোজ গড়ে কত মিনিট পড়ে</label><input type="number" id="ovDaily" value="${dv}" min="5" step="5" oninput="ovDraw()" style="margin-bottom:0;"></div>
         <div style="flex:1;min-width:130px;"><label class="field-label">প্রতি টপিকে গড়ে মিনিট</label><input type="number" id="ovPer" value="${pv}" min="1" step="0.5" oninput="ovDraw()" style="margin-bottom:0;"></div></div>
       <div id="ovSum"></div><div id="ovChart"></div><div id="ovTopics"></div>`;
-    ovDraw();
+    ovDraw(); ovActLoad(slug);
   };
+  // [v33] এই ছাত্র আসলে কত মিনিট/কয়টা টপিক/কয়টা প্রশ্ন রিভিশন করছে — দিন ধরে
+  async function ovActLoad(slug){
+    const box = document.getElementById('ovAct'); if(!box) return;
+    box.innerHTML = `<div class="hint">রিভিশনের হিসাব লোড হচ্ছে...</div>`;
+    const r = await postToScriptRaw('trkRevDays', { tkey:TEACHER_PASSWORD, slug, today:todayStr() });
+    const b2 = document.getElementById('ovAct'); if(!b2 || val('ovStud') !== slug) return;
+    if(!r || r.status !== 'success'){ b2.innerHTML = `<div class="hint" style="color:var(--red);">রিভিশনের হিসাব লোড হয়নি (নতুন Code.gs ডিপ্লয় করেছো তো?)</div>`; return; }
+    const dn = d => fmtBnDate(new Date(d + 'T12:00:00').getTime()), row = d => `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px dashed #3A4660;"><span>${d.date === r.today ? 'আজ' : dn(d.date)}</span><span><b>${ovBn(d.min)} মিনিট</b> · ${ovBn(d.topics)} টপিক · ${ovBn(d.qs)} প্রশ্ন</span></div>`;
+    const todayRow = r.days.find(d => d.date === r.today) || { min:0, topics:0, qs:0 };
+    b2.innerHTML = `<div style="border:1px solid #3A4660;border-radius:12px;padding:10px 12px;">
+      <div style="font-weight:700;">📊 এই ছাত্র আসলে কতটা রিভিশন করছে</div>
+      <div class="meta" style="margin:4px 0 6px 0;">আজ: <b>${ovBn(todayRow.min)}</b> মিনিট · <b>${ovBn(todayRow.topics)}</b> টপিক · <b>${ovBn(todayRow.qs)}</b> প্রশ্ন &nbsp;|&nbsp; গত ৭ দিনে: <b>${ovBn(r.min7)}</b> মিনিট · <b>${ovBn(r.topics7)}</b>টা আলাদা টপিক</div>
+      ${r.days.length ? `${r.days.slice(0, 7).map(row).join('')}${r.days.length > 7 ? `<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:13px;">আরও ${ovBn(r.days.length - 7)} দিন দেখো</summary>${r.days.slice(7).map(row).join('')}</details>` : ''}` : '<div class="hint">এখনো কোনো রিভিশনের হিসাব জমেনি।</div>'}
+      <div class="meta" style="margin-top:6px;font-size:12px;">মিনিটের হিসাব নতুন Code.gs Deploy করার দিন থেকে জমছে; টপিক/প্রশ্ন আগের দিনেরও আছে।</div></div>`;
+  }
+  window.ovActLoad = ovActLoad;
   window.ovDraw = ovDraw;
   window.revOvUseRate = function(){
     const st = window.__revOvStats || {}, daily = Math.max(5, parseInt(val('ovDaily'), 10) || 20); if(!st.avg) return;
