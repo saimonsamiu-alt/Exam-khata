@@ -15184,7 +15184,7 @@ window.doSmartSearch = async function(){
   const esc = s => escapeHtml(String(s == null ? '' : s));
   const bn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
   const fmtSh = n => bn((Math.round((Number(n) || 0) * 100) / 100).toFixed(2));
-  const SRC = { mcq:'MCQ', rev:'রিভিশন', hw:'HW', game:'প্র্যাকটিস/গেম', mastery:'মাস্টারি', exam:'পরীক্ষা/কোড টেস্ট', written:'লিখিত পরীক্ষা' };
+  const SRC = { mcq:'MCQ', rev:'রিভিশন', hw:'HW', game:'প্র্যাকটিস/গেম', mastery:'মাস্টারি', exam:'পরীক্ষা/কোড টেস্ট', written:'লিখিত পরীক্ষা', gift:'🎁 শিক্ষকের উপহার' };
   window.fillVkHero = async function(){
     const stud = getLoggedStudent(); if(!stud) return;
     const r = await postToScriptRaw('vkSummary', { slug:stud.slug, today:todayStr() });
@@ -15197,7 +15197,7 @@ window.doSmartSearch = async function(){
     app.innerHTML = `${header('Project Vorkuta')}<div class="card center">লোড হচ্ছে...</div>`;
     const r = await postToScriptRaw('vkSummary', { slug:stud.slug, today:todayStr() });
     if(!r || r.status !== 'success'){ app.innerHTML = `${header('Project Vorkuta')}<div class="card"><p class="hint" style="color:var(--red);">❌ লোড করা যায়নি — ইন্টারনেট বা Apps Script-এর নতুন version Deploy চেক করো।</p><button class="btn btn-outline btn-block" onclick="go('vorkuta')">আবার চেষ্টা</button></div>`; return; }
-    const by = Object.keys(r.by).map(k => `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--rule);"><span>${SRC[k] || k}</span><b>+${fmtSh(r.by[k])}</b></div>`).join('') || `<p class="hint">এখনো কোনো শেয়ার জমেনি — একটা MCQ বা CQ দিয়ে শুরু করো।</p>`;
+    const by = Object.keys(r.by).map(k => `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--rule);"><span>${SRC[k] || k}</span><b>${r.by[k] < 0 ? '−' : '+'}${fmtSh(Math.abs(r.by[k]))}</b></div>`).join('') || `<p class="hint">এখনো কোনো শেয়ার জমেনি — একটা MCQ বা CQ দিয়ে শুরু করো।</p>`;
     const rows = r.items.map(it => {
       const pen = it.type === 'penalty', ap = it.appeal;
       const tag = it.voided ? `<span class="widget-tag tag-green">মাফ হয়েছে</span>` : '';
@@ -15207,7 +15207,7 @@ window.doSmartSearch = async function(){
         else if(ap.status === 'pending') act = `<span class="widget-tag tag-blue">আপিল পেন্ডিং</span>`;
         else if(ap.status === 'rejected') act = `<span class="widget-tag tag-red">আপিল বাতিল</span>${ap.note ? `<div class="meta">শিক্ষক: ${esc(ap.note)}</div>` : ''}`;
       }
-      return `<div class="exam-item" style="${it.voided ? 'opacity:.55;' : ''}border-left:5px solid ${pen ? '#D64545' : '#2E9E5B'};"><div class="row-top"><div><div style="font-weight:700;">${pen ? '⏰ মিস — ' : '✅ '}${SRC[it.source] || it.source}${it.note ? ' · ' + esc(it.note) : ''}</div><div class="meta">${esc(it.date)} ${tag}</div></div><div style="text-align:right;"><b style="color:${pen ? '#D64545' : '#2E9E5B'};">${pen ? '−' : '+'}${fmtSh(it.shares)}</b><div>${act}</div></div></div></div>`;
+      return `<div class="exam-item" style="${it.voided ? 'opacity:.55;' : ''}border-left:5px solid ${pen ? '#D64545' : '#2E9E5B'};"><div class="row-top"><div><div style="font-weight:700;">${pen ? '⏰ মিস — ' : '✅ '}${SRC[it.source] || it.source}${it.note ? ' · ' + esc(it.note) : ''}</div><div class="meta">${esc(it.date)} ${tag}</div></div><div style="text-align:right;"><b style="color:${pen ? '#D64545' : '#2E9E5B'};">${(pen || it.shares < 0) ? '−' : '+'}${fmtSh(Math.abs(it.shares))}</b><div>${act}</div></div></div></div>`;
     }).join('') || `<div class="empty-state">এখনো কিছু নেই।</div>`;
     app.innerHTML = `${header('Project Vorkuta')}
       <div class="card center" style="background:linear-gradient(135deg,#182238,#202F4F);color:#fff;border-color:#2C3E66;">
@@ -17138,8 +17138,50 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     return `<div class="trk-fb" id="trkfb_${idx}">
       ${has ? `<div class="trk-fb-saved">💬 <b>শিক্ষকের মন্তব্য:</b> ${escapeHtml(it.tfb.note)}</div>` : ''}
       <button type="button" class="btn btn-outline" style="margin-top:${has ? 6 : 0}px; padding:6px 12px; font-size:12.5px;" onclick="trkFbOpen(${idx})">${has ? '✏️ মন্তব্য বদলাও' : '💬 নিজে মন্তব্য লেখো'}</button>
+      ${markBtn(it, idx)}
+      <div id="trkmkEd_${idx}" style="display:none;"></div>
       <div id="trkfbEd_${idx}" style="display:none;"></div></div>`;
   }
+  // ---- শিক্ষক মার্ক বদলাবে (শুধু অ্যাসাইন HW ও CQ-তে, যেখানে % আছে) ----
+  function markBtn(it, idx){
+    if(!it.fkey || !(it.fkey.indexOf('as:') === 0 || it.fkey.indexOf('cq:') === 0)) return '';
+    return `<button type="button" class="btn btn-outline" style="margin-top:6px; margin-left:6px; padding:6px 12px; font-size:12.5px;" onclick="trkMkOpen(${idx})">🎯 মার্ক বদলাও</button>`;
+  }
+  window.trkMkOpen = function(idx){
+    const it = (window.__trkItems || [])[idx]; if(!it) return;
+    const box = document.getElementById('trkmkEd_' + idx); if(!box) return;
+    if(box.style.display !== 'none'){ box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    const isCq = it.kind === 'cq' && it.max;
+    const cur = isCq ? it.marks : (pctOf(it) === null ? '' : pctOf(it));
+    const unit = isCq ? ('/ ' + it.max + ' নম্বর') : '%';
+    const quick = isCq ? [0, 0.5, 1].map(x => Math.round(x * it.max * 2) / 2) : [0, 40, 60, 80, 100];
+    box.innerHTML = `<div style="margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span style="font-size:13px;">AI দিয়েছে: <b>${isCq ? it.marks + '/' + it.max : (cur === '' ? '—' : cur + '%')}</b> → নতুন মার্ক:</span>
+        <input id="trkmkIn_${idx}" type="number" inputmode="decimal" min="0" max="${isCq ? it.max : 100}" step="${isCq ? 0.5 : 1}" value="${cur}" style="width:80px; padding:6px 8px;">
+        <span style="font-size:13px;">${unit}</span>
+      </div>
+      <div class="trk-qp">${quick.map(v => `<button type="button" onclick="document.getElementById('trkmkIn_${idx}').value=${v}">${v}</button>`).join('')}</div>
+      <div style="display:flex; gap:8px; margin-top:6px;"><button type="button" class="btn btn-primary" style="padding:8px 16px;" onclick="trkMkSave(${idx})">💾 মার্ক সেভ করো</button></div>
+      <div class="trk-note">এটা আসল রেকর্ডেই বদলাবে — ছাত্রের পাতা, গড় আর Vorkuta শেয়ারও নতুন মার্ক অনুযায়ী মিলে যাবে।</div>`;
+  };
+  window.trkMkSave = async function(idx){
+    const it = (window.__trkItems || [])[idx]; if(!it) return;
+    const inp = document.getElementById('trkmkIn_' + idx); if(!inp) return;
+    const v = parseFloat(inp.value);
+    if(isNaN(v) || v < 0){ toast('সঠিক মার্ক লেখো'); return; }
+    const isCq = it.kind === 'cq' && it.max;
+    if(isCq && v > it.max){ toast('সর্বোচ্চ ' + it.max + ' নম্বর'); return; }
+    if(!isCq && v > 100){ toast('সর্বোচ্চ 100%'); return; }
+    const pc = isCq ? Math.round(v / it.max * 100) : Math.round(v);
+    toast('সেভ হচ্ছে...');
+    const res = await trkTeacherPost('trkMarkSave', { fkey: it.fkey, percent: pc });
+    if(!res || res.status !== 'success'){ toast('মার্ক সেভ হয়নি — নতুন Code.gs ডিপ্লয় করেছো তো? আবার চেষ্টা করো'); return; }
+    it.percent = pc; it.pct = pc; if(isCq) it.marks = Math.round(pc / 100 * it.max * 2) / 2;
+    const el = document.getElementById('trkc_' + idx);
+    if(el){ const nm = !!el.querySelector('.trk-chip[style*="E8EEFB"]'); el.outerHTML = trkCard(it, idx, { showName: nm }); }
+    toast('✅ মার্ক বদলানো হয়েছে: ' + pc + '%' + (res.shareDelta ? ' · শেয়ার ' + (res.shareDelta > 0 ? '+' : '−') + Math.abs(res.shareDelta).toFixed(2) : ''));
+  };
   window.trkFbOpen = function(idx){
     const it = (window.__trkItems || [])[idx]; if(!it) return;
     const box = document.getElementById('trkfbEd_' + idx); if(!box) return;
@@ -17175,6 +17217,32 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
   };
   window.trkFbDel = function(idx){ if(confirm('এই মন্তব্য মুছে ফেলবে?')) trkFbDo(idx, ''); };
 
+  // ---- শিক্ষক: খুশি হয়ে শেয়ার উপহার ----
+  window.trkGiftOpen = function(){
+    const S = window.__trkStu; if(!S) return;
+    const box = document.getElementById('trkGiftBox'); if(!box) return;
+    if(box.style.display !== 'none'){ box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    box.innerHTML = `<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <input id="trkGiftAmt" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="কত শেয়ার" style="width:110px;padding:6px 8px;">
+        <input id="trkGiftNote" type="text" maxlength="120" placeholder="কারণ (ঐচ্ছিক, ছাত্র দেখবে)" style="flex:1;min-width:150px;padding:6px 8px;">
+      </div>
+      <div class="trk-qp">${[0.5, 1, 2, 5].map(v => `<button type="button" onclick="document.getElementById('trkGiftAmt').value=${v}">+${v}</button>`).join('')}</div>
+      <div style="margin-top:6px;"><button type="button" class="btn btn-primary" style="padding:8px 16px;" onclick="trkGiftSend()">🎁 ${escapeHtml(S.name)}-কে দাও</button></div>
+      <div class="trk-note">এই শেয়ার সরাসরি ছাত্রের হিসাবে যোগ হবে, ছাত্র নিজের Vorkuta পাতায় "🎁 শিক্ষকের উপহার" হিসেবে দেখবে।</div>`;
+  };
+  window.trkGiftSend = async function(){
+    const S = window.__trkStu; if(!S) return;
+    const amt = parseFloat((document.getElementById('trkGiftAmt') || {}).value), note = ((document.getElementById('trkGiftNote') || {}).value || '').trim();
+    if(isNaN(amt) || amt <= 0){ toast('কত শেয়ার দেবে লেখো'); return; }
+    if(amt > 1000){ toast('একবারে সর্বোচ্চ ১০০০'); return; }
+    if(!confirm(S.name + '-কে ' + amt + ' শেয়ার উপহার দেবে?')) return;
+    toast('পাঠানো হচ্ছে...');
+    const res = await trkTeacherPost('trkGift', { slug: S.slug, shares: amt, note: note });
+    if(!res || res.status !== 'success'){ toast('দেওয়া হয়নি — নতুন Code.gs ডিপ্লয় করেছো তো? আবার চেষ্টা করো'); return; }
+    toast('🎁 ' + S.name + '-কে ' + amt + ' শেয়ার দেওয়া হয়েছে');
+    window.renderTeacherTrackerStudent(S.slug, S.name, S.kind);
+  };
   // ---- একটা কার্ড ----
   function trkCard(it, idx, opts){
     opts = opts || {};
@@ -17251,6 +17319,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
         <div class="meta" style="margin:0;">📈 Vorkuta শেয়ার: <b>${r.shares.balance}</b> <span class="meta">(আয় ${r.shares.earned} − কাটা ${r.shares.penalty})</span></div>
         <div class="trk-tiles">${tile('all', '📦', 'সব', total)}${tile('cq', '✍️', 'CQ', r.counts.cq)}${tile('hw', '📚', 'HW', r.counts.hw)}${tile('rev', '🔁', 'রিভিশন', r.counts.rev)}</div>
         ${(r.revDays && r.revDays.length) ? `<details style="margin-top:10px;" open><summary><b>⏱️ দিনভিত্তিক রিভিশন (সময় · টপিক · প্রশ্ন)</b> <small>(শেষ ${bnN(r.revDays.length)} দিন)</small></summary><div style="margin-top:6px;">${r.revDays.map(d => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed #E3E7EF;"><span>${bnDate(d.date)}</span><span><b>${bnN(d.min)} মিনিট</b> · ${bnN(d.topics || 0)} টপিক · ${bnN(d.qs || 0)} প্রশ্ন</span></div>`).join('')}</div></details>` : '<div class="meta" style="margin-top:8px;">⏱️ রিভিশন সময়ের হিসাব এখনো জমেনি।</div>'}
+        <div style="margin-top:10px;"><button type="button" class="btn btn-outline" style="padding:7px 14px; font-size:13px;" onclick="trkGiftOpen()">🎁 শেয়ার উপহার দাও</button><div id="trkGiftBox" style="display:none;"></div></div>
         <div class="trk-seg"><button type="button" class="${view === 'date' ? 'on' : ''}" onclick="trkSetView('date')">📅 তারিখ অনুযায়ী</button><button type="button" class="${view === 'group' ? 'on' : ''}" onclick="trkSetView('group')">🗂 অধ্যায়/প্রশ্ন অনুযায়ী</button></div>
       </div>
       ${body}
