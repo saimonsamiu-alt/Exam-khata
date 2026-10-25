@@ -3775,9 +3775,44 @@ function loadExamProgress(){
 document.addEventListener('visibilitychange', ()=>{ if(document.hidden) saveExamProgress(); });
 window.addEventListener('pagehide', saveExamProgress);
 const __resumeExam = (getLoggedTeacher() ? null : loadExamProgress());
+// ===== [NEW] রিফ্রেশ করলেও একই পেজে ফিরবে (শেষ খোলা পেজ + তার ছোট ডাটা এই ফোনে সেভ থাকে) =====
+const NAV_KEY = 'app_nav_v1';
+const NAV_SKIP = /^(landing|studentAuth|teacherGate|examResume|studentExam|studentDashboard|teacherDashboard|navPending|battle|game|writtenSolve|writtenEntry|writtenResult|studentResult|examResult)/i;
+function navWho(){ try{ const t = getLoggedTeacher(); if(t) return 't'; const s = getLoggedStudent(); return s ? 's:' + s.slug : ''; }catch(e){ return ''; } }
+function navClear(){ try{ localStorage.removeItem(NAV_KEY); }catch(e){} }
+function navSave(){
+  try{
+    const who = navWho(); if(!who) return;
+    const sc = state && state.screen;
+    if(!sc || NAV_SKIP.test(sc)){ navClear(); return; }
+    const data = {}; Object.keys(state).forEach(k => { if(k !== 'screen' && typeof state[k] !== 'function') data[k] = state[k]; });
+    const json = JSON.stringify({ screen: sc, data: data, who: who, at: Date.now() });
+    if(json.length > 200000){ navClear(); return; }
+    localStorage.setItem(NAV_KEY, json);
+  }catch(e){ navClear(); }
+}
+function navLoad(){
+  try{
+    const raw = localStorage.getItem(NAV_KEY); if(!raw) return null;
+    const n = JSON.parse(raw), who = navWho();
+    if(!n || !n.screen || !who || n.who !== who || NAV_SKIP.test(n.screen) || Date.now() - n.at > 12 * 3600 * 1000){ navClear(); return null; }
+    return n;
+  }catch(e){ return null; }
+}
+const __navPending = __resumeExam ? null : navLoad();
 let state = __resumeExam
   ? { screen: 'examResume', saved: __resumeExam }
-  : { screen: getLoggedTeacher() ? 'teacherDashboard' : (getLoggedStudent() ? 'studentDashboard' : 'landing') };
+  : (__navPending ? { screen: 'navPending' } : { screen: getLoggedTeacher() ? 'teacherDashboard' : (getLoggedStudent() ? 'studentDashboard' : 'landing') });
+// সব স্ক্রিপ্ট লোড হওয়ার পর (পরের স্ক্রিনগুলোর render ঠিকমতো বসে যাওয়ার পর) আগের পেজ খোলা হয়
+(function(){
+  function restore(){
+    if(!__navPending || state.screen !== 'navPending') return;
+    const fallback = () => { navClear(); state = { screen: getLoggedTeacher() ? 'teacherDashboard' : (getLoggedStudent() ? 'studentDashboard' : 'landing') }; render(); };
+    try{ state = Object.assign({}, __navPending.data, { screen: __navPending.screen }); render(); }catch(e){ console.error('nav restore', e); fallback(); return; }
+    setTimeout(() => { const a = document.getElementById('app'); if(a && !a.innerHTML.trim()) fallback(); }, 2500);   // ফাঁকা পেজ হলে ড্যাশবোর্ডে
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', restore); else setTimeout(restore, 0);
+})();
 // ===== [NEW] ভুল খাতা + দুর্বল টপিক (এই ফোনে সেভ থাকে) =====
 const MB_KEY = s => 'mistakes_v1_' + s;
 const TS_KEY = s => 'topicstats_v1_' + s;
@@ -3959,6 +3994,7 @@ function go(screen, data={}){
   // ড্যাশবোর্ডে ঢোকার সময় সবসময় নতুন ডাটা আনো (নাহলে পরীক্ষা দিয়ে কুপন পেলেও পুরনো ব্যালেন্স দেখাত)
   if(screen==='studentDashboard') window.__studentDashCache = null;
   state = { ...data, screen }; // [NEW] target screen wins (go('shopList', state) used to re-open the old screen)
+  navSave();
   render();
 }
 
@@ -11856,6 +11892,45 @@ window.doSmartSearch = async function(){
   const CQ_MIN_SEC = 240;               // ৪ মিনিট বা বেশি বাকি থাকলে CQ/ছবি-প্রশ্ন, নইলে MCQ
   const doneKey = () => 'rev_done_' + todayStr();
   const doneSec = () => Number(localStorage.getItem(doneKey()) || 0);
+  // ---- [NEW] রিভিশন সেশন সেভ: "পরে করবো" বা রিফ্রেশের পর যেখানে থেমেছিল সেখান থেকে চালু ----
+  const REV_SESS_KEY = () => 'rev_sess_v1_' + todayStr(), REV_POOL_KEY = () => 'rev_pool_v1_' + todayStr();
+  function revSaveSess(){
+    const r = R(); if(!r || r.phase !== 'item' || !r.slug) return;
+    try{
+      if(!r.__poolSaved){ localStorage.setItem(REV_POOL_KEY(), JSON.stringify(r.pool || {})); r.__poolSaved = true; }
+      const o = {}; ['phase', 'slug', 'segs', 'si', 'tog', 'used', 'stats', 'cur', 'started', 'seen', 'follow', 'mx', 'weekly', 'allowed', 'wkLoaded', 'remaining', 'over'].forEach(k => { if(r[k] !== undefined) o[k] = r[k]; });
+      localStorage.setItem(REV_SESS_KEY(), JSON.stringify({ o: o, at: Date.now() }));
+    }catch(e){}
+  }
+  function revClearSess(){ try{ localStorage.removeItem(REV_SESS_KEY()); localStorage.removeItem(REV_POOL_KEY()); }catch(e){} }
+  function revSavedInfo(){
+    try{
+      const sv = JSON.parse(localStorage.getItem(REV_SESS_KEY()) || 'null'), st = getLoggedStudent();
+      if(sv && sv.o && st && sv.o.slug === st.slug && sv.o.phase === 'item' && localStorage.getItem(REV_POOL_KEY())) return sv.o;
+    }catch(e){}
+    return null;
+  }
+  function revLoadSess(){
+    const o = revSavedInfo(); if(!o) return null;
+    try{ o.pool = JSON.parse(localStorage.getItem(REV_POOL_KEY())); }catch(e){ return null; }
+    o.paused = false; o.busy = 0; o.phase = 'item'; o.__poolSaved = true; return o;
+  }
+  window.revResumeSaved = function(){
+    const sv = revLoadSess(); if(!sv){ toast('আগের রিভিশন পাওয়া যায়নি'); revRender(); return; }
+    window.__rev = sv; revTick(sv);
+    if(!sv.cur || sv.cur.answered || sv.cur.submitted) revNext(); else revRender();
+  };
+  window.revLater = function(){
+    revSaveSess(); try{ revSendTime(); }catch(e){}
+    const r = R(); if(r && r.timer) clearInterval(r.timer);
+    window.__rev = null; toast('ঠিক আছে 👍 — পরে "রিভিশন" খুলে "চালিয়ে যাও" চাপলেই এখান থেকে শুরু'); go('studentDashboard');
+  };
+  function revResumeBox(){
+    const o = revSavedInfo(); if(!o) return '';
+    return `<div style="border:1.5px solid #BFE3CC;border-radius:12px;padding:12px;margin:0 0 12px 0;background:#F1FAF4;color:#1E3A2C;"><b>⏸ আগের রিভিশন বাকি আছে</b><div class="meta" style="margin:4px 0 8px;">⏱ ${fmtTime(Math.max(0, o.remaining || 0))} সময় বাকি · যেখানে থেমেছিলে সেখান থেকেই শুরু হবে</div><button class="btn btn-primary btn-block" onclick="revResumeSaved()">▶️ চালিয়ে যাও</button></div>`;
+  }
+  document.addEventListener('visibilitychange', () => { if(document.hidden){ try{ revSaveSess(); }catch(e){} } });
+  window.addEventListener('pagehide', () => { try{ revSaveSess(); }catch(e){} });
   // [NEW] সাপ্তাহিক রিভিশন: ছাত্রের সপ্তাহের প্রথম দিনই সাপ্তাহিক দিন (১২০ মিনিট বাধ্যতামূলক); বাকি ৬ দিন নিজের ইচ্ছামতো সময়
   const WK_DAYS = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'], WK_SEC = 7200;
   const wkStart = () => { const v = localStorage.getItem('rev_week_start'); return (v === null || v === '') ? -1 : Number(v); };
@@ -11878,12 +11953,16 @@ window.doSmartSearch = async function(){
   window.revGreeted = function(){ localStorage.setItem('rev_greet_' + todayStr(), '1'); R().phase = 'setup'; playSfx('combo'); revRender(); };
 
   function revRender(){
-    if(!R()) window.__rev = { phase:'setup' };
+    if(!R()){   // রিফ্রেশ বা সরাসরি এলে: সেভ করা সেশন থাকলে সেখান থেকেই চালু
+      const sv = revLoadSess();
+      if(sv){ window.__rev = sv; revTick(sv); if(!sv.cur || sv.cur.answered || sv.cur.submitted){ revNext(); return; } }
+      else window.__rev = { phase:'setup' };
+    }
     const p = R().phase;
     if(p === 'setup') revSetup();
     else if(p === 'loading') app.innerHTML = header('রিভিশন') + `<div class="card center">তোমার দুর্বল জায়গা খোঁজা হচ্ছে...</div>`;
     else if(p === 'greet') revGreet();
-    else if(p === 'item') revItem();
+    else if(p === 'item'){ revItem(); revSaveSess(); }
     else if(p === 'summary') revSummary();
   }
 
@@ -11947,6 +12026,7 @@ window.doSmartSearch = async function(){
         <p class="hint">আজ করেছো: <b>${done}</b> মিনিট / লক্ষ্য <b>${goal}</b> মিনিট</p>
         ${wkCard}
         <div id="revCov"></div>
+        ${revResumeBox()}
         ${prefNote}
         <details ${valid ? '' : 'open'} style="margin-bottom:12px;${wkMust ? 'display:none;' : ''}"><summary style="cursor:pointer;font-weight:600;font-size:13.5px;padding:6px 0;">${valid ? 'সেটিংস বদলাও' : 'সেটিংস ঠিক করো (একবারই লাগবে)'}</summary>
         <label class="field-label">বিষয় (একাধিক বাছতে পারো)</label>
@@ -12019,17 +12099,21 @@ window.doSmartSearch = async function(){
     try{ const sl = (R() && R().slug) || ((typeof getLoggedStudent === 'function' && getLoggedStudent()) || {}).slug; if(!sl) return; postToScriptRaw('revisionTime', { slug:sl, date:todayStr(), sec:doneSec() }); }catch(e){}
   }
   window.revSendTime = revSendTime;
-  function revBeginSeg(){
-    const r = R(); r.remaining = r.segs[r.si].sec; r.over = false;
+  function revTick(r){
     if(r.timer) clearInterval(r.timer);
     r.timer = setInterval(() => {
       if(state.screen !== 'revision' || !R() || R() !== r){ clearInterval(r.timer); return; }
       if(r.paused || r.busy){ const pe = document.getElementById('revT'); if(pe) pe.textContent = fmtTime(Math.max(0, r.remaining)) + ' ⏸'; return; }   // [NEW] AI লোড/চেক হওয়ার সময় টাইমার থামে (⏸ দেখায়)
       r.remaining--; localStorage.setItem(doneKey(), doneSec() + 1);
       if(doneSec() % 30 === 0) revSendTime();   // [v33] শিক্ষক দেখতে পারবেন
+      if(r.remaining % 5 === 0) revSaveSess();   // [NEW] সেশন সেভ
       const el = document.getElementById('revT'); if(el) el.textContent = fmtTime(Math.max(0, r.remaining));
       if(r.remaining <= 0){ r.over = true; clearInterval(r.timer); }
     }, 1000);
+  }
+  function revBeginSeg(){
+    const r = R(); r.remaining = r.segs[r.si].sec; r.over = false;
+    revTick(r);
     revNext();
   }
 
@@ -12206,7 +12290,7 @@ window.doSmartSearch = async function(){
     const sj = it.subject && NOTES_SUBJECTS[it.subject] ? NOTES_SUBJECTS[it.subject].label : '';
     return `<div class="card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
       <div><span class="q-tag">${it.tier === 'weak' ? '🔴 দুর্বল জায়গা' : '🟢 সহজ'}</span>${it.teacher ? ' <span class="q-tag">👨‍🏫 স্যারের</span>' : ''} <span class="meta">${escapeHtml(sj)} ${escapeHtml(it.topic || '')}</span></div>
-      <div style="display:flex;align-items:center;gap:8px;"><button class="info-btn" style="background:#FEF6E8;border-color:var(--gold);color:#7B4F06;font-weight:700;" onclick="revPause()">⏸ রিভিশন নোট</button><div class="timer-chip" style="position:static;"><span class="timer-dot"></span><span id="revT">${fmtTime(Math.max(0, R().remaining))}</span></div></div></div>`;
+      <div style="display:flex;align-items:center;gap:8px;"><button class="info-btn" style="background:#FEF6E8;border-color:var(--gold);color:#7B4F06;font-weight:700;" onclick="revPause()">⏸ রিভিশন নোট</button><button class="info-btn" style="font-weight:700;" onclick="revLater()">🕒 পরে করবো</button><div class="timer-chip" style="position:static;"><span class="timer-dot"></span><span id="revT">${fmtTime(Math.max(0, R().remaining))}</span></div></div></div>`;
   }
 
   async function revWait(p){ const r = R(); if(r) r.busy = (r.busy || 0) + 1; try{ return await p; } finally{ if(r) r.busy = Math.max(0, (r.busy || 1) - 1); } }
@@ -12326,7 +12410,7 @@ window.doSmartSearch = async function(){
   window.revNextBtn = function(){ revNext(); };
 
   function revSummary(){
-    revSendTime();
+    revSendTime(); revClearSess();
     const s = R().stats, avg = s.cq.length ? Math.round(s.cq.reduce((a, b) => a + b, 0) / s.cq.length) : null;
     app.innerHTML = `${header('রিভিশন')}
       <div class="card center"><h2>🎉 আজকের রিভিশন শেষ</h2>
@@ -14773,7 +14857,7 @@ window.doSmartSearch = async function(){
     const rows = r.data.map(s => `<div class="exam-item"><div class="row-top"><div><div style="font-weight:700;">${esc(s.title)}</div>
         <div class="meta">${esc(subjLabel(s.subject))} · তারিখ ${esc(s.date)} · ডেডলাইন ${esc(s.due)} · ${s.done}/${s.total} করা${s.avg !== null ? ' · গড় ' + s.avg + '%' : ''}</div>
         <div style="margin-top:4px;">${s.finished ? chip('checked') : chip('pending', s.overdue)}</div></div>
-        <button class="btn btn-primary" style="padding:6px 14px;font-size:12.5px;" onclick="srOpen('${s.id}')">${s.finished ? 'দেখো' : (s.done ? 'চালিয়ে যাও' : 'শুরু করো')}</button></div></div>`).join('');
+        <button class="btn btn-primary" style="padding:6px 14px;font-size:12.5px;" onclick="srOpen('${s.id}')">${s.finished ? 'দেখো' : ((s.done || Number(localStorage.getItem('sr_sec_' + stud.slug + '_' + s.id) || 0) > 0) ? '▶️ চালিয়ে যাও' : 'শুরু করো')}</button></div></div>`).join('');
     app.innerHTML = `${header('রিভিশন সেট')}
       <div class="card"><h2>🗂️ শিক্ষকের দেওয়া রিভিশন সেট</h2>
         <p class="hint">এখানে শুধু সেই চ্যাপ্টারগুলোর প্রশ্ন আসে যেগুলো ক্লাসে পড়ানো হয়েছে। শিক্ষক সেট না দিলে নিচের "অটো রিভিশন" থেকে নিজের দুর্বল টপিকের প্রশ্ন করতে পারো।</p>
@@ -14782,37 +14866,118 @@ window.doSmartSearch = async function(){
       <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>${creditFooter()}`;
   }
   window.srOpen = function(id){ go('revSetRun', { setId:id }); };
+  // ---- রিভিশন সেট: আসল রিভিশনের মতো — টাইমার + একটা একটা করে প্রশ্ন + উত্তরের পর "পরের প্রশ্ন" ----
+  const srKey = () => 'sr_sec_' + ((getLoggedStudent() || {}).slug || '') + '_' + (R.set ? R.set.id : '');
+  function srSecLoad(){ try{ return Number(localStorage.getItem(srKey()) || 0) || 0; }catch(e){ return 0; } }
+  function srSecSave(){ try{ if(R.run) localStorage.setItem(srKey(), String(R.run.sec)); }catch(e){} }
+  window.srLater = function(){
+    srSecSave(); try{ if(window.revSendTime) window.revSendTime(); }catch(e){}
+    srStop(); toast('ঠিক আছে 👍 — সেটের তালিকা থেকে "চালিয়ে যাও" চাপলেই এখান থেকে শুরু');
+    go('revSets');
+  };
+  window.addEventListener('pagehide', () => { try{ if(state.screen === 'revSetRun') srSecSave(); }catch(e){} });
+  function srStop(){ if(R.run && R.run.t){ clearInterval(R.run.t); R.run.t = null; } }
+  function srTimerStart(){
+    const run = R.run; if(!run) return; if(run.t) clearInterval(run.t);
+    run.t = setInterval(() => {
+      if(state.screen !== 'revSetRun' || R.run !== run){ clearInterval(run.t); return; }
+      const el = document.getElementById('srT');
+      if(run.busy || run.phase !== 'item'){ if(el) el.textContent = fmtTime(run.sec) + ' ⏸'; return; }   // AI চেক করার সময় টাইমার থামে
+      run.sec++;
+      try{ const k = 'rev_done_' + todayStr(); localStorage.setItem(k, String(Number(localStorage.getItem(k) || 0) + 1)); }catch(e){}   // আজকের মোট রিভিশন সময়ে যোগ হয়
+      if(run.sec % 5 === 0) srSecSave();
+      if(run.sec % 30 === 0 && window.revSendTime){ try{ window.revSendTime(); }catch(e){} }   // শিক্ষক দেখতে পান
+      if(el) el.textContent = fmtTime(run.sec);
+    }, 1000);
+  }
+  async function srWait(p){ const run = R.run; if(run) run.busy++; try{ return await p; } finally { if(run) run.busy = Math.max(0, run.busy - 1); } }
   async function srRender(){
     const stud = needStud(); if(!stud) return;
     loading('রিভিশন সেট');
     const r = await postToScriptRaw('planSetOpen', { slug:stud.slug, id:state.setId });
     if(!r || r.status !== 'success'){ failCard('রিভিশন সেট', 'srRender()'); return; }
-    R.set = r.set; R.items = r.items; R.pages = {}; srDraw(r.done, r.total);
+    srStop();
+    R.set = r.set; R.items = r.items; R.pages = {};
+    const queue = R.items.filter(x => !x.answered).map(x => x.id);
+    R.run = { queue:queue, cur:queue[0] || null, sec:srSecLoad(), busy:0, t:null, phase:queue.length ? 'item' : 'summary', locked:false };
+    if(R.run.phase === 'item') srTimerStart();
+    srShow();
   }
-  function srDraw(done, total){
-    const L = ['ক', 'খ', 'গ', 'ঘ'];
-    const cards = R.items.map((it, i) => {
-      const head = `<div class="meta"><b>#${i + 1}</b> <span class="q-tag">${esc(it.chapter)} › ${esc(it.topic)}</span> ${it.kind === 'mcq' ? 'MCQ' : 'CQ'}</div>
-        <div class="q-text" style="margin-top:6px;white-space:pre-wrap;">${esc(it.text)}</div>${it.imageUrl ? `<img src="${driveImg(it.imageUrl)}" style="max-width:100%;border-radius:8px;margin:6px 0;">` : ''}<div style="margin-top:6px;"><a class="link-back" onclick="srAsk('${it.id}')">👨‍🏫 না পারলে স্যারকে জানাও</a></div>`;
-      if(it.kind === 'mcq'){
-        const opts = it.options.map((o, j) => `<button class="btn btn-outline btn-block" style="text-align:left;margin:4px 0;${it.answered ? (j === it.correct ? 'border-color:var(--green);background:#EBF7EE;' : '') : ''}" ${it.answered ? 'disabled' : ''} onclick="srMcq('${it.id}', ${j})">${L[j]}) ${esc(o)}</button>`).join('');
-        return `<div class="card" id="srC_${it.id}">${head}${opts}${it.answered ? `<div class="review-ans ${it.score === 100 ? 'right' : 'wrong'}">${it.score === 100 ? '✅ সঠিক' : '❌ ভুল — সঠিক উত্তর ' + L[it.correct]}</div>` : ''}</div>`;
-      }
-      return `<div class="card" id="srC_${it.id}">${head}${it.answered ? `<div style="margin-top:6px;">${chip('checked')} <b>${it.score}%</b></div>${it.feedback ? `<div class="review-ans ${it.score >= 50 ? 'right' : 'wrong'}" style="margin-top:6px;">🤖 ${esc(it.feedback)}</div>` : ''}${it.ansUrl ? `<a href="${driveImg(it.ansUrl)}" target="_blank" class="link-back">🖼️ আমার খাতার ছবি</a>` : ''}` : `
-        <input type="file" accept="image/*" multiple onchange="srAdd('${it.id}', this)" style="margin:8px 0;"><div id="srP_${it.id}"></div>
-        <button class="btn btn-primary btn-block" id="srB_${it.id}" onclick="srCq('${it.id}')">📤 খাতার ছবি জমা দাও</button>`}<div id="srR_${it.id}" style="margin-top:8px;"></div></div>`;
-    }).join('');
-    app.innerHTML = `${header(R.set.title)}
-      <div class="card"><h2>🗂️ ${esc(R.set.title)}</h2><div class="meta">${esc(subjLabel(R.set.subject))} · ডেডলাইন ${esc(R.set.due)}</div>
-        <p class="hint" style="margin-top:6px;">প্রগ্রেস: <b>${done}/${total}</b>। প্রতিটা প্রশ্নে একবারই উত্তর দেওয়া যায়।</p></div>
-      ${cards}<div class="center"><a class="link-back" onclick="go('revSets')">← সেটের তালিকা</a></div>${creditFooter()}`;
+  function srShow(){ if(R.run.phase === 'item') srDrawItem(); else srDrawSummary(); }
+  function srActHtml(){
+    const last = R.run.queue.length <= 1;
+    return `<div style="margin-top:12px;"><button class="btn btn-outline btn-block" onclick="srAskCur()">👨‍🏫 পারলাম না — স্যারকে জানাও</button>
+      <button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="srNext()">${last ? '🏁 সেট শেষ করো' : 'পরের প্রশ্ন →'}</button></div>`;
+  }
+  function srDrawItem(){
+    const run = R.run, it = R.items.find(x => x.id === run.cur);
+    if(!it){ run.phase = 'summary'; srDrawSummary(); return; }
+    const total = R.items.length, done = R.items.filter(x => x.answered).length, no = R.items.indexOf(it) + 1, L = ['ক', 'খ', 'গ', 'ঘ'];
+    const bar = `<div class="card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div><span class="q-tag">🗂️ ${esc(R.set.title)}</span> <span class="meta">${esc(it.chapter)}${it.chapter && it.topic ? ' › ' : ''}${esc(it.topic)}</span></div>
+        <div style="display:flex;align-items:center;gap:8px;"><button class="info-btn" style="font-weight:700;" onclick="srLater()">🕒 পরে করবো</button><div class="timer-chip" style="position:static;"><span class="timer-dot"></span><span id="srT">${fmtTime(run.sec)}</span></div></div></div>
+      <div class="meta" style="margin:0 4px 6px;">প্রশ্ন <b>#${no}</b> · ${it.kind === 'mcq' ? 'MCQ' : 'CQ'} · করা হয়েছে <b>${done}/${total}</b></div>
+      <div style="height:6px;background:rgba(128,128,128,.25);border-radius:4px;margin:0 4px 10px;overflow:hidden;"><div style="height:100%;width:${total ? Math.round(done * 100 / total) : 0}%;background:#2E9E5B;"></div></div>`;
+    const qHead = `<div class="q-text" style="white-space:pre-wrap;line-height:1.8;">${esc(it.text)}</div>${it.imageUrl ? `<img src="${driveImg(it.imageUrl)}" style="max-width:100%;border-radius:8px;margin:8px 0;">` : ''}`;
+    let body;
+    if(it.kind === 'mcq'){
+      body = `${qHead}<div style="margin-top:8px;">${it.options.map((o, j) => `<label class="bubble-opt sr-opt" id="srO${j}" onclick="srMcq('${it.id}', ${j})"><div class="bubble">${L[j]}</div><div class="opt-text">${esc(o)}</div></label>`).join('')}</div><div id="srAct"></div>`;
+    } else {
+      body = `${qHead}
+        <p class="hint" style="margin-top:8px;">খাতায় সমাধান করে ছবি তুলে জমা দাও — AI মডেল উত্তরের সাথে মিলিয়ে দেখবে।</p>
+        <div id="srIn"><input type="file" accept="image/*" multiple onchange="srAdd('${it.id}', this)" style="margin:8px 0;"><div id="srP_${it.id}"></div>
+        <button class="btn btn-primary btn-block" id="srB_${it.id}" onclick="srCq('${it.id}')">📤 খাতার ছবি জমা দাও</button></div>
+        <div id="srR_${it.id}" style="margin-top:8px;"></div><div id="srAct"></div>
+        <a class="link-back" id="srSkip" style="display:block;margin-top:10px;" onclick="srNext(true)">এটা বাদ দিয়ে পরেরটা →</a>`;
+    }
+    app.innerHTML = `${header(R.set.title)}${bar}<div class="card">${body}<div style="margin-top:10px;"><a class="link-back" onclick="srAsk('${it.id}')">👨‍🏫 না পারলে স্যারকে জানাও</a></div></div>
+      <button class="btn btn-outline btn-block" style="margin-top:4px;" onclick="srLater()">⏸ পরে করবো — সেটের তালিকায় যাও</button>${creditFooter()}`;
     renderAllMath(app);
   }
+  function srDrawSummary(){
+    const run = R.run; srStop();
+    try{ if(R.items.every(x => x.answered)) localStorage.removeItem(srKey()); else srSecSave(); }catch(e){}
+    const mcq = R.items.filter(x => x.kind === 'mcq' && x.answered), cq = R.items.filter(x => x.kind !== 'mcq' && x.answered);
+    const mOk = mcq.filter(x => x.score === 100).length, left = R.items.filter(x => !x.answered).length;
+    const avg = cq.length ? Math.round(cq.reduce((a, x) => a + (Number(x.score) || 0), 0) / cq.length) : null;
+    const rows = R.items.map((x, i) => `<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px dashed rgba(128,128,128,.35);font-size:13.5px;"><span><b>#${i + 1}</b> ${x.kind === 'mcq' ? 'MCQ' : 'CQ'} · ${esc(x.topic || '')}</span><b>${x.answered ? (x.kind === 'mcq' ? (x.score === 100 ? '✅' : '❌') : (x.score + '%')) : '⏳'}</b></div>`).join('');
+    app.innerHTML = `${header(R.set.title)}
+      <div class="card center"><h2>${left ? '⏸ সেট এখনো শেষ হয়নি' : '🎉 সেট শেষ'}</h2>
+        <p class="hint">এই বসায় সময় লেগেছে: <b>${Math.floor(run.sec / 60)}</b> মিনিট ${run.sec % 60} সেকেন্ড</p>
+        <div class="meta">MCQ: <b>${mOk}/${mcq.length}</b> সঠিক ${avg !== null ? `· CQ গড়: <b>${avg}%</b> (${cq.length}টা)` : ''}${left ? ` · বাকি <b>${left}</b>টা` : ''}</div>
+        ${left ? `<button class="btn btn-primary btn-block" style="margin-top:12px;" onclick="srResume()">▶️ বাকি ${left}টা করো</button>` : ''}
+        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('revSets')">← সেটের তালিকা</button></div>
+      <div class="card"><h3>প্রশ্ন অনুযায়ী ফলাফল</h3>${rows}</div>${creditFooter()}`;
+  }
+  window.srResume = function(){
+    const run = R.run; run.queue = R.items.filter(x => !x.answered).map(x => x.id); run.cur = run.queue[0] || null; run.phase = run.cur ? 'item' : 'summary';
+    if(run.phase === 'item') srTimerStart(); srShow();
+  };
+  window.srNext = function(skip){
+    const run = R.run; if(!run) return;
+    if(skip && run.queue.length <= 1){ toast('এটাই শেষ প্রশ্ন — উত্তর দাও, নইলে সেটের তালিকায় ফিরে যাও'); return; }
+    const id = run.cur, it = R.items.find(x => x.id === id);
+    run.queue = run.queue.filter(x => x !== id);
+    if(skip && it && !it.answered) run.queue.push(id);   // বাদ দিলে শেষে আবার আসবে
+    run.cur = run.queue[0] || null; run.phase = run.cur ? 'item' : 'summary';
+    srShow();
+  };
+  window.srAskCur = function(){ if(R.run && R.run.cur) window.srAsk(R.run.cur); };
   window.srMcq = async function(itemId, choice){
     const stud = needStud(); if(!stud) return;
-    const r = await postToScriptRaw('planSetMcq', { slug:stud.slug, setId:R.set.id, itemId, choice, today:todayStr() });
-    if(r && r.status === 'success'){ const it = R.items.find(x => x.id === itemId); it.answered = true; it.score = r.correct ? 100 : 0; it.correct = r.right; srDraw(R.items.filter(x => x.answered).length, R.items.length); }
-    else toast('সেভ হয়নি, আবার চেষ্টা করো');
+    const run = R.run, it = R.items.find(x => x.id === itemId); if(!it || it.answered || run.locked) return;
+    run.locked = true;
+    const r = await srWait(postToScriptRaw('planSetMcq', { slug:stud.slug, setId:R.set.id, itemId, choice, today:todayStr() }));
+    run.locked = false;
+    if(!r || r.status !== 'success'){ toast('সেভ হয়নি, আবার চেষ্টা করো'); return; }
+    const L = ['ক', 'খ', 'গ', 'ঘ'], good = !!r.correct;
+    it.answered = true; it.score = good ? 100 : 0; it.correct = r.right;
+    const re = document.getElementById('srO' + r.right); if(re) re.classList.add('rev-right');
+    if(!good){ const we = document.getElementById('srO' + choice); if(we) we.classList.add('rev-wrong'); }
+    document.querySelectorAll('.sr-opt').forEach(e => { e.style.pointerEvents = 'none'; });
+    const box = document.getElementById('srAct');
+    if(box) box.innerHTML = `<div class="rev-verdict ${good ? 'good' : 'bad'}">${good ? '✅ সঠিক! দারুণ হয়েছে' : '❌ ভুল হয়েছে — সঠিক উত্তর: ' + L[r.right] + ') ' + esc(String((it.options || [])[r.right] == null ? '' : it.options[r.right]))}</div>${srActHtml()}`;
+    if(navigator.vibrate) try{ navigator.vibrate(good ? 40 : [60, 40, 60]); }catch(e){}
   };
   window.srAdd = function(id, input){ R.pages[id] = R.pages[id] || []; addFiles(R.pages[id], input); srPg(id); };
   window.srAsk = function(id){   // [v19] রিভিশন সেটে না পারলে শিক্ষককে জানানো
@@ -14826,14 +14991,16 @@ window.doSmartSearch = async function(){
     const stud = needStud(); if(!stud) return;
     const list = R.pages[itemId] || []; if(!list.length){ toast('আগে খাতার ছবি দাও'); return; }
     const b = document.getElementById('srB_' + itemId), out = document.getElementById('srR_' + itemId); b.disabled = true;
-    out.innerHTML = `<p class="hint">AI চেক করছে, একটু অপেক্ষা করো...</p>`;
+    out.innerHTML = `<p class="hint">AI চেক করছে, একটু অপেক্ষা করো... (টাইমার থেমে আছে)</p>`;
     let img; try{ img = await stitch(list.map(x => x.file), 1200, 0.72); }catch(e){ out.innerHTML = `<p class="hint" style="color:var(--red);">ছবি পড়া যায়নি।</p>`; b.disabled = false; return; }
-    const r = await postToScriptRaw('planSetCq', { slug:stud.slug, setId:R.set.id, itemId, base64:img.base64, mimeType:img.mimeType, today:todayStr() });
+    const r = await srWait(postToScriptRaw('planSetCq', { slug:stud.slug, setId:R.set.id, itemId, base64:img.base64, mimeType:img.mimeType, today:todayStr() }));
     if(r && r.status === 'success'){
       const it = R.items.find(x => x.id === itemId); it.answered = true; it.score = r.percent;
-      srDraw(R.items.filter(x => x.answered).length, R.items.length);
-      const o2 = document.getElementById('srR_' + itemId);
-      if(o2){ o2.innerHTML = `<div class="review-ans ${r.percent >= 50 ? 'right' : 'wrong'}">${esc(r.feedback || '')}</div>${r.modelAnswerText ? `<details style="margin-top:6px;"><summary>✅ মডেল উত্তর দেখো</summary><div style="white-space:pre-wrap;">${esc(r.modelAnswerText)}</div></details>` : ''}`; renderAllMath(o2); }
+      const inp = document.getElementById('srIn'); if(inp) inp.style.display = 'none';
+      const sk = document.getElementById('srSkip'); if(sk) sk.style.display = 'none';
+      out.innerHTML = `<div class="review-ans ${r.percent >= 50 ? 'right' : 'wrong'}">🤖 ${r.percent}% — ${esc(r.feedback || '')}</div>${r.modelAnswerText ? `<details style="margin-top:6px;" open><summary>✅ মডেল উত্তর দেখো</summary><div style="white-space:pre-wrap;">${esc(r.modelAnswerText)}</div></details>` : ''}`;
+      const box = document.getElementById('srAct'); if(box) box.innerHTML = srActHtml();
+      renderAllMath(out);
     } else { b.disabled = false; out.innerHTML = `<p class="hint" style="color:var(--red);">${gradeErrMsg(r)}</p>`; }
   };
 
@@ -17144,7 +17311,9 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
   }
   // ---- শিক্ষক মার্ক বদলাবে (শুধু অ্যাসাইন HW ও CQ-তে, যেখানে % আছে) ----
   function markBtn(it, idx){
-    if(!it.fkey || !(it.fkey.indexOf('as:') === 0 || it.fkey.indexOf('cq:') === 0)) return '';
+    if(!it.fkey) return '';
+    const okKey = it.fkey.indexOf('as:') === 0 || it.fkey.indexOf('cq:') === 0 || (it.fkey.indexOf('rv:') === 0 && pctOf(it) !== null);
+    if(!okKey) return '';
     return `<button type="button" class="btn btn-outline" style="margin-top:6px; margin-left:6px; padding:6px 12px; font-size:12.5px;" onclick="trkMkOpen(${idx})">🎯 মার্ক বদলাও</button>`;
   }
   window.trkMkOpen = function(idx){
