@@ -28144,6 +28144,7 @@ window.voiceToggle = function(){
             <option value="exrev">⏰ পরীক্ষার সময় রিভিশন — আলাদা বাটনে</option>
           </select>
           <p class="hint" style="margin-top:6px;">📚 জ্ঞানমূলক, অনুধাবনমূলক বেছে দিলে ফাইলটা টপিকে (২.১, ২.২…) না গিয়ে ওই অধ্যায়ের প্রথম টপিক-পাতার শুরুতে আলাদা বক্সে থাকবে।</p>
+          <label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;cursor:pointer;"><input type="checkbox" id="cfAllowDup" style="margin-top:3px;"><span>♻️ ডুপ্লিকেট (হুবহু একই) ফাইল হলেও আবার নতুন করে আপলোড করো <small class="hint" style="display:block;">টিক দিলে আগের ফাইল ঠিক থাকবে, আর এটা আলাদা নতুন ফাইল হিসেবে যোগ হবে।</small></span></label>
           <label class="field-label">PDF ফাইল (প্রতিটা সর্বোচ্চ ১২ MB)</label>
           <input type="file" id="cfFile" accept="application/pdf,.pdf" multiple hidden>
           <button type="button" class="btn btn-outline btn-block" id="cfPick">📄 PDF বাছাই করো</button>
@@ -28235,6 +28236,7 @@ window.voiceToggle = function(){
     busy = true; $('cfGo').disabled = true;
     const chapterId = $('cfChapter').value || null;
     const kindSel = ($('cfKind') && $('cfKind').value) || '';
+    const allowDup = !!($('cfAllowDup') && $('cfAllowDup').checked);
     const failed = [], total = pending.length, queue = pending.slice();
     for(let i = 0; i < total; i++){
       const f = queue[i];
@@ -28243,10 +28245,24 @@ window.voiceToggle = function(){
       if(items()) items().prepend(prog);
       try{
         const b64 = await readB64(f);
-        const r = await cfCall('cfUpload', { fileName:f.name, mimeType:'application/pdf', base64:b64, chapterId:chapterId, studentNames:names, kind:kindSel });
+        const r = await cfCall('cfUpload', { fileName:f.name, mimeType:'application/pdf', base64:b64, chapterId:chapterId, studentNames:names, kind:kindSel, allowDup:allowDup });
         prog.remove();
         if(!r || r.status !== 'success'){ failed.push(f); if(items()) items().prepend(errorCard(f.name, r && r.message)); }
-        else if(items()) items().prepend(resultCard(r));
+        else if(items()){
+          const rc = resultCard(r);
+          if(r.duplicate && !allowDup){   // [v33] ডুপ্লিকেট ধরা পড়লে এক চাপে নতুন ফাইল হিসেবে আবার আপলোডের অপশন
+            const rb = btn('♻️ তবুও আলাদা নতুন ফাইল হিসেবে আবার আপলোড করো', 'btn-outline', async () => {
+              rb.disabled = true; rb.textContent = 'আপলোড হচ্ছে… (পেজ বন্ধ কোরো না)';
+              try{
+                const r2 = await cfCall('cfUpload', { fileName:f.name, mimeType:'application/pdf', base64:b64, chapterId:chapterId, studentNames:names, kind:kindSel, allowDup:true });
+                if(r2 && r2.status === 'success'){ const nc = resultCard(r2); if(rc.parentNode) rc.parentNode.replaceChild(nc, rc); }
+                else { rb.disabled = false; rb.textContent = '♻️ আবার চেষ্টা করো'; say((r2 && r2.message) || 'আপলোড হয়নি'); }
+              }catch(e){ rb.disabled = false; rb.textContent = '♻️ আবার চেষ্টা করো'; say(e.message); }
+            });
+            rb.style.marginTop = '8px'; rc.appendChild(rb);
+          }
+          items().prepend(rc);
+        }
       }catch(e){
         prog.remove(); failed.push(f); if(items()) items().prepend(errorCard(f.name, e.message));
       }
