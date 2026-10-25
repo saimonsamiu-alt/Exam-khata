@@ -28141,7 +28141,7 @@ window.voiceToggle = function(){
             <option value="">🤖 অটো (AI / নাম দেখে ঠিক করবে)</option>
             <option value="notes">📄 নোট / প্রশ্ন — বইয়ের টপিকে যাবে</option>
             <option value="onu">📚 জ্ঞানমূলক, অনুধাবনমূলক — অধ্যায়ের বক্সে যাবে</option>
-            <option value="qs">📝 প্রশ্ন সেট — আলাদা অপশনে</option>
+            <option value="exrev">⏰ পরীক্ষার সময় রিভিশন — আলাদা বাটনে</option>
           </select>
           <p class="hint" style="margin-top:6px;">📚 জ্ঞানমূলক, অনুধাবনমূলক বেছে দিলে ফাইলটা টপিকে (২.১, ২.২…) না গিয়ে ওই অধ্যায়ের প্রথম টপিক-পাতার শুরুতে আলাদা বক্সে থাকবে।</p>
           <label class="field-label">PDF ফাইল (প্রতিটা সর্বোচ্চ ১২ MB)</label>
@@ -28385,9 +28385,9 @@ window.voiceToggle = function(){
   const toBn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
   const toLat = s => String(s).replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d));
   const ONU_RE = /অনুধাবন|onudhabon|anudhabon|onudhaban/i;
-  const QS_RE = /(exam|question|প্রশ্ন|প্র্যাকটিস|practice|model|মডেল|\bcw\b|class\s*work)[\s_\-:]*(set|সেট)|\bset[\s_\-]*[0-9০-৯]|সেট[\s_\-]*[0-9০-৯]/i;
+  const QS_RE = /exam[\s_\-]*(time)?[\s_\-]*revision|পরীক্ষার[\s_\-]*সময়[\s_\-]*(এর|র)?[\s_\-]*রিভিশন/i;   // [v33] শুধু "পরীক্ষার সময় রিভিশন" নামের ফাইল আলাদা বাটনে; প্রশ্ন সেট এখন সাধারণ PDF-এর মতো বইয়ে
   // notes = বইয়ের টপিকে (নোট/প্রশ্ন সব), onu = অধ্যায়ের শুরুর 💡 অনুধাবন বক্স, qs = বই থেকে আলাদা "প্রশ্ন সেট" অপশন (বিষয় অনুযায়ী)
-  const effKind = f => { if(f.kind === 'notes' || f.kind === 'onu' || f.kind === 'qs') return f.kind; const nm = (f.title || '') + ' ' + (f.fileName || ''); if(ONU_RE.test(nm)) return 'onu'; return QS_RE.test(nm) ? 'qs' : 'notes'; };
+  const effKind = f => { if(f.kind === 'qs') return 'notes'; if(f.kind === 'notes' || f.kind === 'onu' || f.kind === 'exrev') return f.kind; const nm = (f.title || '') + ' ' + (f.fileName || ''); if(ONU_RE.test(nm)) return 'onu'; return QS_RE.test(nm) ? 'exrev' : 'notes'; };
   const subjRank = s => /পদার্থ|physics/i.test(s) ? 0 : /রসায়ন|chem/i.test(s) ? 1 : /গণিত|math/i.test(s) ? 2 : /জীব|bio/i.test(s) ? 3 : /ict|তথ্য/i.test(s) ? 4 : 5;
   const qsSubjects = f => { const set = {}; (f.tags || []).filter(t => t.leaf).forEach(t => { set[String(t.path || '').split(' › ')[0] || 'অন্যান্য'] = 1; }); const k = Object.keys(set); return k.length ? k : ['অন্যান্য']; };
   let CF_VIEW = 'book', CF_KIND = 'all';
@@ -28463,13 +28463,13 @@ window.voiceToggle = function(){
     });
     bar.appendChild(seg);
     const seg2 = h('div', { class:'cf-seg', style:'margin-top:8px;' });
-    [['all', 'সব (' + toBn(all.length) + ')'], ['notes', '📄 নোট/প্রশ্ন (' + toBn(cntK('notes')) + ')'], ['onu', '📚 জ্ঞানমূলক, অনুধাবনমূলক (' + toBn(cntK('onu')) + ')'], ['qs', '📝 প্রশ্ন সেট (' + toBn(cntK('qs')) + ')']].forEach(x => {
+    [['all', 'সব (' + toBn(all.length) + ')'], ['notes', '📄 নোট/প্রশ্ন (' + toBn(cntK('notes')) + ')'], ['onu', '📚 জ্ঞানমূলক, অনুধাবনমূলক (' + toBn(cntK('onu')) + ')'], ['exrev', '⏰ পরীক্ষার সময় রিভিশন (' + toBn(cntK('exrev')) + ')']].forEach(x => {
       const b = h('button', { type:'button', class:'cf-segb' + (CF_KIND === x[0] ? ' on' : ''), text:x[1] });
       b.onclick = () => { CF_KIND = x[0]; renderAssignments(true); };
       seg2.appendChild(b);
     });
     bar.appendChild(seg2);
-    bar.appendChild(h('div', { class:'cf-hint', style:'margin-top:8px;', text:'▲▼ চেপে ফাইলের ক্রম বদলাও — ছাত্র \"আমার বই\"-এ এই ক্রমেই দেখবে (নতুন ফাইল সবার শেষে যোগ হয়)। 📄/💡/📝 চেপে ফাইলের ধরন বদলানো যায়: 📄 নোট/প্রশ্ন = বইয়ের টপিকে · 💡 অনুধাবন = অধ্যায়ের শুরুতে আলাদা বক্সে · 📝 প্রশ্ন সেট = বই থেকে আলাদা "প্রশ্ন সেট" অপশনে (বিষয় অনুযায়ী)।' }));
+    bar.appendChild(h('div', { class:'cf-hint', style:'margin-top:8px;', text:'▲▼ চেপে ফাইলের ক্রম বদলাও — ছাত্র \"আমার বই\"-এ এই ক্রমেই দেখবে (নতুন ফাইল সবার শেষে যোগ হয়)। 📄/📚/⏰ চেপে ফাইলের ধরন বদলানো যায়: 📄 নোট/প্রশ্ন = বইয়ের টপিকে · 💡 অনুধাবন = অধ্যায়ের শুরুতে আলাদা বক্সে · ⏰ পরীক্ষার সময় রিভিশন = বই থেকে আলাদা "প্রশ্ন সেট" অপশনে (বিষয় অনুযায়ী)।' }));
     const todo = ASSIGN.filter(f => !f.totalPages && !ANALYZED[f.fileHash]);
     if(ASSIGN.length){
       const rb = btn('🔄 সব ফাইলের পাতা আবার ধরো (পাতা ধরে — টপিক অনুযায়ী)', 'btn-gold', () => analyzeAll(true));
@@ -28496,7 +28496,7 @@ window.voiceToggle = function(){
     if(analyzing) return;
     if(force === true && !confirm('সব ফাইলের (প্রশ্ন-সেট বাদে) প্রতিটা পাতা AI আবার টপিকে ধরবে — ফাইল ধরে কিছুক্ষণ লাগবে। চলবে?')) return;
     analyzing = true;
-    const todo = force === true ? ASSIGN.filter(f => f.kind !== 'qs') : ASSIGN.filter(f => !f.totalPages && !ANALYZED[f.fileHash]);
+    const todo = force === true ? ASSIGN.filter(f => f.kind !== 'exrev') : ASSIGN.filter(f => !f.totalPages && !ANALYZED[f.fileHash]);
     for(let i = 0; i < todo.length; i++){
       const p = $('cfAnProg'); if(p) p.textContent = '⏳ ' + toBn(i + 1) + '/' + toBn(todo.length) + ' — ' + (todo[i].title || todo[i].fileName) + ' (পেজ বন্ধ কোরো না)';
       await analyzeOne(todo[i], true);
@@ -28513,10 +28513,10 @@ window.voiceToggle = function(){
     redraw();
   }
   async function toggleKind(f){
-    const nk = ({ notes:'onu', onu:'qs', qs:'notes' })[effKind(f)];
+    const nk = ({ notes:'onu', onu:'exrev', exrev:'notes' })[effKind(f)];
     const r = await cfCall('cfSetKind', { fileHash:f.fileHash, kind:nk });
     if(!r || r.status !== 'success') return say((r && r.message) || 'বদলায়নি');
-    f.kind = nk; say(({ qs:'📝 এখন প্রশ্ন সেট (আলাদা অপশনে)', onu:'📚 এখন জ্ঞানমূলক, অনুধাবনমূলক (অধ্যায়ের বক্সে)', notes:'📄 এখন নোট/প্রশ্ন (টপিকে)' })[nk]); redraw();
+    f.kind = nk; say(({ exrev:'⏰ এখন পরীক্ষার সময় রিভিশন (আলাদা বাটনে)', onu:'📚 এখন জ্ঞানমূলক, অনুধাবনমূলক (অধ্যায়ের বক্সে)', notes:'📄 এখন নোট/প্রশ্ন (টপিকে)' })[nk]); redraw();
   }
 
   function mkDet(key, label, defOpen, cls){
@@ -28539,7 +28539,7 @@ window.voiceToggle = function(){
     const card = h('div', { class:'cf-fc' });
     const up = h('button', { type:'button', class:'cf-mvb', text:'▲', title:'ওপরে নাও' }); up.disabled = idx <= 0; up.onclick = () => moveFile(f, sibs[idx - 1]);
     const dn = h('button', { type:'button', class:'cf-mvb', text:'▼', title:'নিচে নাও' }); dn.disabled = idx >= sibs.length - 1; dn.onclick = () => moveFile(f, sibs[idx + 1]);
-    const kb = h('button', { type:'button', class:'cf-kindb', text:({ qs:'📝', onu:'📚', notes:'📄' })[kind], title:'ধরন: ' + ({ qs:'প্রশ্ন সেট', onu:'জ্ঞানমূলক, অনুধাবনমূলক', notes:'নোট/প্রশ্ন (টপিকে)' })[kind] + ' — চাপলে বদলাবে (📄 → 📚 → 📝)' });
+    const kb = h('button', { type:'button', class:'cf-kindb', text:({ exrev:'⏰', onu:'📚', notes:'📄' })[kind], title:'ধরন: ' + ({ exrev:'পরীক্ষার সময় রিভিশন', onu:'জ্ঞানমূলক, অনুধাবনমূলক', notes:'নোট/প্রশ্ন (টপিকে)' })[kind] + ' — চাপলে বদলাবে (📄 → 📚 → ⏰)' });
     kb.onclick = () => toggleKind(f);
     card.appendChild(h('div', { class:'cf-fc-top' }, kb, h('div', { class:'cf-fc-title', text:(tagged ? '' : '⚠️ ') + (kind === 'onu' ? '📚 ' : '') + (f.title || f.fileName) }), h('div', { class:'cf-mv' }, up, dn)));
     const meta = h('div', { class:'cf-fc-meta' });
@@ -28583,7 +28583,7 @@ window.voiceToggle = function(){
 
   // তালিকা: ওপরে নোট/বই, নিচে প্রশ্ন সেট — আলাদা
   function drawListView(list, files){
-    [['onu', '📚 জ্ঞানমূলক, অনুধাবনমূলক'], ['notes', '📄 নোট / প্রশ্ন (বইয়ের টপিকে)'], ['qs', '📝 প্রশ্ন সেট (আলাদা অপশনে)']].forEach(x => {
+    [['onu', '📚 জ্ঞানমূলক, অনুধাবনমূলক'], ['notes', '📄 নোট / প্রশ্ন (বইয়ের টপিকে)'], ['exrev', '⏰ পরীক্ষার সময় রিভিশন (আলাদা বাটনে)']].forEach(x => {
       const arr = files.filter(f => effKind(f) === x[0]);
       if(!arr.length) return;
       list.appendChild(h('div', { class:'cf-sec', text:x[1] + ' (' + toBn(arr.length) + ')' }));
@@ -28628,7 +28628,7 @@ window.voiceToggle = function(){
   async function setKind(f, k){
     const r = await cfCall('cfSetKind', { fileHash:f.fileHash, kind:k });
     if(!r || r.status !== 'success') return say((r && r.message) || 'বদলায়নি');
-    f.kind = k; say(({ qs:'📝 এখন প্রশ্ন সেট (আলাদা অপশনে)', onu:'📚 এখন জ্ঞানমূলক, অনুধাবনমূলক (অধ্যায়ের বক্সে)', notes:'📄 এখন নোট/প্রশ্ন (টপিকে)' })[k]); redraw();
+    f.kind = k; say(({ exrev:'⏰ এখন পরীক্ষার সময় রিভিশন (আলাদা বাটনে)', onu:'📚 এখন জ্ঞানমূলক, অনুধাবনমূলক (অধ্যায়ের বক্সে)', notes:'📄 এখন নোট/প্রশ্ন (টপিকে)' })[k]); redraw();
   }
   async function renameFile(f){
     const t = window.prompt('ফাইলের নতুন নাম', f.title || f.fileName || '');
@@ -28645,7 +28645,7 @@ window.voiceToggle = function(){
     const leaves = (f.tags || []).filter(t => t.leaf), kind = effKind(f);
     col.appendChild(btn('✏️ নাম বদলাও', 'btn-outline', () => { close(); renameFile(f); }));
     const kr = h('div', { class:'row', style:'gap:6px;' });
-    [['notes', '📄 নোট/প্রশ্ন'], ['onu', '📚 জ্ঞান/অনুধাবন'], ['qs', '📝 প্রশ্ন সেট']].forEach(x => {
+    [['notes', '📄 নোট/প্রশ্ন'], ['onu', '📚 জ্ঞান/অনুধাবন'], ['exrev', '⏰ পরীক্ষার সময় রিভিশন']].forEach(x => {
       const b = btn(x[1], kind === x[0] ? 'btn-primary' : 'btn-outline', () => { close(); if(kind !== x[0]) setKind(f, x[0]); }); b.style.flex = '1'; kr.appendChild(b);
     });
     col.appendChild(h('div', { class:'cf-hint', text:'ধরন (📚 হলে টপিকে না গিয়ে অধ্যায়ের বক্সে থাকবে):' })); col.appendChild(kr);
@@ -28677,11 +28677,11 @@ window.voiceToggle = function(){
   }
 
   // বই আকারে: বিষয় › অধ্যায় › টপিক › ফাইল (ছাত্রের "আমার বই"-এর মতো)
-  // 📝 প্রশ্ন সেট: বইয়ের বাইরে আলাদা অপশন — নিচে পদার্থ · রসায়ন · গণিত · জীব · ICT … বিষয় অনুযায়ী
+  // ⏰ পরীক্ষার সময় রিভিশন: বইয়ের বাইরে আলাদা অপশন — নিচে পদার্থ · রসায়ন · গণিত · জীব · ICT … বিষয় অনুযায়ী
   function drawQsSection(list, qsFiles){
     if(!qsFiles.length) return;
     const groups = {}; qsFiles.forEach(f => qsSubjects(f).forEach(s => { (groups[s] = groups[s] || []).push(f); }));
-    const dQ = mkDet('QS', '📝 প্রশ্ন সেট (' + toBn(qsFiles.length) + ')', CF_KIND === 'qs');
+    const dQ = mkDet('QS', '⏰ পরীক্ষার সময় রিভিশন (' + toBn(qsFiles.length) + ')', CF_KIND === 'exrev');
     Object.keys(groups).sort((a, b) => subjRank(a) - subjRank(b) || a.localeCompare(b)).forEach(s => {
       const arr = groups[s], dg = mkDet('QS|' + s, '📘 ' + s + ' (' + toBn(arr.length) + ')', true, 'cf-bk sub');
       arr.forEach((f, i) => dg.appendChild(fileCard(f, { sibs:arr, idx:i })));
@@ -28693,7 +28693,7 @@ window.voiceToggle = function(){
   function groupBook(files){
     const subj = {}, loose = [], bd = {}, qsAll = [];
     files.forEach(f => {
-      if(effKind(f) === 'qs'){ qsAll.push(f); return; }                       // প্রশ্ন সেট বইয়ে ঢুকবে না — আলাদা অপশনে
+      if(effKind(f) === 'exrev'){ qsAll.push(f); return; }                       // প্রশ্ন সেট বইয়ে ঢুকবে না — আলাদা অপশনে
       const leaves = (f.tags || []).filter(t => t.leaf);
       if(!leaves.length){ loose.push(f); return; }
       leaves.forEach(t => {
@@ -28952,14 +28952,14 @@ window.PagePicker = PagePicker;
 // ============================================================================
 // 📕 VKBook — আসল বইয়ের মতো পাতা ওল্টানো ভিউয়ার (ছাত্রের "আমার বই" ও শিক্ষকের বই-ভিউ দুজনেই ব্যবহার করে)
 //   VKBook.open({ title, sub, owner, chapters:[{ name, board:[F], topics:[{ name, files:[F] }] }] }, { onRead, onDownload, readLabel, noDownload })
-//   F = { title, kind:'notes'|'qs'|'onu', pg:'পৃষ্ঠা ৩–৭' | '', data:<আসল ফাইল> }
+//   F = { title, kind:'notes'|'exrev'|'onu', pg:'পৃষ্ঠা ৩–৭' | '', data:<আসল ফাইল> }
 // প্রচ্ছদ → সূচিপত্র → প্রতি অধ্যায়ের ওপেনার (🎯 বোর্ড প্রশ্নসহ) → টপিক-পাতা → শেষ। সোয়াইপ/বোতাম/কিবোর্ড তিন ভাবেই ওল্টানো যায়।
 // ============================================================================
 (function(){
   if(window.VKBook) return;
   const bn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
   const el = (tag, cls, text) => { const e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; };
-  const ICON = { notes:'📄', qs:'📝', onu:'📚' };
+  const ICON = { notes:'📄', exrev:'⏰', onu:'📚' };
   const reduced = () => { try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){ return false; } };
 
   (function css(){
@@ -29471,7 +29471,7 @@ window.PagePicker = PagePicker;
   function buildTree(files){
     const subj = {}, loose = [], board = {};
     files.forEach(f => {
-      if(effKind(f) === 'qs') return;                                          // প্রশ্ন সেট বইয়ে ঢুকবে না — আলাদা "প্রশ্ন সেট" অপশনে
+      if(effKind(f) === 'exrev') return;                                          // প্রশ্ন সেট বইয়ে ঢুকবে না — আলাদা "প্রশ্ন সেট" অপশনে
       const leaves = (f.tags || []).filter(t => t.leaf);
       if(!leaves.length){ loose.push(f); return; }
       leaves.forEach(t => {
@@ -29491,9 +29491,9 @@ window.PagePicker = PagePicker;
   const chNo = name => { const m = toLatinDigits(name).match(/(\d+)/); return m ? Number(m[1]) : 999; };
   // ফাইলের ধরন (স্যার ঠিক করে দিলে সেটা, নইলে নাম দেখে আন্দাজ) ও টপিকের পাতার সীমা
   const ONU_RE = /অনুধাবন|onudhabon|anudhabon|onudhaban/i;
-  const QS_RE = /(exam|question|প্রশ্ন|প্র্যাকটিস|practice|model|মডেল|\bcw\b|class\s*work)[\s_\-:]*(set|সেট)|\bset[\s_\-]*[0-9০-৯]|সেট[\s_\-]*[0-9০-৯]/i;
+  const QS_RE = /exam[\s_\-]*(time)?[\s_\-]*revision|পরীক্ষার[\s_\-]*সময়[\s_\-]*(এর|র)?[\s_\-]*রিভিশন/i;   // [v33] শুধু "পরীক্ষার সময় রিভিশন" নামের ফাইল আলাদা বাটনে; প্রশ্ন সেট এখন সাধারণ PDF-এর মতো বইয়ে
   // notes = বইয়ের টপিকে (নোট/প্রশ্ন সব), onu = অধ্যায়ের শুরুর 💡 অনুধাবন বক্স, qs = বই থেকে আলাদা "প্রশ্ন সেট" অপশন (বিষয় অনুযায়ী)
-  const effKind = f => { if(f.kind === 'notes' || f.kind === 'onu' || f.kind === 'qs') return f.kind; const nm = (f.title || '') + ' ' + (f.fileName || ''); if(ONU_RE.test(nm)) return 'onu'; return QS_RE.test(nm) ? 'qs' : 'notes'; };
+  const effKind = f => { if(f.kind === 'qs') return 'notes'; if(f.kind === 'notes' || f.kind === 'onu' || f.kind === 'exrev') return f.kind; const nm = (f.title || '') + ' ' + (f.fileName || ''); if(ONU_RE.test(nm)) return 'onu'; return QS_RE.test(nm) ? 'exrev' : 'notes'; };
   const subjRank = s => /পদার্থ|physics/i.test(s) ? 0 : /রসায়ন|chem/i.test(s) ? 1 : /গণিত|math/i.test(s) ? 2 : /জীব|bio/i.test(s) ? 3 : /ict|তথ্য/i.test(s) ? 4 : 5;
   const qsSubjects = f => { const set = {}; (f.tags || []).filter(t => t.leaf).forEach(t => { set[String(t.path || '').split(' › ')[0] || 'অন্যান্য'] = 1; }); const k = Object.keys(set); return k.length ? k : ['অন্যান্য']; };
   const pgRuns = str => String(str || '').split(',').map(x => x.trim().match(/^(\d+)-(\d+)$/)).filter(Boolean).map(m => [Number(m[1]), Number(m[2])]);
@@ -29506,7 +29506,7 @@ window.PagePicker = PagePicker;
   function kindBar(){
     const cnt = k => B.files.filter(f => effKind(f) === k).length;
     const wrap = h('div', { class:'ab-kinds' });
-    [['all', 'সব (' + bn(B.files.length) + ')'], ['notes', '📄 নোট/প্রশ্ন (' + bn(cnt('notes')) + ')'], ['onu', '📚 জ্ঞানমূলক, অনুধাবনমূলক (' + bn(cnt('onu')) + ')'], ['qs', '📝 প্রশ্ন সেট (' + bn(cnt('qs')) + ')']].forEach(x => {
+    [['all', 'সব (' + bn(B.files.length) + ')'], ['notes', '📄 নোট/প্রশ্ন (' + bn(cnt('notes')) + ')'], ['onu', '📚 জ্ঞানমূলক, অনুধাবনমূলক (' + bn(cnt('onu')) + ')'], ['exrev', '⏰ পরীক্ষার সময় রিভিশন (' + bn(cnt('exrev')) + ')']].forEach(x => {
       if(x[0] !== 'all' && !cnt(x[0])) return;
       const b = h('button', { type:'button', class:'ab-kb' + (B.kind === x[0] ? ' on' : ''), text:x[1] });
       b.onclick = () => { B.kind = x[0]; drawBook(); };
@@ -29611,7 +29611,7 @@ window.PagePicker = PagePicker;
         rec.start(); listening = true; mic.textContent = '⏹ থামো';
       }catch(e){ err.textContent = 'এই ব্রাউজারে বলা চলছে না — লিখে বা ছবি দিয়ে খোঁজো'; }
     };
-    const KIC = { onu:'📚 ', qs:'📝 ', notes:'📄 ' };
+    const KIC = { onu:'📚 ', exrev:'⏰ ', notes:'📄 ' };
     const MATCH = { exact:'✅ হুবহু এই প্রশ্ন', similar:'≈ কাছাকাছি প্রশ্ন', topic:'📍 এই টপিকের ফাইল' };
     function showResults(r){
       out.textContent = '';
@@ -29668,9 +29668,9 @@ window.PagePicker = PagePicker;
       body.appendChild(h('div', { class:'ab-hint', text:'এখনো তোমার নামে কোনো ফাইল দেওয়া হয়নি। স্যার ফাইল অ্যাসাইন করলে এখানে বই আকারে দেখা যাবে।' })); return;
     }
     B.tree = buildTree(B.files.filter(f => B.kind === 'all' || effKind(f) === B.kind));   // ফাইল স্যারের সাজানো ক্রমে আসে
-    const qsAll = B.files.filter(f => effKind(f) === 'qs');
+    const qsAll = B.files.filter(f => effKind(f) === 'exrev');
     if(new Set(B.files.map(effKind)).size > 1) body.appendChild(kindBar());
-    if(B.subject === '__QS__' || B.kind === 'qs'){ drawQsets(body, qsAll); return; }
+    if(B.subject === '__QS__' || B.kind === 'exrev'){ drawQsets(body, qsAll); return; }
     if(B.subject && !B.tree.subj[B.subject]){ body.appendChild(h('div', { class:'ab-hint', text:'এই ধরনের কোনো ফাইল নেই।' })); return; }
     if(!Object.keys(B.tree.subj).length && !B.tree.loose.length && !qsAll.length){ body.appendChild(h('div', { class:'ab-hint', text:'এই ধরনের কোনো ফাইল নেই।' })); return; }
     const subs = Object.keys(B.tree.subj);
@@ -29682,7 +29682,7 @@ window.PagePicker = PagePicker;
         body.appendChild(b);
       });
       if(qsAll.length && B.kind === 'all'){
-        const qb = h('button', { type:'button', class:'ab-pick' }, h('span', { text:'📝 প্রশ্ন সেট' }), h('small', { text:bn(qsAll.length) + 'টা সেট · বিষয় অনুযায়ী' }));
+        const qb = h('button', { type:'button', class:'ab-pick' }, h('span', { text:'⏰ পরীক্ষার সময় রিভিশন' }), h('small', { text:bn(qsAll.length) + 'টা ফাইল · বিষয় অনুযায়ী' }));
         qb.onclick = () => { B.subject = '__QS__'; B.paper = null; drawBook(); };
         body.appendChild(qb);
       }
@@ -29719,11 +29719,11 @@ window.PagePicker = PagePicker;
     });
     if(!B.lock && B.tree.loose.length) body.appendChild(looseBlock());
   }
-  // 📝 প্রশ্ন সেট: বইয়ের বাইরে আলাদা অপশন — নিচে পদার্থ · রসায়ন · গণিত · জীব · ICT … বিষয় অনুযায়ী
+  // ⏰ পরীক্ষার সময় রিভিশন: বইয়ের বাইরে আলাদা অপশন — নিচে পদার্থ · রসায়ন · গণিত · জীব · ICT … বিষয় অনুযায়ী
   function drawQsets(body, qsAll){
-    if(!B.lock && B.kind !== 'qs') body.appendChild(btn('← বিষয়', 'btn-outline', () => { B.subject = null; B.paper = null; drawBook(); }));
-    body.appendChild(h('div', { class:'ab-cover', style:'margin-top:10px;' }, h('div', { class:'t', text:'📝 প্রশ্ন সেট' }), h('div', { class:'s', text:bn(qsAll.length) + 'টা সেট · বিষয় অনুযায়ী' })));
-    if(!qsAll.length){ body.appendChild(h('div', { class:'ab-hint', text:'এখনো কোনো প্রশ্ন সেট দেওয়া হয়নি।' })); return; }
+    if(!B.lock && B.kind !== 'exrev') body.appendChild(btn('← বিষয়', 'btn-outline', () => { B.subject = null; B.paper = null; drawBook(); }));
+    body.appendChild(h('div', { class:'ab-cover', style:'margin-top:10px;' }, h('div', { class:'t', text:'⏰ পরীক্ষার সময় রিভিশন' }), h('div', { class:'s', text:bn(qsAll.length) + 'টা ফাইল · বিষয় অনুযায়ী' })));
+    if(!qsAll.length){ body.appendChild(h('div', { class:'ab-hint', text:'এখনো পরীক্ষার সময় রিভিশনের কোনো ফাইল দেওয়া হয়নি।' })); return; }
     const groups = {}; qsAll.forEach(f => qsSubjects(f).forEach(s => { (groups[s] = groups[s] || []).push(f); }));
     Object.keys(groups).sort((a, b) => subjRank(a) - subjRank(b) || a.localeCompare(b)).forEach(s => {
       const det = h('details', { class:'ab-ch' }, h('summary', { text:'📘 ' + s + ' (' + bn(groups[s].length) + ')' }));
@@ -29738,7 +29738,7 @@ window.PagePicker = PagePicker;
   }
   function fileRow(f){
     const pl = pgLabel(f);
-    return h('div', { class:'ab-file' }, h('span', { class:'n' }, h('span', { text:({ qs:'📝 ', onu:'📚 ' }[effKind(f)] || '📄 ') + f.title }), pl ? h('span', { class:'ab-pgc', text:pl }) : null),
+    return h('div', { class:'ab-file' }, h('span', { class:'n' }, h('span', { text:({ exrev:'⏰ ', onu:'📚 ' }[effKind(f)] || '📄 ') + f.title }), pl ? h('span', { class:'ab-pgc', text:pl }) : null),
       h('span', { class:'ab-acts', style:'margin:0;' }, btn('📖 পড়ো', 'btn-primary', () => openReader(f)), btn('⬇️ ডাউনলোড', 'btn-outline', () => downloadFile(f))));
   }
 
