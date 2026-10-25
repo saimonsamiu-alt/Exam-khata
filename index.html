@@ -15766,7 +15766,7 @@ window.doSmartSearch = async function(){
       <details><summary style="cursor:pointer;font-size:13.5px;">${esc(String(q.text).slice(0, 90))}${q.text.length > 90 ? '…' : ''}</summary><div style="white-space:pre-wrap;margin-top:4px;">${esc(q.text)}</div>
         ${q.kind === 'mcq' ? q.options.map((o, j) => `<div style="${j === q.correct ? 'font-weight:700;color:var(--green);' : ''}">${L4[j]}) ${esc(o)}</div>`).join('') : `<div class="meta" style="margin-top:4px;">মডেল উত্তর:</div><div style="white-space:pre-wrap;">${esc(q.modelAnswerText || '—')}</div>`}</details>
       <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;"><button class="info-btn" style="color:var(--red)" onclick="tvOp(${s.no},'remove','${esc(q.key)}')">✕ সরাও</button>
-        <button class="info-btn" onclick="tvPanel(${s.no},'${q.kind}','replace','${esc(q.key)}')">🔄 বদলাও</button>${q.src === 'gen' ? `<button class="info-btn" onclick="tvEdit('${q.genId}')">✏️ লেখা এডিট</button>` : ''}</div>
+        <button class="info-btn" onclick="tvPanel(${s.no},'${q.kind}','replace','${esc(q.key)}')">🔄 বদলাও</button><button class="info-btn" style="${q.star ? 'background:#FFF3CD;border-color:#E0A800;' : ''}" onclick="tvStar('${esc(q.key)}',${q.star ? 0 : 1})">${q.star ? '⭐ গুরুত্বপূর্ণ' : '☆ গুরুত্বপূর্ণ করো'}</button>${q.topic ? `<button class="info-btn" style="${tvTopicStar(q) ? 'background:#FFF3CD;border-color:#E0A800;' : ''}" onclick="tvStarTopic('${esc(q.key)}')">${tvTopicStar(q) ? '⭐ টপিক গুরুত্বপূর্ণ' : '☆ টপিক গুরুত্বপূর্ণ করো'}</button>` : ''}${q.src === 'gen' ? `<button class="info-btn" onclick="tvEdit('${q.genId}')">✏️ লেখা এডিট</button>` : ''}</div>
       <div id="tvE_${q.genId || ''}"></div></div>`;
   }
   function tvDraw(){
@@ -15790,6 +15790,17 @@ window.doSmartSearch = async function(){
     const r = await tcall('leakTEdit', { slug:TV.slug, key:TV.key, ops:JSON.stringify([Object.assign({ t, set, key }, extra || {})]) });
     if(r && r.status === 'success' && r.changed){ toast('এডিট হয়েছে ✅'); TV.panel = null; tvRender(); } else toast('কিছু বদলায়নি (প্রশ্নটা হয়তো সেটে আগেই আছে)');
   };
+  function tvTopicKey(q){ return 'topic:' + q.chapter + '|' + q.topic; }
+  function tvTopicStar(q){ return ((TV.data && TV.data.starTopics) || []).indexOf(tvTopicKey(q)) !== -1; }
+  window.tvStarTopic = async function(qkey){
+    const q = TV.data.sets.map(s => s.cq.concat(s.mcq)).flat().find(x => x.key === qkey); if(!q) return;
+    const on = tvTopicStar(q) ? 0 : 1, r = await tcall('leakTStar', { qkey:tvTopicKey(q), on:String(on) });
+    if(r && r.status === 'success'){ toast(on ? '⭐ টপিক গুরুত্বপূর্ণ — নতুন সেটে এই টপিকের প্রশ্ন আগে আসবে' : 'টপিকের মার্ক সরানো হয়েছে'); tvRender(); } else toast('সেভ হয়নি — আবার চেষ্টা করো');
+  };
+  window.tvStar = async function(qkey, on){
+    const r = await tcall('leakTStar', { qkey, on:String(on) });
+    if(r && r.status === 'success'){ toast(on ? '⭐ গুরুত্বপূর্ণ মার্ক হয়েছে — নতুন সেট বানালে সবার আগে আসবে' : 'মার্ক সরানো হয়েছে'); tvRender(); } else toast('সেভ হয়নি — আবার চেষ্টা করো');
+  };
   window.tvProb = async function(no){
     const r = await tcall('leakTEdit', { slug:TV.slug, key:TV.key, ops:JSON.stringify([{ t:'prob', set:no, v:Number(val('tvP_' + no)) }]) });
     toast(r && r.changed ? 'সম্ভাবনা সেভ হয়েছে ✅' : 'বদলায়নি (১–৯৯ এর মধ্যে দাও)'); if(r && r.changed) tvRender();
@@ -15799,7 +15810,7 @@ window.doSmartSearch = async function(){
     const el = document.getElementById('tvPanel'); if(!el || !TV.panel) return; const P = TV.panel;
     el.innerHTML = `<div class="card" style="border:2px solid var(--gold);"><h3>${P.mode === 'replace' ? '🔄 সেট ' + P.set + '-এর প্রশ্ন বদলাও' : '➕ সেট ' + P.set + '-এ ' + P.kind.toUpperCase() + ' যোগ করো'}</h3>
       <div class="row"><input type="text" id="tvQ" placeholder="প্রশ্নের লেখা / টপিক / বোর্ডের নাম খোঁজো" value="${esc(P.q)}" onkeydown="if(event.key==='Enter') tvSearch()"><button class="btn btn-primary" onclick="tvSearch()" style="flex:0 0 auto;">🔍</button></div>
-      <div id="tvRes" style="margin-top:6px;">${TV.results.map((x, i) => `<div class="exam-item"><div class="meta">${x.kind.toUpperCase()} · ${esc(x.chapter)}${x.board ? ' · 🏷️ ' + esc(x.board) : ''}${x.src === 'gen' ? ' · 🤖' : ''}</div><div style="font-size:13.5px;">${esc(x.text)}</div>
+      <div id="tvRes" style="margin-top:6px;">${TV.results.map((x, i) => `<div class="exam-item"><div class="meta">${x.kind.toUpperCase()} · ${esc(x.chapter)}${x.board ? ' · 🏷️ ' + esc(x.board) : ''}${x.src === 'gen' ? ' · 🤖' : ''}${x.star ? ' · ⭐' : ''}</div><div style="font-size:13.5px;">${esc(x.text)}</div>
         <button class="info-btn" style="margin-top:4px;" onclick="tvPick(${i})">${P.mode === 'replace' ? 'এটা দিয়ে বদলাও' : 'যোগ করো'}</button></div>`).join('')}</div>
       <button class="btn btn-outline btn-block" style="margin-top:6px;" onclick="TV.panel=null;document.getElementById('tvPanel').innerHTML=''">বন্ধ করো</button></div>`;
   }
@@ -28362,14 +28373,15 @@ window.voiceToggle = function(){
   try{ CF_VIEW = localStorage.getItem('cf_view') || 'book'; }catch(e){}
   const OPEN = {}, ANALYZED = {};
   const chNum = name => { const m = toLat(name).match(/(\d+)/); return m ? Number(m[1]) : 999; };
-  function pgRange(tag){ const m = String((tag && tag.pages) || '').match(/^(\d+)-(\d+)$/); return m ? [Number(m[1]), Number(m[2])] : null; }
+  function pgRuns(str){ return String(str || '').split(',').map(x => x.trim().match(/^(\d+)-(\d+)$/)).filter(Boolean).map(m => [Number(m[1]), Number(m[2])]); }
+  function pgRange(tag){ const r = pgRuns(tag && tag.pages); return r.length ? r[0] : null; }
   // পুরো PDF একটাই টপিকের হলে বা সব পাতা জুড়ে থাকলে কিছু বলার দরকার নেই; আংশিক হলে "পৃষ্ঠা ৩–৭"
   function pgLabel(f, tag){
-    const r = pgRange(tag); if(!r) return '';
+    const rs = pgRuns(tag && tag.pages); if(!rs.length) return '';
     if((f.tags || []).filter(t => t.leaf).length < 2) return '';
     const tot = Number(f.totalPages) || 0;
-    if(tot && r[0] <= 1 && r[1] >= tot) return '';
-    return 'পৃষ্ঠা ' + toBn(r[0]) + (r[1] > r[0] ? '–' + toBn(r[1]) : '');
+    if(tot && rs.length === 1 && rs[0][0] <= 1 && rs[0][1] >= tot) return '';
+    return 'পৃষ্ঠা ' + rs.map(r => toBn(r[0]) + (r[1] > r[0] ? '–' + toBn(r[1]) : '')).join(', ');
   }
 
   async function loadAssignments(){
@@ -28438,8 +28450,12 @@ window.voiceToggle = function(){
     bar.appendChild(seg2);
     bar.appendChild(h('div', { class:'cf-hint', style:'margin-top:8px;', text:'▲▼ চেপে ফাইলের ক্রম বদলাও — ছাত্র \"আমার বই\"-এ এই ক্রমেই দেখবে (নতুন ফাইল সবার শেষে যোগ হয়)। 📄/💡/📝 চেপে ফাইলের ধরন বদলানো যায়: 📄 নোট/প্রশ্ন = বইয়ের টপিকে · 💡 অনুধাবন = অধ্যায়ের শুরুতে আলাদা বক্সে · 📝 প্রশ্ন সেট = বই থেকে আলাদা "প্রশ্ন সেট" অপশনে (বিষয় অনুযায়ী)।' }));
     const todo = ASSIGN.filter(f => !f.totalPages && !ANALYZED[f.fileHash]);
+    if(ASSIGN.length){
+      const rb = btn('🔄 সব ফাইলের পাতা আবার ধরো (পাতা ধরে — টপিক অনুযায়ী)', 'btn-gold', () => analyzeAll(true));
+      rb.style.marginTop = '8px'; rb.style.width = '100%'; bar.appendChild(rb);
+    }
     if(todo.length){
-      const ab = btn('🔍 পাতার সীমা ও ধরন বের করো (' + toBn(todo.length) + 'টা ফাইল)', 'btn-outline', analyzeAll);
+      const ab = btn('🔍 পাতার সীমা ও ধরন বের করো (' + toBn(todo.length) + 'টা ফাইল)', 'btn-outline', () => analyzeAll(false));
       ab.style.marginTop = '8px'; ab.style.width = '100%';
       bar.appendChild(ab);
       bar.appendChild(h('div', { id:'cfAnProg', class:'cf-hint', style:'margin-top:4px;' }));
@@ -28455,9 +28471,11 @@ window.voiceToggle = function(){
     return true;
   }
   let analyzing = false;
-  async function analyzeAll(){
-    if(analyzing) return; analyzing = true;
-    const todo = ASSIGN.filter(f => !f.totalPages && !ANALYZED[f.fileHash]);
+  async function analyzeAll(force){
+    if(analyzing) return;
+    if(force === true && !confirm('সব ফাইলের (প্রশ্ন-সেট বাদে) প্রতিটা পাতা AI আবার টপিকে ধরবে — ফাইল ধরে কিছুক্ষণ লাগবে। চলবে?')) return;
+    analyzing = true;
+    const todo = force === true ? ASSIGN.filter(f => f.kind !== 'qs') : ASSIGN.filter(f => !f.totalPages && !ANALYZED[f.fileHash]);
     for(let i = 0; i < todo.length; i++){
       const p = $('cfAnProg'); if(p) p.textContent = '⏳ ' + toBn(i + 1) + '/' + toBn(todo.length) + ' — ' + (todo[i].title || todo[i].fileName) + ' (পেজ বন্ধ কোরো না)';
       await analyzeOne(todo[i], true);
@@ -29457,11 +29475,12 @@ window.PagePicker = PagePicker;
   const effKind = f => { if(f.kind === 'notes' || f.kind === 'onu' || f.kind === 'qs') return f.kind; const nm = (f.title || '') + ' ' + (f.fileName || ''); if(ONU_RE.test(nm)) return 'onu'; return QS_RE.test(nm) ? 'qs' : 'notes'; };
   const subjRank = s => /পদার্থ|physics/i.test(s) ? 0 : /রসায়ন|chem/i.test(s) ? 1 : /গণিত|math/i.test(s) ? 2 : /জীব|bio/i.test(s) ? 3 : /ict|তথ্য/i.test(s) ? 4 : 5;
   const qsSubjects = f => { const set = {}; (f.tags || []).filter(t => t.leaf).forEach(t => { set[String(t.path || '').split(' › ')[0] || 'অন্যান্য'] = 1; }); const k = Object.keys(set); return k.length ? k : ['অন্যান্য']; };
-  const pgRange = f => { const m = String(f.__pg || '').match(/^(\d+)-(\d+)$/); return m ? [Number(m[1]), Number(m[2])] : null; };
+  const pgRuns = str => String(str || '').split(',').map(x => x.trim().match(/^(\d+)-(\d+)$/)).filter(Boolean).map(m => [Number(m[1]), Number(m[2])]);
+  const pgRange = f => { const r = pgRuns(f.__pg); return r.length ? r[0] : null; };
   const pgLabel = f => {                      // পুরো ফাইল একই টপিকের হলে/সব পাতা জুড়ে থাকলে কিছু বলা হয় না; আংশিক হলেই "পৃষ্ঠা ৩–৭"
-    const r = pgRange(f); if(!r || f.__only) return '';
-    const tot = Number(f.totalPages) || 0; if(tot && r[0] <= 1 && r[1] >= tot) return '';
-    return 'পৃষ্ঠা ' + bn(r[0]) + (r[1] > r[0] ? '–' + bn(r[1]) : '');
+    const rs = pgRuns(f.__pg); if(!rs.length || f.__only) return '';
+    const tot = Number(f.totalPages) || 0; if(tot && rs.length === 1 && rs[0][0] <= 1 && rs[0][1] >= tot) return '';
+    return 'পৃষ্ঠা ' + rs.map(r => bn(r[0]) + (r[1] > r[0] ? '–' + bn(r[1]) : '')).join(', ');
   };
   function kindBar(){
     const cnt = k => B.files.filter(f => effKind(f) === k).length;
@@ -29771,13 +29790,14 @@ window.PagePicker = PagePicker;
     });
     return window.__abPdfJs;
   }
-  async function openReader(f, startPage){
+  async function openReader(f, startPage, forceAll){
     const old = document.querySelector('.ab-rd'); if(old) old.remove();
     const body = h('div', { class:'body' }, h('div', { class:'msg', text:'ফাইল আনা হচ্ছে…' }));
     const closeBtn = h('button', { type:'button', class:'btn btn-danger', style:'padding:6px 12px;', text:'✕' });
     const dl = h('button', { type:'button', class:'btn btn-outline', style:'padding:6px 10px;', text:'⬇️ ডাউনলোড' });
     dl.onclick = () => downloadFile(f);
-    const rd = h('div', { class:'ab-rd' }, h('div', { class:'bar' }, h('b', { text:f.title }), dl, closeBtn), body);
+    const tbar = h('div', { style:'display:none;padding:6px 10px;font-size:13px;display:none;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(255,255,255,.08);' });
+    const rd = h('div', { class:'ab-rd' }, h('div', { class:'bar' }, h('b', { text:f.title }), dl, closeBtn), tbar, body);
     let doc = null, io = null;
     closeBtn.onclick = () => { try{ if(io) io.disconnect(); if(doc) doc.destroy(); }catch(e){} rd.remove(); };
     document.body.appendChild(rd);
@@ -29788,24 +29808,47 @@ window.PagePicker = PagePicker;
       doc = await lib.getDocument({ data:p.bytes.slice() }).promise;
       const first = await doc.getPage(1);
       const w = Math.max(280, Math.min(body.clientWidth || 360, 900) - 16);
-      const vp1 = first.getViewport({ scale:1 }), scale = w / vp1.width, dpr = Math.min(window.devicePixelRatio || 1, 2);
-      body.textContent = '';
-      const holders = [];
-      for(let i = 1; i <= doc.numPages; i++){ const d = h('div', { class:'ab-pg' }); d.dataset.p = String(i); d.style.height = Math.round(vp1.height * scale) + 'px'; body.appendChild(d); holders.push(d); }
-      io = new IntersectionObserver(es => es.forEach(async e => {
-        if(!e.isIntersecting) return; const d = e.target; if(d.dataset.done) return; d.dataset.done = '1'; io.unobserve(d);
-        try{
-          const pg = await doc.getPage(Number(d.dataset.p)), vp = pg.getViewport({ scale:scale * dpr });
-          const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
-          await pg.render({ canvasContext:cv.getContext('2d'), viewport:vp }).promise;
-          d.style.height = 'auto'; d.appendChild(cv);
-        }catch(err){ d.textContent = 'পাতা দেখানো যায়নি'; }
-      }), { root:body, rootMargin:'900px 0px' });
-      holders.forEach(d => io.observe(d));
-      const _pr = pgRange(f), _pg = Number(startPage) || ((_pr && pgLabel(f)) ? _pr[0] : 1);
-      if(_pg > 1 && holders[_pg - 1]){   // AI-র দেখানো পাতা বা এই টপিকের প্রথম পাতায় সরাসরি যাও
-        setTimeout(() => { const tg = holders[_pg - 1]; body.scrollTop = tg.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - 6; }, 80);
-      }
+      const vp1 = first.getViewport({ scale:1 }), scale = w / vp1.width, dpr = Math.min(window.devicePixelRatio || 1, 2), tot = doc.numPages;
+      // এই টপিকের পাতাগুলো (AI পাতা ধরে ঠিক করেছে) — থাকলে ডিফল্টে শুধু সেগুলোই দেখানো হয়
+      const runs = pgRuns(f.__pg), topicPages = [];
+      if(runs.length && !f.__only) runs.forEach(r => { for(let x = Math.max(1, r[0]); x <= Math.min(tot, r[1]); x++) if(topicPages.indexOf(x) < 0) topicPages.push(x); });
+      topicPages.sort((a, b) => a - b);
+      const canTopic = topicPages.length > 0 && topicPages.length < tot;
+      const mount = (pages, jumpTo, captions) => {
+        if(io){ try{ io.disconnect(); }catch(e){} }
+        body.textContent = ''; body.scrollTop = 0;
+        const holders = [];
+        pages.forEach(i => { const d = h('div', { class:'ab-pg' }); d.dataset.p = String(i); d.style.height = Math.round(vp1.height * scale) + 'px'; body.appendChild(d); holders.push(d); });
+        io = new IntersectionObserver(es => es.forEach(async e => {
+          if(!e.isIntersecting) return; const d = e.target; if(d.dataset.done) return; d.dataset.done = '1'; io.unobserve(d);
+          try{
+            const pn = Number(d.dataset.p), pg = await doc.getPage(pn), vp = pg.getViewport({ scale:scale * dpr });
+            const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
+            await pg.render({ canvasContext:cv.getContext('2d'), viewport:vp }).promise;
+            d.style.height = 'auto';
+            if(captions) d.appendChild(h('div', { style:'font-size:12px;opacity:.7;margin:2px 0 3px;', text:'পৃষ্ঠা ' + bn(pn) }));
+            d.appendChild(cv);
+          }catch(err){ d.textContent = 'পাতা দেখানো যায়নি'; }
+        }), { root:body, rootMargin:'900px 0px' });
+        holders.forEach(d => io.observe(d));
+        if(jumpTo){ const tg = holders.find(d => Number(d.dataset.p) === jumpTo); if(tg) setTimeout(() => { body.scrollTop = tg.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - 6; }, 80); }
+      };
+      const all = Array.from({ length:tot }, (_, i) => i + 1);
+      const drawBar = topicMode => {
+        if(!canTopic){ tbar.style.display = 'none'; return; }
+        tbar.style.display = 'flex'; tbar.textContent = '';
+        if(topicMode){
+          tbar.appendChild(h('span', { text:'📌 শুধু এই টপিকের পাতা (' + (pgLabel(f) || 'পৃষ্ঠা ' + bn(topicPages.length) + 'টা') + ') · মোট ' + bn(tot) + ' পাতার মধ্যে' }));
+          tbar.appendChild(btn('📄 পুরো ফাইল দেখো', 'btn-outline', () => { drawBar(false); mount(all, topicPages[0], false); }));
+        } else {
+          tbar.appendChild(h('span', { text:'📄 পুরো ফাইল (' + bn(tot) + ' পাতা)' }));
+          tbar.appendChild(btn('📌 শুধু এই টপিকের পাতা', 'btn-outline', () => { drawBar(true); mount(topicPages, 0, true); }));
+        }
+      };
+      const wantTopic = canTopic && !Number(startPage) && !forceAll;
+      drawBar(wantTopic);
+      if(wantTopic) mount(topicPages, 0, true);
+      else mount(all, Number(startPage) > 1 ? Number(startPage) : (canTopic ? topicPages[0] : 0), false);
     }catch(e){
       body.textContent = '';
       body.appendChild(h('div', { class:'msg' }, h('div', { text:'অ্যাপের ভেতরে ফাইলটা দেখানো গেল না (নেট বা ব্রাউজার সমস্যা)।' }), h('div', { style:'margin-top:12px;' }, btn('⬇️ ডাউনলোড করে পড়ো', 'btn-primary', () => downloadFile(f)))));
