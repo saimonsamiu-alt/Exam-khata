@@ -28291,6 +28291,7 @@ window.voiceToggle = function(){
   }
   function openPicker(hash, title, existing, onSaved){
     const chosen = (existing || []).map(t => ({ id:t.id, path:t.path }));
+    let touched = false, dirty = false;   // touched = ড্রপডাউন বদলেছে, dirty = চিপ যোগ/বাদ হয়েছে
     const sBook = h('select'), sCh = h('select'), sTopic = h('select'), sSub = h('select');
     const chips = h('div', { class:'cf-chips' }), err = h('div', { class:'cf-err' });
     const curBook = () => SYL[Number(sBook.value)];
@@ -28300,30 +28301,42 @@ window.voiceToggle = function(){
       fill(sSub, subs.map((s, i) => ({ value:i, text:s.no + ' ' + s.name })), subs.length ? '— শুধু টপিক —' : '— সাব-টপিক নেই —'); }
     function onChapter(){ const c = curChapter(); fill(sTopic, c.topics.map((t, i) => ({ value:i, text:t.no + ' ' + t.name }))); onTopic(); }
     function onBook(){ const b = curBook(); fill(sCh, b.chapters.map((c, i) => ({ value:i, text:'অধ্যায়-' + c.no + ': ' + c.name }))); onChapter(); }
-    sBook.onchange = onBook; sCh.onchange = onChapter; sTopic.onchange = onTopic;
+    sBook.onchange = () => { touched = true; onBook(); }; sCh.onchange = () => { touched = true; onChapter(); }; sTopic.onchange = () => { touched = true; onTopic(); }; sSub.onchange = () => { touched = true; };
+    function nodeNow(){
+      const b = curBook(), c = curChapter(), t = curTopic(); if(!t) return null;
+      const sIdx = sSub.value, s = (sIdx !== '' && t.subs) ? t.subs[Number(sIdx)] : null, node = s || t;
+      return { id:node.id, path: b.subject + ' › ' + b.paper + ' › অধ্যায়-' + c.no + ': ' + c.name + ' › ' + t.no + ' ' + t.name + (s ? ' › ' + s.no + ' ' + s.name : '') };
+    }
     fill(sBook, SYL.map((b, i) => ({ value:i, text:b.subject + ' · ' + b.paper })));
     onBook();
     function renderChips(){
       chips.textContent = '';
       chosen.forEach((c, i) => {
         const x = h('button', { type:'button', text:'✕', title:'বাদ দিন' });
-        x.onclick = () => { chosen.splice(i, 1); renderChips(); };
+        x.onclick = () => { chosen.splice(i, 1); dirty = true; renderChips(); };
         chips.appendChild(h('div', { class:'cf-chip' }, h('span', { text:c.path }), x));
       });
     }
     renderChips();
-    const add = btn('➕ এই ট্যাগ যোগ করো', 'btn-outline', () => {
-      const b = curBook(), c = curChapter(), t = curTopic(); if(!t) return;
-      const sIdx = sSub.value, s = (sIdx !== '' && t.subs) ? t.subs[Number(sIdx)] : null, node = s || t;
+    const add = btn('➕ এই ট্যাগ যোগ করো (পুরোনোগুলোও থাকবে)', 'btn-outline', () => {
+      const node = nodeNow(); if(!node) return;
       if(chosen.some(x => x.id === node.id)) return say('এটা আগেই যোগ করা আছে');
-      chosen.push({ id:node.id, path: b.subject + ' › ' + b.paper + ' › অধ্যায়-' + c.no + ': ' + c.name + ' › ' + t.no + ' ' + t.name + (s ? ' › ' + s.no + ' ' + s.name : '') });
+      chosen.push(node); dirty = true;
       renderChips();
     });
     add.style.cssText = 'width:100%;margin-top:12px;';
+    const rep1 = btn('🔁 পুরোনো সব বাদ দিয়ে শুধু এটা দাও', 'btn-primary', () => {
+      const node = nodeNow(); if(!node) return;
+      chosen.splice(0, chosen.length, node); dirty = true;
+      renderChips();
+    });
+    rep1.style.cssText = 'width:100%;margin-top:8px;';
     const ov = h('div', { class:'cf-ov' });
     const close = () => ov.remove();
     const cancel = btn('বাতিল', 'btn-outline', close);
     const save = btn('সেভ করো', 'btn-primary', async () => {
+      // নতুন টপিক বেছেছে কিন্তু ➕ চাপেনি — তাহলে সেটাই নতুন ট্যাগ ধরা হবে (আগে এই ক্ষেত্রে পুরোনো ট্যাগই সেভ হয়ে যেত)
+      if(touched && !dirty){ const nn = nodeNow(); if(nn && !chosen.some(x => x.id === nn.id)){ chosen.splice(0, chosen.length, nn); renderChips(); } }
       if(!chosen.length){ err.textContent = 'অন্তত একটা ট্যাগ যোগ করুন।'; return; }
       save.disabled = true; err.textContent = '';
       const r = await cfCall('cfSetTags', { fileHash:hash, tagIds: chosen.map(c => c.id) });
@@ -28336,7 +28349,7 @@ window.voiceToggle = function(){
       h('h2', { style:'font-size:18px;', text:'🏷️ নিজে ট্যাগ করো' }),
       h('div', { class:'cf-hint', text:title || '' }),
       lab('বই'), sBook, lab('অধ্যায়'), sCh, lab('টপিক'), sTopic, lab('সাব-টপিক (থাকলে)'), sSub,
-      add, chips, err,
+      add, rep1, chips, err,
       h('div', { class:'row', style:'margin-top:14px;' }, cancel, save));
     cancel.style.flex = '1'; save.style.flex = '1';
     ov.appendChild(sheet);
