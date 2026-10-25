@@ -12015,6 +12015,10 @@ window.doSmartSearch = async function(){
     revBeginSeg();
   };
 
+  function revSendTime(){   // [v33] আজকের মোট রিভিশন-সেকেন্ড ব্যাকএন্ডে পাঠাও (absolute, তাই ডুপ্লিকেট গোনা হয় না)
+    try{ const sl = (R() && R().slug) || ((typeof getLoggedStudent === 'function' && getLoggedStudent()) || {}).slug; if(!sl) return; postToScriptRaw('revisionTime', { slug:sl, date:todayStr(), sec:doneSec() }); }catch(e){}
+  }
+  window.revSendTime = revSendTime;
   function revBeginSeg(){
     const r = R(); r.remaining = r.segs[r.si].sec; r.over = false;
     if(r.timer) clearInterval(r.timer);
@@ -12022,6 +12026,7 @@ window.doSmartSearch = async function(){
       if(state.screen !== 'revision' || !R() || R() !== r){ clearInterval(r.timer); return; }
       if(r.paused || r.busy){ const pe = document.getElementById('revT'); if(pe) pe.textContent = fmtTime(Math.max(0, r.remaining)) + ' ⏸'; return; }   // [NEW] AI লোড/চেক হওয়ার সময় টাইমার থামে (⏸ দেখায়)
       r.remaining--; localStorage.setItem(doneKey(), doneSec() + 1);
+      if(doneSec() % 30 === 0) revSendTime();   // [v33] শিক্ষক দেখতে পারবেন
       const el = document.getElementById('revT'); if(el) el.textContent = fmtTime(Math.max(0, r.remaining));
       if(r.remaining <= 0){ r.over = true; clearInterval(r.timer); }
     }, 1000);
@@ -12321,6 +12326,7 @@ window.doSmartSearch = async function(){
   window.revNextBtn = function(){ revNext(); };
 
   function revSummary(){
+    revSendTime();
     const s = R().stats, avg = s.cq.length ? Math.round(s.cq.reduce((a, b) => a + b, 0) / s.cq.length) : null;
     app.innerHTML = `${header('রিভিশন')}
       <div class="card center"><h2>🎉 আজকের রিভিশন শেষ</h2>
@@ -16961,7 +16967,7 @@ window.impBkSave = async function(){
     trkDrawList();
   };
 
-  const TRK_SORTS = [['shares', '📈 Vorkuta শেয়ার'], ['silent', '⏳ কতদিন জমা নেই'], ['week', '✍️ গত ৭ দিনের কাজ'], ['name', '🔤 নাম']];
+  const TRK_SORTS = [['shares', '📈 Vorkuta শেয়ার'], ['silent', '⏳ কতদিন জমা নেই'], ['week', '✍️ গত ৭ দিনের কাজ'], ['revtime', '⏱️ আজকের রিভিশন সময়'], ['name', '🔤 নাম']];
   window.trkSetSort = function(k){ window.__trk.sort = k; trkDrawList(); };
   window.trkToggleDir = function(){ window.__trk.dir = window.__trk.dir === 'desc' ? 'asc' : 'desc'; trkDrawList(); };
   window.trkDrawList = function(){
@@ -16969,7 +16975,7 @@ window.impBkSave = async function(){
     const T = window.__trk, sgn = T.dir === 'desc' ? -1 : 1;
     const keyOf = s => T.sort === 'shares' ? (Number(s.shares) || 0)
       : T.sort === 'silent' ? (s.silentDays === null ? 99999 : s.silentDays)
-      : T.sort === 'week' ? (s.cq7 + s.hw7 + s.rev7) : String(s.name || '').toLowerCase();
+      : T.sort === 'week' ? (s.cq7 + s.hw7 + s.rev7) : T.sort === 'revtime' ? (Number(s.revMinToday) || 0) : String(s.name || '').toLowerCase();
     const arr = r.students.slice().sort((a, b)=>{
       const x = keyOf(a), y = keyOf(b);
       const c = (typeof x === 'string') ? x.localeCompare(y, 'bn') : (x - y);
@@ -16991,7 +16997,8 @@ window.impBkSave = async function(){
             <div class="meta" style="margin:0;">শেয়ার</div>
           </div>
         </div>
-        <div class="meta" style="margin-top:8px;">গত ৭ দিনে: ✍️ CQ <b>${s.cq7}</b> · 📚 HW <b>${s.hw7}</b> · 🔁 রিভিশন <b>${s.rev7}</b></div>
+        <div class="meta" style="margin-top:8px;">⏱️ রিভিশন সময়: আজ <b>${bnN(s.revMinToday || 0)}</b> মিনিট · গত ৭ দিনে <b>${bnN(s.revMin7 || 0)}</b> মিনিট</div>
+        <div class="meta" style="margin-top:4px;">গত ৭ দিনে: ✍️ CQ <b>${s.cq7}</b> · 📚 HW <b>${s.hw7}</b> · 🔁 রিভিশন <b>${s.rev7}</b></div>
         <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('teacherTrackerStudent',{slug:'${escapeHtml(s.slug)}', name:'${escapeHtml(s.name).replace(/'/g, '')}', kind:'all'})">📂 কী কী জমা দিয়েছে দেখো</button>
       </div>`;
     }).join('');
@@ -17227,6 +17234,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
         <h2 style="margin-bottom:4px;">${escapeHtml(nm)}</h2>
         <div class="meta" style="margin:0;">📈 Vorkuta শেয়ার: <b>${r.shares.balance}</b> <span class="meta">(আয় ${r.shares.earned} − কাটা ${r.shares.penalty})</span></div>
         <div class="trk-tiles">${tile('all', '📦', 'সব', total)}${tile('cq', '✍️', 'CQ', r.counts.cq)}${tile('hw', '📚', 'HW', r.counts.hw)}${tile('rev', '🔁', 'রিভিশন', r.counts.rev)}</div>
+        ${(r.revDays && r.revDays.length) ? `<details style="margin-top:10px;" open><summary><b>⏱️ দিনভিত্তিক রিভিশন সময়</b> <small>(শেষ ${bnN(r.revDays.length)} দিন)</small></summary><div style="margin-top:6px;">${r.revDays.map(d => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed #E3E7EF;"><span>${bnDate(d.date)}</span><b>${bnN(d.min)} মিনিট</b></div>`).join('')}</div></details>` : '<div class="meta" style="margin-top:8px;">⏱️ রিভিশন সময়ের হিসাব এখনো জমেনি।</div>'}
         <div class="trk-seg"><button type="button" class="${view === 'date' ? 'on' : ''}" onclick="trkSetView('date')">📅 তারিখ অনুযায়ী</button><button type="button" class="${view === 'group' ? 'on' : ''}" onclick="trkSetView('group')">🗂 অধ্যায়/প্রশ্ন অনুযায়ী</button></div>
       </div>
       ${body}
