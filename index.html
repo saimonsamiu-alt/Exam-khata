@@ -3311,6 +3311,28 @@ const CREATOR_WA_LINK = 'https://wa.me/8801577477346';
 
 try{ setTimeout(()=>fetch('https://script.google.com/macros/s/AKfycbzop85YoNAYzEmfL92k0OkwEMojYFYotcKKaFHbh62Li0seaj68KDAkRGJkHG9VCXSt/exec?action=ping',{mode:'no-cors'}).catch(()=>{}), 50); }catch(e){} // [SPEED] সার্ভার আগেভাগে জাগিয়ে রাখো
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzop85YoNAYzEmfL92k0OkwEMojYFYotcKKaFHbh62Li0seaj68KDAkRGJkHG9VCXSt/exec';
+// ===== [NEW] প্রতিটা সার্ভার-অনুরোধের সাথে ডিভাইস-আইডি ও ব্রাউজারের ছোট তথ্য যায় — সিকিউরিটি লগে প্রমাণ হিসেবে কাজে লাগে =====
+(function(){
+  let dev = ''; try{ dev = localStorage.getItem('dev_id_v1') || ''; if(!dev){ dev = 'd' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); localStorage.setItem('dev_id_v1', dev); } }catch(e){ dev = 'nols'; }
+  const sid = 's' + Math.random().toString(36).slice(2, 10);
+  let ci = ''; try{ ci = [navigator.userAgent, navigator.platform || '', navigator.language || '', (Intl.DateTimeFormat().resolvedOptions().timeZone || ''), screen.width + 'x' + screen.height, 'dpr' + (window.devicePixelRatio || 1), 'cpu' + (navigator.hardwareConcurrency || '')].join('|').replace(/"/g, "'").replace(/\\/g, '/').slice(0, 380); }catch(e){}
+  const f0 = window.fetch;
+  window.fetch = function(input, init){
+    try{
+      const isStr = typeof input === 'string', url = isStr ? input : ((input && input.url) || '');
+      if(typeof SCRIPT_URL !== 'undefined' && url.indexOf(SCRIPT_URL) === 0){
+        const method = String((init && init.method) || (!isStr && input && input.method) || 'GET').toUpperCase();
+        if(method === 'POST' && init && typeof init.body === 'string' && init.body.charAt(0) === '{'){
+          const inner = init.body.slice(1), fields = '"dev":' + JSON.stringify(dev) + ',"sid":' + JSON.stringify(sid) + ',"ci":' + JSON.stringify(ci);
+          init = Object.assign({}, init, { body: '{' + fields + (inner.trim() === '}' ? '}' : ',' + inner) });
+        } else if(method === 'GET' && isStr){
+          input = url + (url.indexOf('?') === -1 ? '?' : '&') + 'dev=' + encodeURIComponent(dev) + '&sid=' + encodeURIComponent(sid);
+        }
+      }
+    }catch(e){}
+    return f0.call(this, input, init);
+  };
+})();
 
 const holesEl = document.getElementById('holes');
 for(let i=0;i<10;i++){ const s=document.createElement('span'); holesEl.appendChild(s); }
@@ -4336,6 +4358,8 @@ async function renderTeacherDashboard(){
         <button class="btn btn-outline btn-block" onclick="go('faqManage')">❓ প্রশ্নোত্তর ম্যানেজ করো</button>
       </div>
       <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="go('teacherTracker')">👥 ছাত্র ট্র্যাকার — কে কী জমা দিল · Vorkuta শেয়ার</button>
+      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('qbank')">🗃️ প্রশ্নব্যাংক — বিষয় › অধ্যায় › সাল › গুরুত্ব</button>
+      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('secReport')">🛡️ সিকিউরিটি লগ — সন্দেহজনক চেষ্টা ও প্রমাণ</button>
       <button class="btn btn-gold btn-block" style="margin-top:10px;" onclick="go('impManage',{subject:'physics'})">⭐ গুরুত্বপূর্ণ টপিক (সাল-ভিত্তিক) ম্যানেজ করো</button>
       <div class="row" style="margin-top:10px;">
         <button class="btn btn-outline btn-block" onclick="go('masteryManage')">🎯 Mastery কোর্স</button>
@@ -9875,6 +9899,8 @@ function render(){
   else if(s==='teacherDashboard') renderTeacherDashboard();
   else if(s==='teacherTracker') renderTeacherTracker();
   else if(s==='teacherTrackerStudent') renderTeacherTrackerStudent(state.slug, state.name, state.kind);
+  else if(s==='secReport') renderSecReport();
+  else if(s==='qbank') renderQBank();
   else if(s==='myTeacherFb') renderMyTeacherFb();
   else if(s==='hwCutManage') renderHwCutManage();
   else if(s==='visManage') renderVisManage();
@@ -12225,11 +12251,15 @@ window.doSmartSearch = async function(){
     const sub = r.segs[r.si].subs, P = r.pool;
     const ok = i => !r.used[i.key] && !revBlob(i) && (i.subject ? sub.indexOf(i.subject) !== -1 : !!(i.amb && i.amb.length && i.amb.every(x => sub.indexOf(x) !== -1)));
     r.seen = r.seen || {};
-    const rawGet = k => { const a = (P[k] || []).filter(ok), f = a.filter(i => !r.seen[i.tk]); return f.length ? f : a; };
+    const imps = l => l.some(i => i.imp) ? l.slice().sort((x, y) => (y.imp || 2) - (x.imp || 2)) : l;   // [NEW] বেশি গুরুত্বপূর্ণ প্রশ্ন আগে (সমান হলে আগের ক্রমই থাকে)
+    const rawGet = k => { const a = (P[k] || []).filter(ok), f = a.filter(i => !r.seen[i.tk]); return imps(f.length ? f : a); };
     // [v26] শিক্ষকের অংশ: অধ্যায়ের % = ওই বিষয়ের রিভিশন সময়ের কত % ওই অধ্যায়ের শিক্ষকের ম্যাটেরিয়ালে যাবে।
     // একাধিক অধ্যায় থাকলে প্রতিটার নিজের %; নিয়ম না দিলে ৮৫% সমান ভাগ হয়। যে অধ্যায় নিজের ভাগের চেয়ে বেশি পিছিয়ে, পরের প্রশ্ন তার থেকে আসে।
     // ভাগ পূর্ণ হলে বাকি সময় অটো রিভিশন; শিক্ষকের প্রশ্ন ফুরোলে অটো দিয়ে ভরে যায়। (মোট % সেট থাকলে সেটাই শিক্ষক-বনাম-অটোর সীমা)
     const MIX = P.mix || null, sjOf = c => String(c).split('|')[0];
+    // [NEW] শিক্ষকের সেটের অংশ: সেটের অধ্যায়ে পরের প্রশ্ন সেট থেকে আসবে pc% সম্ভাবনায়; বাকি সময় ওই অধ্যায়ের অন্য সব উপাদান (১০০% = শুধু সেট, সেট শেষ হওয়া পর্যন্ত)
+    const SETM = (MIX && MIX.set && Object.keys(MIX.set).length) ? MIX.set : null, roll = Math.random() * 100;
+    const chOf = i => String(i.chk || (i.subject && i.chapterTag ? i.subject + '|' + i.chapterTag : '')).replace(/\s+/g, '');
     let preferT = null, tAv = false, aAv = false, topC = null;
     if(MIX){
       const all = ['mcqWeak','mcqEasy','cqWeak','cqEasy','gen'].reduce((acc, k) => acc.concat((P[k] || []).filter(ok)), []);
@@ -12252,7 +12282,8 @@ window.doSmartSearch = async function(){
       else preferT = aAv ? false : null;
     }
     const get = k => {
-      const l = rawGet(k); if(!MIX) return l;
+      let l = rawGet(k); if(!MIX) return l;
+      if(SETM) l = l.filter(i => { const c = chOf(i), pc = c ? SETM[c] : undefined; if(pc === undefined) return true; return i.inSet ? (pc >= 100 || roll < pc) : (pc < 100 && roll >= pc); });
       if(preferT === true && tAv) return l.filter(i => i.teacher && (!i.chk || topC === null || i.chk === topC));
       if(preferT === false && aAv) return l.filter(i => !i.teacher);
       return l;
@@ -13841,6 +13872,7 @@ window.doSmartSearch = async function(){
   const CHUNK_TAG = 12, CHUNK_SAVE = 20, MAX_FILES = 80;
 
   // ---------------- অবস্থা ----------------
+  window.bkSetImp = function(v){ W.imp = v; };
   const W = { kind:'cq', subject:'', board:'', files:[], results:{}, items:[], master:{}, extra:{}, known:[], busy:false, batch:'',
     src:'img', text:'', textUsed:'', chunks:[], studs:null, sets:null, savedIds:[], setDone:{},
     dest:{ type:'rev', slug:'', hwDate:'', hwDue:'', toSet:false, setMode:'new', setTitle:'', setDate:'', setDue:'', setId:'' } };
@@ -13911,6 +13943,8 @@ window.doSmartSearch = async function(){
         <label class="field-label">🏷️ বোর্ড / ভর্তি-পরীক্ষার ট্যাগ (ঐচ্ছিক — সব প্রশ্নে বসবে)</label>
         <input type="text" id="bkBoard" value="${esc(W.board)}" placeholder="যেমন: ঢাকা বোর্ড ২০২৩ / BUET 05-06" oninput="bkSetBoard(this.value)">
         <p class="hint" style="margin:-4px 0 8px;">এই ট্যাগ করা প্রশ্ন Exam Leak-এ সবচেয়ে গুরুত্ব পায়। প্রিভিউতে প্রতিটা প্রশ্নের ট্যাগ আলাদা করে বদলাতে পারবে।</p>
+        <label class="field-label">⭐ এই প্রশ্নগুলোর গুরুত্ব (সব প্রশ্নে বসবে)</label>
+        <select onchange="bkSetImp(this.value)"><option value="" ${!W.imp ? 'selected' : ''}>পরে ঠিক করবো (প্রশ্নব্যাংকে)</option><option value="ai" ${W.imp === 'ai' ? 'selected' : ''}>🤖 AI ঠিক করুক (সাল, বোর্ড ও সদৃশ প্রশ্ন দেখে)</option><option value="4" ${W.imp === '4' ? 'selected' : ''}>🔥 সবচেয়ে গুরুত্বপূর্ণ</option><option value="3" ${W.imp === '3' ? 'selected' : ''}>⭐ গুরুত্বপূর্ণ</option><option value="2" ${W.imp === '2' ? 'selected' : ''}>▫️ সাধারণ</option><option value="1" ${W.imp === '1' ? 'selected' : ''}>🔹 কম গুরুত্বপূর্ণ</option></select>
         <label class="field-label">প্রশ্ন কীভাবে দেবে</label>
         <div style="display:flex;gap:8px;margin-bottom:10px;">
           <button class="btn ${!isText ? 'btn-primary' : 'btn-outline'}" style="flex:1" onclick="bkSrc('img')">🖼️ ছবি আপলোড</button>
@@ -14187,7 +14221,8 @@ window.doSmartSearch = async function(){
         <div style="display:flex;gap:6px;margin-bottom:6px;"><button class="btn ${D.setMode === 'new' ? 'btn-primary' : 'btn-outline'}" style="flex:1;font-size:12.5px;padding:8px 4px;" onclick="bkDestSet('setMode','new')">➕ নতুন সেট</button><button class="btn ${D.setMode === 'existing' ? 'btn-primary' : 'btn-outline'}" style="flex:1;font-size:12.5px;padding:8px 4px;" onclick="bkDestSet('setMode','existing')">📂 আগের সেটে যোগ</button></div>
         ${D.setMode === 'new' ? `<input type="text" value="${esc(D.setTitle)}" placeholder="সেটের নাম (যেমন: ভেক্টর — সাপ্তাহিক রিভিশন)" onchange="bkDestSet('setTitle', this.value, true)">
           <div class="row"><div style="flex:1"><label class="field-label">তারিখ (কবে থেকে)</label><input type="date" value="${esc(D.setDate)}" onchange="bkDestSet('setDate', this.value, true)"></div>
-          <div style="flex:1"><label class="field-label">ডেডলাইন</label><input type="date" value="${esc(D.setDue)}" onchange="bkDestSet('setDue', this.value, true)"></div></div>`
+          <div style="flex:1"><label class="field-label">ডেডলাইন</label><input type="date" value="${esc(D.setDue)}" onchange="bkDestSet('setDue', this.value, true)"></div></div>
+          <label class="field-label">🎚️ রিভিশনে এই সেটের অংশ</label>${window.mixSel(D.setMix || '', "bkDestSet('setMix', this.value, true)")}<p class="hint">সেটের অধ্যায়ে রিভিশনের কত % প্রশ্ন এই সেট থেকে আসবে; বাকিটা ওই অধ্যায়ের অন্য সব ম্যাটেরিয়াল থেকে।</p>`
         : `<select onchange="bkDestSet('setId', this.value, true)"><option value="">— সেট বাছো —</option>${sets}</select>${W.sets ? '' : '<p class="hint">সেট আনা হচ্ছে...</p>'}`}
         <p class="hint">সেটে যোগ করলে এই প্রশ্নগুলো ছাত্রের <b>অটো রিভিশনে অগ্রাধিকার</b> পাবে — অটো রিভিশন বন্ধ হবে না, ছাত্র সেটও আলাদা করে করতে পারবে। মিশ্র বিষয় হলে বিষয় অনুযায়ী আলাদা সেট হবে (একটা সেটে সর্বোচ্চ ৬০টা)।</p></div>`;
     }
@@ -14228,7 +14263,7 @@ window.doSmartSearch = async function(){
           const title = base + (subs.length > 1 ? ' — ' + subjLabel(sj) : '') + (parts.length > 1 ? ` (${pi + 1})` : '');
           const key = sj + '|' + pi;
           if(W.setDone[key]){ lines.push(`🗂️ সেট "${esc(title)}" — ${W.setDone[key]}টা প্রশ্ন`); continue; }
-          const r = await postToScriptRaw('planSetSave', { slug:D.slug, subject:sj, title, date:D.setDate, due:D.setDue, ids:JSON.stringify(parts[pi]) });
+          const r = await postToScriptRaw('planSetSave', { slug:D.slug, subject:sj, title, date:D.setDate, due:D.setDue, ids:JSON.stringify(parts[pi]), mixPct:D.setMix || '' });
           if(r && r.status === 'success'){ W.setDone[key] = r.count; lines.push(`🗂️ সেট "${esc(title)}" — ${r.count}টা প্রশ্ন`); }
           else { ok = false; lines.push(`❌ "${esc(title)}" সেট বানানো যায়নি`); }
         }
@@ -14264,7 +14299,7 @@ window.doSmartSearch = async function(){
       if(st) st.innerHTML = `<p class="hint">সেভ হচ্ছে... ${saved}/${live.length}</p>`;
       const chunk = live.slice(i, i + CHUNK_SAVE).map(x => ({ kind:x.kind, subject:x.tag.subject, chapter:x.tag.chapter, topic:x.tag.topic, subtopic:(x.tag.subs && x.tag.subs[0]) || '',
         text:x.text, options:x.options, correct:x.correct, modelAnswerText:x.modelAnswerText, imageUrl:x.imageUrl, board:x.board || '' }));
-      const r = await postToScriptRaw('bulkSave', { batch:W.batch, items:JSON.stringify(chunk), dest:D.type, forSlug:D.slug, hwDate, hwDue });
+      const r = await postToScriptRaw('bulkSave', { batch:W.batch, items:JSON.stringify(chunk), dest:D.type, forSlug:D.slug, hwDate, hwDue, imp:W.imp || '' });
       if(!r || r.status !== 'success'){ err = true; break; }
       saved += r.saved; skipped += r.skipped; (r.ids || []).forEach(x => W.savedIds.push(x));
       live.slice(i, i + CHUNK_SAVE).forEach(x => x.removed = true);   // সেভ হয়ে গেছে — আবার চাপলে ডাবল সেভ হবে না
@@ -14273,6 +14308,14 @@ window.doSmartSearch = async function(){
     if(err){ W.busy = false; if(st) st.innerHTML = `<p class="hint" style="color:var(--red);">❌ ${saved}টা সেভ হয়েছে, তারপর সংযোগ/সার্ভার সমস্যা। আবার "কনফার্ম" চাপলে বাকিগুলো সেভ হবে (যেগুলো হয়ে গেছে সেগুলো আর যাবে না)।</p>`; if(btn) btn.disabled = false; bkPreviewDraw(); return; }
     let setRes = { ok:true, html:'' };
     if(!isHw && D.toSet){ if(st) st.innerHTML = '<p class="hint">রিভিশন সেট বানানো হচ্ছে...</p>'; setRes = await bkMakeSet(); }
+    if(W.imp === 'ai' && saved){   // [NEW] AI সাল/বোর্ড/সদৃশ প্রশ্ন দেখে গুরুত্ব ঠিক করে
+      const sjs = [...new Set((W.savedIds || []).map(x => x.subject))];
+      for(const sj of sjs){ for(let n = 0; n < 12; n++){
+        if(st) st.innerHTML = `<p class="hint">🤖 AI গুরুত্ব ঠিক করছে (${esc(subjLabel(sj))})...</p>`;
+        const ar = await postToScriptRaw('qbAiRun', { subject:sj, tkey:TEACHER_PASSWORD });
+        if(!ar || ar.status !== 'success' || !ar.left) break;
+      } }
+    }
     W.busy = false;
     toast(saved + 'টা প্রশ্ন সেভ হয়েছে ✅');
     const where = isHw ? `📌 HW হিসেবে — ${esc(who)} · ${esc(hwDate)} থেকে, ডেডলাইন ${esc(hwDue)}` : `📚 রিভিশন ম্যাটেরিয়ালে — ${esc(who)}`;
@@ -15108,6 +15151,9 @@ window.doSmartSearch = async function(){
   // =====================================================================================
   // ধাপ ৪খ: রিভিশন সেট বানানো — শিক্ষক (হাতে বেছে / ট্যাগ ফিল্টার / বাল্ক আপলোড থেকে)
   // =====================================================================================
+  const MIXOPTS = [['', 'ডিফল্ট — সেটের প্রশ্ন আগে আসবে, বাকি সব মিশে থাকবে'], ['100', '১০০% — শুধু সেটের প্রশ্ন (সেট শেষ হওয়া পর্যন্ত)'], ['90', '৯০% সেট + ১০% বাকি সব'], ['80', '৮০% সেট + ২০% বাকি সব'], ['70', '৭০% সেট + ৩০% বাকি সব'], ['50', '৫০% সেট + ৫০% বাকি সব']];
+  window.mixSel = (cur, handler) => `<select onchange="${handler}">${MIXOPTS.map(o => `<option value="${o[0]}" ${String(cur === null || cur === undefined ? '' : cur) === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select>`;
+  const MIXHINT = 'সেটের অধ্যায়ে রিভিশনের কত % প্রশ্ন এই সেট থেকে আসবে; বাকিটা ওই অধ্যায়ের অ্যাপে থাকা অন্য সব ম্যাটেরিয়াল/ডকুমেন্ট থেকে। সেটের প্রশ্ন শেষ হলে নিয়মটা আর খাটে না।';
   const B = { mode:'manual', sel:new Set(), rows:[], total:0, tree:{}, batches:[], studs:[], f:{ subject:'', chapter:'', topic:'', batch:'', kind:'', q:'' }, meta:{ slug:'', title:'', date:'', due:'' }, sets:[] };
   window.revSetBuildOpen = function(){ B.sel = new Set(); B.rows = []; B.total = 0; B.f = { subject:'', chapter:'', topic:'', batch:'', kind:'', q:'' }; B.meta = { slug:'', title:'', date:todayStr(), due:todayStr() }; go('revSetBuild'); };
   async function sbRender(){
@@ -15125,7 +15171,8 @@ window.doSmartSearch = async function(){
         <select onchange="sbF('topic', this.value)"><option value="">— টপিক (সব) —</option>${tps.map(t => `<option value="${esc(t.topic)}" ${B.f.topic === t.topic ? 'selected' : ''}>${esc(t.topic)}</option>`).join('')}</select>`
       : `<select onchange="sbF('batch', this.value)"><option value="">— বাল্ক আপলোডের ব্যাচ বাছো —</option>${B.batches.map(b => `<option value="${b.batch}" ${B.f.batch === b.batch ? 'selected' : ''}>${new Date(Number(String(b.batch).replace(/\D/g, ''))).toLocaleString('bn-BD')} · ${b.n}টা · ${b.kinds.join('/').toUpperCase()}</option>`).join('')}</select>`;
     const sets = B.sets.map(s => `<div class="exam-item"><div class="meta"><span class="q-tag">${esc(s.date)}</span> ডেডলাইন ${esc(s.due)} · ${esc(s.studentName)} · ${esc(subjLabel(s.subject))}</div>
-        <div style="font-size:13.5px;margin-top:4px;"><b>${esc(s.title)}</b> — ${s.count}টা প্রশ্ন</div><div class="meta">${s.answeredBy} জন করেছে · <a class="link-back" onclick="sbDel('${s.id}')">🗑️ মুছো</a></div></div>`).join('') || `<div class="empty-state">এখনো কোনো সেট বানাওনি।</div>`;
+        <div style="font-size:13.5px;margin-top:4px;"><b>${esc(s.title)}</b> — ${s.count}টা প্রশ্ন</div><div class="meta">${s.answeredBy} জন করেছে · <a class="link-back" onclick="sbDel('${s.id}')">🗑️ মুছো</a></div>
+        <div class="meta" style="margin-top:4px;">🎚️ রিভিশনে অংশ:</div>${window.mixSel(s.mixPct, "sbMix('" + s.id + "', this.value)")}</div>`).join('') || `<div class="empty-state">এখনো কোনো সেট বানাওনি।</div>`;
     app.innerHTML = `${header('রিভিশন সেট বানাও')}
       <div class="card"><h2>🗂️ নতুন রিভিশন সেট</h2>
         <p class="hint">সেট দিলেও অটো রিভিশন বন্ধ হয় না — সেটের প্রশ্নগুলো ছাত্রের অটো রিভিশনে অগ্রাধিকার পায়, আর ছাত্র সেটটা আলাদাভাবেও করতে পারে। ছাত্র শুধু ক্লাসে পড়ানো-হওয়া চ্যাপ্টারের প্রশ্নগুলোই দেখবে।</p>
@@ -15133,7 +15180,8 @@ window.doSmartSearch = async function(){
         <label class="field-label">বিষয়</label><select onchange="sbF('subject', this.value)">${subjOpts(B.f.subject, '— বিষয় বাছো —')}</select>
         <label class="field-label">সেটের নাম</label><input type="text" value="${esc(B.meta.title)}" placeholder="যেমন: ভেক্টর — সাপ্তাহিক রিভিশন" onchange="B_meta('title', this.value)">
         <div class="row"><div style="flex:1"><label class="field-label">তারিখ (কবে থেকে)</label><input type="date" value="${esc(B.meta.date)}" onchange="B_meta('date', this.value)"></div>
-          <div style="flex:1"><label class="field-label">ডেডলাইন</label><input type="date" value="${esc(B.meta.due)}" onchange="B_meta('due', this.value)"></div></div></div>
+          <div style="flex:1"><label class="field-label">ডেডলাইন</label><input type="date" value="${esc(B.meta.due)}" onchange="B_meta('due', this.value)"></div></div>
+        <label class="field-label">🎚️ রিভিশনে এই সেটের অংশ</label>${window.mixSel(B.meta.mixPct || '', "B_meta('mixPct', this.value)")}<p class="hint">${MIXHINT}</p></div>
       <div class="card"><h3>প্রশ্ন বাছাইয়ের উপায়</h3>
         <div style="display:flex;gap:6px;margin-bottom:8px;">${tab('manual', '✋ হাতে বেছে')}${tab('tag', '🏷️ ট্যাগ ফিল্টার')}${tab('batch', '📥 বাল্ক আপলোড')}</div>
         ${B.f.subject ? filters : `<p class="hint">আগে ওপরে বিষয় বাছো।</p>`}
@@ -15172,9 +15220,13 @@ window.doSmartSearch = async function(){
     if(!B.sel.size){ toast('অন্তত একটা প্রশ্ন বাছো'); return; }
     if(B.sel.size > 60 && !confirm('৬০টার বেশি বাছা হয়েছে — প্রথম ৬০টা নেওয়া হবে। এগোবে?')) return;
     const b = document.getElementById('sbSave'); b.disabled = true;
-    const r = await postToScriptRaw('planSetSave', { slug:B.meta.slug, subject:B.f.subject, title:B.meta.title, date:B.meta.date, due:B.meta.due, ids:JSON.stringify([...B.sel]) });
+    const r = await postToScriptRaw('planSetSave', { slug:B.meta.slug, subject:B.f.subject, title:B.meta.title, date:B.meta.date, due:B.meta.due, ids:JSON.stringify([...B.sel]), mixPct:B.meta.mixPct || '' });
     if(r && r.status === 'success'){ toast(`সেট সেভ হয়েছে ✅ (${r.count}টা প্রশ্ন)`); B.sel = new Set(); B.meta.title = ''; sbRender(); }
     else { b.disabled = false; toast('সেভ হয়নি, আবার চেষ্টা করো'); }
+  };
+  window.sbMix = async function(id, v){
+    const r = await postToScriptRaw('planSetMix', { id, mixPct:v, tkey:TEACHER_PASSWORD });
+    if(r && r.status === 'success'){ const s = B.sets.find(x => x.id === id); if(s) s.mixPct = r.mixPct; toast('সেভ হয়েছে ✅'); } else toast('সেভ হয়নি — নতুন Code.gs ডিপ্লয় করেছো তো?');
   };
   window.sbDel = async function(id){ if(!confirm('এই সেটটা মুছে ফেলবে? (ছাত্রদের জমা দেওয়া উত্তর থাকবে)')) return; await postToScriptRaw('planSetDelete', { id }); sbRender(); };
 
@@ -17309,13 +17361,120 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
       <div id="trkmkEd_${idx}" style="display:none;"></div>
       <div id="trkfbEd_${idx}" style="display:none;"></div></div>`;
   }
+  // ---- [NEW] শিক্ষকের সেট-কার্ড: প্রতিটা প্রশ্ন, ছাত্রের উত্তর, AI মন্তব্য ও মার্ক বদল ----
+  function setBlock(it, idx){
+    if(!it.setItems || !it.setItems.length) return '';
+    const L = ['ক', 'খ', 'গ', 'ঘ'];
+    const rows = it.setItems.map((x, j) => {
+      const sc = Number(x.score) || 0;
+      const chip = x.kind === 'mcq' ? `<span class="trk-score ${sc >= 50 ? 'trk-s-hi' : 'trk-s-lo'}">${sc >= 50 ? '✅ সঠিক' : '❌ ভুল'}</span>` : `<span class="trk-score ${scoreCls(sc)}">${bnN(sc)}%</span>`;
+      let body = `<div class="trk-q">${escapeHtml(x.text || '(প্রশ্ন পাওয়া যায়নি)')}</div>`;
+      if(x.kind === 'mcq'){
+        body += (x.opts || []).map((tx, k) => { const mine = x.choice === k, right = x.correct === k; return `<div>${right ? '✅' : (mine ? '❌' : '▫️')} ${L[k] || ''}) ${escapeHtml(tx)}${mine ? ' <i>(ছাত্রের উত্তর)</i>' : ''}</div>`; }).join('');
+        if(x.choice === undefined) body += `<div class="trk-note">ℹ️ ছাত্র কোন অপশন বেছেছিল সেটা সেভ নেই (আগের উত্তর) — শুধু সঠিক/ভুল আছে।</div>`;
+      } else {
+        body += x.url ? `<div style="margin:6px 0;"><a class="trk-chip" href="${escapeHtml(x.url)}" target="_blank" rel="noopener" style="text-decoration:none;">🖼 ছাত্রের খাতা/ছবি দেখো</a></div>` : (x.noAns ? '<div class="trk-note">ℹ️ খাতার ছবি/AI মন্তব্য সেভ নেই।</div>' : '');
+        if(x.feedback) body += `<details><summary>🤖 AI-র মন্তব্য দেখো</summary><div class="trk-ai">${escapeHtml(x.feedback)}</div></details>`;
+      }
+      return `<div style="margin:10px 0;padding:8px 10px;border:1px solid rgba(128,128,128,.35);border-radius:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><b>${bnN(j + 1)}. ${x.kind === 'mcq' ? 'MCQ' : 'CQ'}${x.topic ? ' · ' + escapeHtml(x.topic) : ''}</b>${chip}</div>
+        ${body}${editNote(x.edited, x.kind === 'mcq')}
+        ${x.fkey ? `<button type="button" class="btn btn-outline" style="margin-top:6px;padding:6px 12px;font-size:12.5px;" onclick="trkSiOpen(${idx},${j})">🎯 মার্ক বদলাও</button>${(x.kind !== 'mcq' && x.url) ? `<button type="button" class="btn btn-outline" style="margin-top:6px;margin-left:6px;padding:6px 12px;font-size:12.5px;" onclick="trkRecheck(${idx},${j})">🔁 AI আবার চেক করুক</button>` : ''}<div id="trksiEd_${idx}_${j}" style="display:none;"></div>` : ''}</div>`;
+    }).join('');
+    return `<details open><summary>🗂️ প্রতিটা প্রশ্ন — ছাত্রের উত্তর, AI মন্তব্য ও মার্ক (${bnN(it.setItems.length)}টা)</summary>${rows}</details>`;
+  }
+  window.trkSiOpen = function(idx, j){
+    const it = (window.__trkItems || [])[idx], x = it && it.setItems && it.setItems[j]; if(!x) return;
+    const box = document.getElementById('trksiEd_' + idx + '_' + j); if(!box) return;
+    if(box.style.display !== 'none'){ box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    if(x.kind === 'mcq'){
+      box.innerHTML = `<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;"><button type="button" class="btn btn-primary" style="padding:8px 14px;" onclick="trkSiSave(${idx},${j},100)">✅ ঠিক ধরো</button><button type="button" class="btn btn-outline" style="padding:8px 14px;" onclick="trkSiSave(${idx},${j},0)">❌ ভুল ধরো</button></div><div class="trk-note">যেমন প্রশ্নের উত্তরই ভুল থাকলে এটা ঠিক করে দিতে পারো — শেয়ারও মিলে যাবে।</div>`;
+    } else {
+      box.innerHTML = `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="font-size:13px;">AI দিয়েছে: <b>${bnN(Number(x.score) || 0)}%</b> → নতুন মার্ক:</span><input id="trksiIn_${idx}_${j}" type="number" inputmode="decimal" min="0" max="100" step="1" value="${Number(x.score) || 0}" style="width:80px;padding:6px 8px;"><span>%</span></div>
+        <div class="trk-qp">${[0, 40, 60, 80, 100].map(v => `<button type="button" onclick="document.getElementById('trksiIn_${idx}_${j}').value=${v}">${v}</button>`).join('')}</div>
+        <div style="margin-top:6px;"><button type="button" class="btn btn-primary" style="padding:8px 16px;" onclick="trkSiSave(${idx},${j})">💾 মার্ক সেভ করো</button></div><div class="trk-note">ছাত্রের সেট-পাতা, গড় আর Vorkuta শেয়ার নতুন মার্ক অনুযায়ী মিলে যাবে।</div>`;
+    }
+  };
+  window.trkSiSave = async function(idx, j, forced){
+    const it = (window.__trkItems || [])[idx], x = it && it.setItems && it.setItems[j]; if(!x) return;
+    let pc = forced;
+    if(pc === undefined){ const inp = document.getElementById('trksiIn_' + idx + '_' + j); pc = inp ? parseFloat(inp.value) : NaN; }
+    if(isNaN(pc) || pc < 0 || pc > 100){ toast('০–১০০ এর মধ্যে মার্ক লেখো'); return; }
+    pc = Math.round(pc);
+    toast('সেভ হচ্ছে...');
+    const res = await trkTeacherPost('trkMarkSave', { fkey: x.fkey, percent: pc });
+    if(!res || res.status !== 'success'){ toast('মার্ক সেভ হয়নি — নতুন Code.gs ডিপ্লয় করেছো তো? আবার চেষ্টা করো'); return; }
+    x.edited = { from: x.edited ? x.edited.from : (Number(x.score) || 0), to: pc, how:'teacher', n: (x.edited ? x.edited.n : 0) + 1 };
+    x.score = pc;
+    const n = it.setItems.length, avg = Math.round(it.setItems.reduce((a, y) => a + (Number(y.score) || 0), 0) / n);
+    it.detail = n + 'টা প্রশ্ন, গড় ' + avg + '%';
+    const el = document.getElementById('trkc_' + idx);
+    if(el){ const nm = !!el.querySelector('.trk-chip[style*="E8EEFB"]'); el.outerHTML = trkCard(it, idx, { showName: nm }); }
+    toast('✅ মার্ক বদলানো হয়েছে: ' + pc + '%' + (res.shareDelta ? ' · শেয়ার ' + (res.shareDelta > 0 ? '+' : '−') + Math.abs(res.shareDelta).toFixed(2) : ''));
+  };
+
   // ---- শিক্ষক মার্ক বদলাবে (শুধু অ্যাসাইন HW ও CQ-তে, যেখানে % আছে) ----
   function markBtn(it, idx){
     if(!it.fkey) return '';
     const okKey = it.fkey.indexOf('as:') === 0 || it.fkey.indexOf('cq:') === 0 || (it.fkey.indexOf('rv:') === 0 && pctOf(it) !== null);
     if(!okKey) return '';
-    return `<button type="button" class="btn btn-outline" style="margin-top:6px; margin-left:6px; padding:6px 12px; font-size:12.5px;" onclick="trkMkOpen(${idx})">🎯 মার্ক বদলাও</button>`;
+    const rc = (it.url && (it.fkey.indexOf('as:') === 0 || it.fkey.indexOf('rv:') === 0)) ? `<button type="button" class="btn btn-outline" style="margin-top:6px; margin-left:6px; padding:6px 12px; font-size:12.5px;" onclick="trkRecheck(${idx})">🔁 AI আবার চেক করুক</button>` : '';
+    return `<button type="button" class="btn btn-outline" style="margin-top:6px; margin-left:6px; padding:6px 12px; font-size:12.5px;" onclick="trkMkOpen(${idx})">🎯 মার্ক বদলাও</button>${rc}`;
   }
+  function editNote(e, mcq){   // শিক্ষক/AI মার্ক বদলালে "আগে কত ছিল"
+    if(!e) return '';
+    const f = v => mcq ? (v >= 50 ? '✅ সঠিক' : '❌ ভুল') : bnN(Math.round(Number(v) || 0)) + '%';
+    return `<div class="trk-note">${e.how === 'ai' ? '🔁 AI আবার চেক করেছে' : '✏️ শিক্ষক বদলেছেন'} · প্রথমে ${f(e.from)} → এখন ${f(e.to)}${e.n > 1 ? ' (' + bnN(e.n) + ' বার বদলানো)' : ''}</div>`;
+  }
+  function trkRerender(idx){
+    const it = (window.__trkItems || [])[idx], el = document.getElementById('trkc_' + idx);
+    if(el && it){ const nm = !!el.querySelector('.trk-chip[style*="E8EEFB"]'); el.outerHTML = trkCard(it, idx, { showName: nm }); }
+  }
+  // অটো রিভিশন/HW-এর MCQ তালিকা: প্রশ্ন, অপশন, ছাত্র কী বেছেছিল, ফল, বদলের চিহ্ন, ঠিক/ভুল বদলানোর বাটন
+  function mqBlock(it, idx){
+    if(!(it.qList && it.qList.length)) return '';
+    const L = ['ক', 'খ', 'গ', 'ঘ'];
+    return `<details><summary>❓ AI যে MCQ দিয়েছিল (${bnN(it.qList.length)}টা) — ছাত্র কী বেছেছিল</summary><div class="trk-q">${it.qList.map((x, i) => {
+      let o = []; try{ o = JSON.parse(x.o || '[]'); }catch(e){}
+      const good = x.g === true || x.g === 'true';
+      return `<div style="margin:8px 0;padding-bottom:8px;border-bottom:1px dashed var(--rule);"><b>${bnN(i + 1)}. ${escapeHtml(x.t)}</b>${x.tk ? `<div class="meta">${escapeHtml(String(x.tk).replace('|', ' › '))}</div>` : ''}${o.map((tx, j) => `<div>${j === Number(x.ci) ? '✅' : (j === Number(x.ch) ? '❌' : '▫️')} ${L[j] || ''}) ${escapeHtml(tx)}${j === Number(x.ch) ? ' <i>(ছাত্রের উত্তর)</i>' : ''}</div>`).join('')}
+        <div class="meta">ফল: <b>${good ? '✅ সঠিক' : '❌ ভুল'}</b></div>${editNote(x.edited, true)}
+        ${x.fkey ? `<div style="margin-top:4px;"><button type="button" class="btn btn-outline" style="padding:4px 10px;font-size:12px;" onclick="trkMqSave(${idx},${i},${good ? 0 : 100})">${good ? '❌ ভুল ধরো' : '✅ ঠিক ধরো'}</button></div>` : ''}</div>`;
+    }).join('')}</div></details>`;
+  }
+  window.trkMqSave = async function(idx, i, pc){
+    const it = (window.__trkItems || [])[idx], x = it && it.qList && it.qList[i]; if(!x || !x.fkey) return;
+    toast('সেভ হচ্ছে...');
+    const res = await trkTeacherPost('trkMarkSave', { fkey: x.fkey, percent: pc });
+    if(!res || res.status !== 'success'){ toast('সেভ হয়নি — নতুন Code.gs ডিপ্লয় করেছো তো? আবার চেষ্টা করো'); return; }
+    const before = x.g === true || x.g === 'true', now = pc >= 50, delta = (now ? 1 : 0) - (before ? 1 : 0);
+    x.edited = { from: x.edited ? x.edited.from : (before ? 100 : 0), to: pc, how:'teacher', n: (x.edited ? x.edited.n : 0) + 1 };
+    x.g = now;
+    if(delta) it.detail = String(it.detail || '').replace(/\(সঠিক (\d+)\)/, (m, n) => '(সঠিক ' + Math.max(0, Number(n) + delta) + ')');
+    trkRerender(idx);
+    toast('✅ ' + (now ? 'ঠিক ধরা হয়েছে' : 'ভুল ধরা হয়েছে') + (res.shareDelta ? ' · শেয়ার ' + (res.shareDelta > 0 ? '+' : '−') + Math.abs(res.shareDelta).toFixed(2) : ''));
+  };
+  // শিক্ষক চাইলে: সেভ করা খাতার ছবি দেখে AI আবার মার্ক+মন্তব্য দেয় (আগের মার্ক লগে থাকে)
+  window.trkRecheck = async function(idx, j){
+    const it = (window.__trkItems || [])[idx]; if(!it) return;
+    const x = (j === undefined) ? it : (it.setItems && it.setItems[j]); if(!x || !x.fkey) return;
+    if(!confirm('AI খাতার ছবি দেখে আবার মার্ক ও মন্তব্য দেবে। আগের মার্ক বদলে যাবে (আগেরটা "প্রথমে ...%" হিসেবে দেখা যাবে)। চালাবে?')) return;
+    toast('🤖 AI আবার চেক করছে... একটু সময় লাগবে');
+    const res = await trkTeacherPost('trkRecheck', { fkey: x.fkey });
+    if(!res || res.status !== 'success'){
+      const m = res && res.message;
+      toast(m === 'no_image' ? 'খাতার ছবি পাওয়া যায়নি' : (m === 'irrelevant' ? 'AI ছবিটাকে এই প্রশ্নের উত্তর হিসেবে পড়তে পারেনি' : (m === 'ai_unavailable' ? 'AI এখন ব্যস্ত — একটু পরে চেষ্টা করো' : 'হয়নি — নতুন Code.gs ডিপ্লয় করেছো তো?')));
+      return;
+    }
+    const before = (j === undefined) ? (pctOf(x) === null ? 0 : pctOf(x)) : (Number(x.score) || 0);
+    x.edited = { from: x.edited ? x.edited.from : before, to: res.percent, how:'ai', n: (x.edited ? x.edited.n : 0) + 1 };
+    x.feedback = res.feedback || x.feedback;
+    if(j === undefined){ x.percent = res.percent; x.pct = res.percent; }
+    else { x.score = res.percent; const n = it.setItems.length, avg = Math.round(it.setItems.reduce((a, y) => a + (Number(y.score) || 0), 0) / n); it.detail = n + 'টা প্রশ্ন, গড় ' + avg + '%'; }
+    trkRerender(idx);
+    toast('✅ AI আবার চেক করেছে: ' + res.percent + '%' + (res.shareDelta ? ' · শেয়ার ' + (res.shareDelta > 0 ? '+' : '−') + Math.abs(res.shareDelta).toFixed(2) : ''));
+  };
   window.trkMkOpen = function(idx){
     const it = (window.__trkItems || [])[idx]; if(!it) return;
     const box = document.getElementById('trkmkEd_' + idx); if(!box) return;
@@ -17346,6 +17505,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     toast('সেভ হচ্ছে...');
     const res = await trkTeacherPost('trkMarkSave', { fkey: it.fkey, percent: pc });
     if(!res || res.status !== 'success'){ toast('মার্ক সেভ হয়নি — নতুন Code.gs ডিপ্লয় করেছো তো? আবার চেষ্টা করো'); return; }
+    it.edited = { from: it.edited ? it.edited.from : (pctOf(it) === null ? 0 : pctOf(it)), to: pc, how:'teacher', n: (it.edited ? it.edited.n : 0) + 1 };
     it.percent = pc; it.pct = pc; if(isCq) it.marks = Math.round(pc / 100 * it.max * 2) / 2;
     const el = document.getElementById('trkc_' + idx);
     if(el){ const nm = !!el.querySelector('.trk-chip[style*="E8EEFB"]'); el.outerHTML = trkCard(it, idx, { showName: nm }); }
@@ -17422,16 +17582,12 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     const q = (it.qText || it.qUrl) ? `<details><summary>❓ প্রশ্ন দেখো</summary><div class="trk-q">${escapeHtml(it.qText || '')}${it.qUrl ? `<div style="margin-top:6px;"><a href="${escapeHtml(it.qUrl)}" target="_blank" rel="noopener">🖼 প্রশ্নের ছবি দেখো</a></div>` : ''}</div></details>` : '';
     const ai = it.feedback ? `<details><summary>🤖 AI-র মন্তব্য দেখো</summary><div class="trk-ai">${escapeHtml(it.feedback)}</div></details>` : '';
     const rr = it.reviewReq ? `<div class="trk-note" style="color:#7B5A10;">🚩 ছাত্র রিভিউ চেয়েছে${it.reason ? ': ' + escapeHtml(it.reason) : ''}${it.resolved ? ' · ✅ নিষ্পত্তি হয়েছে' : ''}${it.tnote ? '<br>💬 শিক্ষকের উত্তর: ' + escapeHtml(it.tnote) : ''}</div>` : '';
-    const nr = it.noReply ? `<div class="trk-note">ℹ️ এই দিনের শুধু সংখ্যা জমা আছে — AI-র উত্তর/খাতার ছবি সেভ হয়নি।</div>` : '';
-    const ql = (it.qList && it.qList.length) ? `<details><summary>❓ AI যে MCQ দিয়েছিল (${bnN(it.qList.length)}টা) — ছাত্র কী বেছেছিল</summary><div class="trk-q">${it.qList.map((x, i) => {   // [v20]
-      let o = []; try{ o = JSON.parse(x.o || '[]'); }catch(e){}
-      const L = ['ক', 'খ', 'গ', 'ঘ'];
-      return `<div style="margin:8px 0;padding-bottom:8px;border-bottom:1px dashed var(--rule);"><b>${bnN(i + 1)}. ${escapeHtml(x.t)}</b>${x.tk ? `<div class="meta">${escapeHtml(String(x.tk).replace('|', ' › '))}</div>` : ''}${o.map((tx, j) => `<div>${j === Number(x.ci) ? '✅' : (j === Number(x.ch) ? '❌' : '▫️')} ${L[j] || ''}) ${escapeHtml(tx)}${j === Number(x.ch) ? ' <i>(ছাত্রের উত্তর)</i>' : ''}</div>`).join('')}</div>`;
-    }).join('')}</div></details>` : '';
+    const nr = it.noReply ? `<div class="trk-note">ℹ️ এই দিনের রিভিশন নতুন সেভ-ব্যবস্থার আগের — শুধু সংখ্যা জমা আছে; প্রশ্ন, ছাত্রের উত্তর ও AI-র মন্তব্য তখন সেভ হতো না (এখন থেকে সব সেভ হয় ও এখানে দেখা যায়)।</div>` : '';
+    const ql = mqBlock(it, idx);
     return `<div class="trk-item k-${it.kind}" id="trkc_${idx}">
       <div class="trk-title">${k.ic} ${escapeHtml(it.title || '')}</div>
       <div class="trk-chips">${nm}${it.tag ? `<span class="trk-chip">${escapeHtml(it.tag)}</span>` : ''}<span>${dayLabel(it.date)}</span>${scoreChip(it)}${dup}${img}</div>
-      ${q}${ql}${ai}${rr}${nr}${fbHtml(it, idx)}
+      ${q}${ql}${ai}${editNote(it.edited, false)}${rr}${nr}${setBlock(it, idx)}${fbHtml(it, idx)}
     </div>`;
   }
   function byDate(items, opts){
@@ -17506,6 +17662,202 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     window.__trkToday = todayStr();
     window.__trkStu = { slug: slug, name: r.name || name || slug, kind: kind, r: r, view: window.__trkView || 'date' };
     trkDrawStudent();
+  };
+
+  // ---- [NEW] শিক্ষক: প্রশ্নব্যাংক — MCQ / CQ আলাদা ট্যাব, AI-র আলাদা করা প্রশ্ন রিভিউ (অনুমোদন/মুছো), সাল, গুরুত্ব ----
+  const QB = { subject:'', tab:'mcq', counts:{}, pend:{}, tabs:{ mcq:0, cq:0, review:0 }, items:[], total:0, chapter:'', kind:'', imp:'', year:'', q:'', hw:false, sel:new Set(), limit:100, busy:false, chs:[], feed:null };
+  const QIMP = { 4:{ ic:'🔥', t:'সবচেয়ে গুরুত্বপূর্ণ', c:'#D64545' }, 3:{ ic:'⭐', t:'গুরুত্বপূর্ণ', c:'#C98A12' }, 2:{ ic:'▫️', t:'সাধারণ', c:'#7A8AA6' }, 1:{ ic:'🔹', t:'কম গুরুত্বপূর্ণ', c:'#8A97B0' } };
+  const QL = ['ক', 'খ', 'গ', 'ঘ'];
+  const qbSj = k => (typeof NOTES_SUBJECTS !== 'undefined' && NOTES_SUBJECTS[k]) ? NOTES_SUBJECTS[k].icon + ' ' + NOTES_SUBJECTS[k].label : (k || 'অন্যান্য');
+  const qbReset = () => { QB.chapter = ''; QB.kind = ''; QB.imp = ''; QB.year = ''; QB.q = ''; };
+  window.qbOpen = function(sj){ QB.subject = sj; QB.tab = 'mcq'; qbReset(); renderQBank(); };
+  window.qbTab = function(t){ QB.tab = t; qbReset(); renderQBank(); };
+  window.renderQBank = async function(){
+    trkInjectCss();
+    app.innerHTML = `${header('প্রশ্নব্যাংক')}<div class="card center">লোড হচ্ছে...</div>`;
+    const [r, f] = await Promise.all([trkTeacherPost('qbList', { subject: QB.subject, tab: QB.tab }), QB.subject ? Promise.resolve(null) : trkTeacherPost('qbFeed', { op:'status' })]);
+    if(!r || r.status !== 'success'){
+      app.innerHTML = `${header('প্রশ্নব্যাংক')}<div class="card center"><p class="hint" style="color:var(--red);">লোড করা যায়নি — নতুন Code.gs ডিপ্লয় করেছো তো?</p></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেল</a></div>`;
+      return;
+    }
+    QB.counts = r.counts || {}; QB.pend = r.pend || {}; QB.tabs = r.tabs || QB.tabs; QB.items = r.items || []; QB.total = r.total || 0; QB.sel = new Set(); QB.limit = 100;
+    if(f && f.status === 'success') QB.feed = f;
+    qbDraw();
+  };
+  function qbFiltered(){
+    const q = QB.q.trim().toLowerCase();
+    return QB.items.filter(x => (QB.tab === 'review' || QB.hw || !x.hw) && (!QB.chapter || (QB.chapter === '__none' ? !x.chapter : x.chapter === QB.chapter)) && (!QB.kind || x.kind === QB.kind)
+      && (QB.imp === '' || (QB.imp === '0' ? !x.imp : String(x.imp) === QB.imp)) && (!QB.year || x.years.indexOf(QB.year) !== -1)
+      && (!q || (x.text + ' ' + x.topic + ' ' + x.board).toLowerCase().indexOf(q) !== -1)).sort((a, b) => (b.imp || 0) - (a.imp || 0));
+  }
+  function qbBadge(x){
+    if(x.review) return `<span style="color:#C98A12;font-weight:700;font-size:12px;">⏳ রিভিউ বাকি</span>`;
+    const m = QIMP[x.imp];
+    if(!m) return `<small style="opacity:.7;">— গুরুত্ব ঠিক হয়নি</small>`;
+    return `<span style="color:${m.c};font-weight:700;font-size:12px;">${m.ic} ${m.t}</span> <small style="opacity:.7;">(${x.impBy === 'teacher' ? 'শিক্ষক' : 'AI'})</small>`;
+  }
+  function qbFeedCard(){
+    const f = QB.feed;
+    if(!f) return `<div class="card"><h3>🤖 AI অটো-সাজানো</h3><p class="hint">স্ট্যাটাস লোড করা যায়নি — নতুন Code.gs ডিপ্লয় করেছো তো?</p></div>`;
+    const prog = f.total ? Math.round(f.done * 100 / f.total) : 0;
+    const probs = (f.files || []).map(x => `<div style="padding:8px 0;border-bottom:1px dashed rgba(128,128,128,.35);font-size:13px;"><b>${x.status === 'error' ? '❌' : (x.status === 'partial' ? '⚠️' : '📄')} ${escapeHtml(x.title || x.id)}</b> <span class="meta">· ${escapeHtml(qbSj(x.subject))} › ${escapeHtml(x.chapter)}</span><br><span style="opacity:.85;">${escapeHtml(x.message)}</span>${x.status === 'error' ? ` <a class="link-back" onclick="qbRetry('${escapeHtml(x.id)}')">🔁 আবার চেষ্টা</a>` : ''}</div>`).join('');
+    return `<div class="card"><h3>🤖 AI অটো-সাজানো (ব্যাকগ্রাউন্ড)</h3>
+      <p class="hint">অ্যাপে থাকা সব PDF ও স্লাইড (অধ্যায় ট্যাগ হয়েছে এমন) থেকে AI ধীরে ধীরে প্রশ্ন আলাদা করে এখানে <b>"⏳ রিভিউ বাকি"</b> ট্যাবে রাখে। তুমি অনুমোদন না দেওয়া পর্যন্ত ছাত্ররা এগুলো দেখে না। পেজ বন্ধ থাকলেও চলে।</p>
+      <div style="height:6px;background:rgba(128,128,128,.25);border-radius:4px;overflow:hidden;margin:6px 0;"><div style="height:100%;width:${prog}%;background:#2E9E5B;"></div></div>
+      <p class="hint">${f.on ? '🟢 চালু' : '⚪ বন্ধ'} · মোট ফাইল <b>${bnN(f.total)}</b> · AI পড়েছে <b>${bnN(f.done)}</b> · বাকি <b>${bnN(f.left + f.queued)}</b> · রিভিউ বাকি প্রশ্ন <b>${bnN(f.pending)}</b></p>
+      <button type="button" class="btn ${f.on ? 'btn-outline' : 'btn-primary'}" style="padding:8px 16px;" onclick="qbFeedToggle(${f.on ? 'false' : 'true'})">${f.on ? '⏸ বন্ধ করো' : '▶️ AI-কে কাজ শুরু করতে দাও'}</button>
+      <div class="trk-note">⚠️ AI সব সময় নির্ভুল নয়: স্ক্যান করা পাতা, চিত্রসহ প্রশ্ন, সমীকরণ-ভারী পাতা বা খুব বড় PDF-এ কিছু প্রশ্ন বাদ যেতে পারে। যেগুলো AI পারেনি বা অসম্পূর্ণ মনে করেছে সেগুলো নিচে দেখায় — সেগুলোর প্রশ্ন <b>নিজে আলাদা করে বাল্কে আপলোড</b> দিলেই হবে। <button type="button" class="info-btn" onclick="bulkOpen()">📥 বাল্ক আপলোড খোলো</button></div>
+      ${probs ? `<details open style="margin-top:8px;"><summary>⚠️ AI যেগুলো ঠিকমতো পারেনি (${bnN(f.files.length)}টা)</summary>${probs}</details>` : ''}</div>`;
+  }
+  function qbDraw(){
+    if(!QB.subject){
+      const sjs = [...new Set(Object.keys(QB.counts).concat(Object.keys(QB.pend)))].sort((a, b) => ((QB.counts[b] || 0) + (QB.pend[b] || 0)) - ((QB.counts[a] || 0) + (QB.pend[a] || 0))), tot = sjs.reduce((a, k) => a + (QB.counts[k] || 0), 0);
+      app.innerHTML = `${header('প্রশ্নব্যাংক')}
+        <div class="card"><h2>🗃️ প্রশ্নব্যাংক</h2><p class="hint">অ্যাপে অনুমোদিত মোট <b>${bnN(tot)}</b>টা প্রশ্ন। বিষয়ে ঢুকলে <b>MCQ</b> আর <b>CQ</b> আলাদা ট্যাবে, অধ্যায়, সাল ও গুরুত্ব অনুযায়ী দেখতে, যোগ করতে বা মুছতে পারবে।</p></div>
+        ${qbFeedCard()}
+        <div class="card"><h3>📁 বিষয় অনুযায়ী</h3>${sjs.map(sj => `<button class="btn btn-outline btn-block" style="margin:6px 0;display:flex;justify-content:space-between;gap:8px;" onclick="qbOpen('${escapeHtml(sj)}')"><span>${qbSj(sj)}</span><span><b>${bnN(QB.counts[sj] || 0)}</b>${QB.pend[sj] ? ` <span style="color:#C98A12;font-size:12px;">· ⏳ ${bnN(QB.pend[sj])} রিভিউ বাকি</span>` : ''}</span></button>`).join('') || '<div class="empty-state">এখনো কোনো প্রশ্ন নেই।</div>'}</div>
+        <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেলে ফিরে যাও</a></div>${creditFooter()}`;
+      return;
+    }
+    const isRev = QB.tab === 'review';
+    const chm = {}; QB.items.forEach(x => { if(isRev || QB.hw || !x.hw){ const c = x.chapter || '__none'; chm[c] = (chm[c] || 0) + 1; } });
+    QB.chs = Object.keys(chm).sort();
+    const years = {}; QB.items.forEach(x => x.years.forEach(y => { years[y] = (years[y] || 0) + 1; }));
+    const yl = Object.keys(years).sort().reverse(), list = qbFiltered(), dist = { 4:0, 3:0, 2:0, 1:0, 0:0 }; QB.items.forEach(x => { dist[x.imp || 0]++; });
+    const tabBtn = (t, label, n) => `<button type="button" class="btn ${QB.tab === t ? 'btn-primary' : 'btn-outline'}" style="flex:1;min-width:90px;padding:9px 6px;font-size:13.5px;" onclick="qbTab('${t}')">${label} (${bnN(n)})</button>`;
+    const chips = `<button class="info-btn" style="${!QB.chapter ? 'font-weight:800;border-color:#2E9E5B;' : ''}" onclick="qbCh(-1)">📂 সব (${bnN(QB.items.filter(x => isRev || QB.hw || !x.hw).length)})</button>` + QB.chs.map((c, i) => `<button class="info-btn" style="${QB.chapter === c ? 'font-weight:800;border-color:#2E9E5B;' : ''}" onclick="qbCh(${i})">📂 ${escapeHtml(c === '__none' ? 'অধ্যায় ঠিক হয়নি' : c)} (${bnN(chm[c])})</button>`).join('');
+    const rows = list.slice(0, QB.limit).map(x => `<div style="display:flex;gap:8px;align-items:flex-start;margin:10px 0;padding-bottom:8px;border-bottom:1px dashed rgba(128,128,128,.3);font-size:13.5px;">
+        <input type="checkbox" style="width:auto;margin-top:4px;" ${QB.sel.has(x.id) ? 'checked' : ''} onchange="qbTog('${x.id}', this.checked)">
+        <div style="flex:1;min-width:0;"><span class="q-tag">${x.kind.toUpperCase()}</span> ${qbBadge(x)}${x.hw ? ' <span class="trk-chip">📌 HW</span>' : ''}${x.board ? ` <span class="trk-chip">🏷️ ${escapeHtml(x.board)}</span>` : ''}${x.years.map(y => ` <span class="trk-chip">📅 ${escapeHtml(y)}</span>`).join('')}<br>
+        <span class="meta">${escapeHtml(x.chapter || '—')} › ${escapeHtml(x.topic)}</span><br>${x.hasImage ? '🖼️ ' : ''}${escapeHtml(x.text) || '(ছবিসহ প্রশ্ন)'}
+        ${x.kind === 'mcq' ? `<div style="margin-top:4px;">${(x.opts || []).map((o, k) => `<div style="font-size:12.5px;${k === x.correct ? 'font-weight:700;' : 'opacity:.85;'}">${k === x.correct ? '✅' : '▫️'} ${QL[k]}) ${escapeHtml(o)}</div>`).join('')}${(x.correct >= 0 && x.correct <= 3) ? '' : '<div class="trk-note">⚠️ সঠিক উত্তর ঠিক নেই</div>'}</div>` : `<div class="meta" style="margin-top:3px;">${x.model ? '✔️ মডেল উত্তর আছে' : 'মডেল উত্তর নেই'}</div>`}
+        ${isRev ? `<div style="margin-top:6px;display:flex;gap:6px;"><button type="button" class="btn btn-primary" style="padding:5px 12px;font-size:12.5px;" onclick="qbOne('${x.id}','approve')">✅ অনুমোদন</button><button type="button" class="btn btn-outline" style="padding:5px 12px;font-size:12.5px;" onclick="qbOne('${x.id}','remove')">🗑️ মুছো</button></div>` : ''}</div></div>`).join('') || '<div class="empty-state">এই ফিল্টারে কোনো প্রশ্ন নেই।</div>';
+    const impBtn = v => `<button type="button" class="btn btn-outline" style="padding:6px 10px;font-size:12.5px;" onclick="qbSet(${v})">${QIMP[v].ic} ${QIMP[v].t}</button>`;
+    const filters = `<input type="text" placeholder="প্রশ্নের লেখা / বোর্ড খোঁজো" value="${escapeHtml(QB.q)}" onchange="qbF('q', this.value)">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${isRev ? `<select style="flex:1;min-width:110px;" onchange="qbF('kind', this.value)"><option value="">MCQ + CQ</option><option value="mcq" ${QB.kind === 'mcq' ? 'selected' : ''}>শুধু MCQ</option><option value="cq" ${QB.kind === 'cq' ? 'selected' : ''}>শুধু CQ</option></select>`
+            : `<select style="flex:1;min-width:130px;" onchange="qbF('imp', this.value)"><option value="">সব গুরুত্ব</option>${[4, 3, 2, 1].map(v => `<option value="${v}" ${QB.imp === String(v) ? 'selected' : ''}>${QIMP[v].ic} ${QIMP[v].t}</option>`).join('')}<option value="0" ${QB.imp === '0' ? 'selected' : ''}>— ঠিক হয়নি</option></select>`}
+          <select style="flex:1;min-width:100px;" onchange="qbF('year', this.value)"><option value="">সব সাল</option>${yl.map(y => `<option value="${escapeHtml(y)}" ${QB.year === y ? 'selected' : ''}>${escapeHtml(y)} (${bnN(years[y])})</option>`).join('')}</select></div>
+        ${isRev ? '' : `<label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-top:6px;"><input type="checkbox" style="width:auto;" ${QB.hw ? 'checked' : ''} onchange="qbF('hw', this.checked)"> 📌 HW হিসেবে অ্যাসাইন করা প্রশ্নও দেখাও</label>`}`;
+    const aiCard = isRev ? `<div class="card"><h3>⏳ রিভিউ বাকি প্রশ্ন</h3><p class="hint">এগুলো AI পিডিএফ/স্লাইড থেকে আলাদা করেছে। প্রতিটা প্রশ্ন, MCQ-র অপশন ও <b>সঠিক উত্তর (✅)</b> মিলিয়ে দেখো। ঠিক থাকলে <b>✅ অনুমোদন</b> (প্রশ্নব্যাংকে যোগ হবে, ছাত্ররা দেখবে), ভুল বা অপ্রয়োজনীয় হলে <b>🗑️ মুছো</b>। অনুমোদন না দেওয়া পর্যন্ত এগুলো ছাত্ররা, রিভিশন সেট বা Exam Leak কোথাও আসে না।</p></div>`
+      : `<div class="card"><h3>⚙️ গুরুত্ব ঠিক করো</h3>
+        <p class="hint">AI ঠিক করে: বোর্ড/ভর্তি ট্যাগ ও সাল, একই ধরনের প্রশ্ন কতবার এসেছে, ধারণা অধ্যায়ের কেন্দ্রে কিনা। <b>তুমি নিজে যেটা বাছবে সেটা AI কখনো বদলাবে না।</b> রিভিশনে বেশি গুরুত্বপূর্ণ প্রশ্ন আগে আসে।</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="btn btn-primary" style="padding:8px 14px;" onclick="qbAi(false)">🤖 ঠিক হয়নি যেগুলো AI ঠিক করুক${QB.chapter && QB.chapter !== '__none' ? ' (এই অধ্যায়)' : ' (পুরো বিষয়)'}</button><button type="button" class="btn btn-outline" style="padding:8px 14px;" onclick="qbAi(true)">🔄 AI-র দেওয়াগুলো আবার যাচাই</button></div><div id="qbSt"></div></div>`;
+    const bar = QB.sel.size ? (isRev
+      ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;padding:8px;background:rgba(128,128,128,.12);border-radius:10px;"><span style="font-size:13px;width:100%;">বাছা ${bnN(QB.sel.size)}টা:</span><button type="button" class="btn btn-primary" style="padding:6px 12px;font-size:12.5px;" onclick="qbRev('approve')">✅ অনুমোদন (যোগ করো)</button><button type="button" class="btn btn-outline" style="padding:6px 12px;font-size:12.5px;" onclick="qbRev('remove')">🗑️ মুছে ফেলো</button></div>`
+      : `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;padding:8px;background:rgba(128,128,128,.12);border-radius:10px;"><span style="font-size:13px;width:100%;">বাছা ${bnN(QB.sel.size)}টার গুরুত্ব করো:</span>${[4, 3, 2, 1].map(impBtn).join('')}<button type="button" class="btn btn-outline" style="padding:6px 10px;font-size:12.5px;" onclick="qbSet(0)">↩︎ ঠিক হয়নি করো</button><button type="button" class="btn btn-outline" style="padding:6px 10px;font-size:12.5px;" onclick="qbRev('remove')">🗑️ ব্যাংক থেকে মুছো</button></div>`) : '';
+    app.innerHTML = `${header('প্রশ্নব্যাংক')}
+      <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><h2 style="margin:0;">🗃️ ${qbSj(QB.subject)}</h2><a class="link-back" onclick="qbOpen('')">← সব বিষয়</a></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">${tabBtn('mcq', '🔘 MCQ', QB.tabs.mcq)}${tabBtn('cq', '✍️ CQ', QB.tabs.cq)}${tabBtn('review', '⏳ রিভিউ বাকি', QB.tabs.review)}</div>
+        ${isRev ? '' : `<p class="hint" style="margin-top:8px;">এই ট্যাবে 🔥${bnN(dist[4])} ⭐${bnN(dist[3])} ▫️${bnN(dist[2])} 🔹${bnN(dist[1])} · গুরুত্ব ঠিক হয়নি ${bnN(dist[0])}</p>`}
+        ${QB.total > QB.items.length ? `<p class="hint">(প্রথম ${bnN(QB.items.length)}টা দেখানো হচ্ছে)</p>` : ''}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${chips}</div></div>
+      <div class="card"><h3>🔎 ফিল্টার</h3>${filters}</div>
+      ${aiCard}
+      <div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;"><button class="info-btn" onclick="qbAll(true)">☑️ দেখানো সব বাছো (${bnN(list.length)})</button><button class="info-btn" onclick="qbAll(false)">⬜ বাদ দাও</button></div>
+        ${bar}${rows}${list.length > QB.limit ? `<button class="btn btn-outline btn-block" onclick="qbMore()">আরও দেখাও (${bnN(list.length - QB.limit)}টা বাকি)</button>` : ''}</div>
+      <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেলে ফিরে যাও</a></div>${creditFooter()}`;
+  }
+  window.qbCh = function(i){ QB.chapter = i < 0 ? '' : QB.chs[i]; QB.limit = 100; qbDraw(); };
+  window.qbF = function(k, v){ QB[k] = v; QB.limit = 100; qbDraw(); };
+  window.qbTog = function(id, on){ if(on) QB.sel.add(id); else QB.sel.delete(id); qbDraw(); };
+  window.qbAll = function(on){ if(!on){ QB.sel = new Set(); } else qbFiltered().forEach(x => QB.sel.add(x.id)); qbDraw(); };
+  window.qbMore = function(){ QB.limit += 100; qbDraw(); };
+  function qbDrop(ids, op){   // স্ক্রল না হারিয়ে স্থানীয়ভাবে সরিয়ে ফেলি
+    const set = new Set(ids), gone = QB.items.filter(x => set.has(x.id));
+    QB.items = QB.items.filter(x => !set.has(x.id)); QB.total = Math.max(0, QB.total - gone.length);
+    gone.forEach(x => { const k = x.kind === 'mcq' ? 'mcq' : 'cq'; if(QB.tab === 'review'){ QB.tabs.review = Math.max(0, QB.tabs.review - 1); if(op === 'approve') QB.tabs[k]++; } else QB.tabs[k] = Math.max(0, QB.tabs[k] - 1); QB.sel.delete(x.id); });
+    qbDraw();
+  }
+  async function qbReviewCall(ids, op){
+    for(let i = 0; i < ids.length; i += 120){
+      const r = await trkTeacherPost('qbReview', { ids: JSON.stringify(ids.slice(i, i + 120)), op: op });
+      if(!r || r.status !== 'success'){ toast('হয়নি — নতুন Code.gs ডিপ্লয় করেছো তো? আবার চেষ্টা করো'); return null; }
+      if(r.skipped) toast(bnN(r.skipped) + 'টা HW-এ অ্যাসাইন করা, তাই মোছা হয়নি');
+    }
+    return true;
+  }
+  window.qbRev = async function(op){
+    const ids = [...QB.sel]; if(!ids.length){ toast('আগে প্রশ্ন বাছো'); return; }
+    if(op === 'remove' && !confirm(ids.length + 'টা প্রশ্ন মুছে ফেলবে? এটা ফেরানো যাবে না।')) return;
+    toast('হচ্ছে...');
+    if(await qbReviewCall(ids, op)){ toast(op === 'approve' ? '✅ ' + bnN(ids.length) + 'টা প্রশ্ন প্রশ্নব্যাংকে যোগ হয়েছে' : '🗑️ ' + bnN(ids.length) + 'টা মুছে ফেলা হয়েছে'); qbDrop(ids, op); }
+  };
+  window.qbOne = async function(id, op){
+    if(op === 'remove' && !confirm('এই প্রশ্নটা মুছে ফেলবে?')) return;
+    if(await qbReviewCall([id], op)){ toast(op === 'approve' ? '✅ যোগ হয়েছে' : '🗑️ মুছে ফেলা হয়েছে'); qbDrop([id], op); }
+  };
+  window.qbSet = async function(v){
+    const ids = [...QB.sel]; if(!ids.length){ toast('আগে প্রশ্ন বাছো'); return; }
+    toast('সেভ হচ্ছে...');
+    for(let i = 0; i < ids.length; i += 400){
+      const r = await trkTeacherPost('qbSetImp', { ids: JSON.stringify(ids.slice(i, i + 400)), imp: v });
+      if(!r || r.status !== 'success'){ toast('সেভ হয়নি — নতুন Code.gs ডিপ্লয় করেছো তো? আবার চেষ্টা করো'); return; }
+    }
+    const set = new Set(ids);
+    QB.items.forEach(x => { if(set.has(x.id)){ x.imp = v; x.impBy = v ? 'teacher' : ''; } });
+    QB.sel = new Set(); toast('✅ ' + bnN(ids.length) + 'টা প্রশ্নের গুরুত্ব বদলানো হয়েছে'); qbDraw();
+  };
+  window.qbAi = async function(force){
+    if(QB.busy) return; QB.busy = true;
+    let total = 0, rule = false; const st = () => document.getElementById('qbSt');
+    for(let n = 0; n < 40; n++){
+      if(st()) st().innerHTML = `<p class="hint">🤖 AI গুরুত্ব ঠিক করছে... ${bnN(total)}টা হয়েছে (বন্ধ কোরো না)</p>`;
+      const r = await trkTeacherPost('qbAiRun', { subject: QB.subject, chapter: (QB.chapter && QB.chapter !== '__none') ? QB.chapter : '', force: force ? '1' : '' });
+      if(!r || r.status !== 'success'){ toast('AI চালানো যায়নি — আবার চেষ্টা করো'); break; }
+      total += r.rated || 0; if(r.via === 'rule') rule = true; if(!r.left) break;
+    }
+    QB.busy = false; toast('✅ ' + bnN(total) + 'টা প্রশ্নের গুরুত্ব ঠিক হয়েছে' + (rule ? ' (AI না পেয়ে সাল/সদৃশ নিয়মে)' : ''));
+    renderQBank();
+  };
+  window.qbFeedToggle = async function(on){
+    toast(on ? 'AI কাজ শুরু করছে...' : 'বন্ধ করা হচ্ছে...');
+    const r = await trkTeacherPost('qbFeed', { op: on ? 'start' : 'stop' });
+    if(!r || r.status !== 'success'){ toast('হয়নি — নতুন Code.gs ডিপ্লয় করেছো তো? (প্রথমবার ট্রিগারের অনুমতি চাইতে পারে)'); return; }
+    QB.feed = r; toast(on ? '🟢 চালু হয়েছে — কিছুক্ষণের মধ্যে প্রশ্ন "রিভিউ বাকি"-তে আসতে থাকবে' : '⚪ বন্ধ করা হয়েছে'); qbDraw();
+  };
+  window.qbRetry = async function(id){
+    const r = await trkTeacherPost('qbFeed', { op:'retry', ids:id });
+    if(r && r.status === 'success'){ QB.feed = r; toast('আবার সারিতে দেওয়া হয়েছে — পরের দফায় চেষ্টা হবে'); qbDraw(); } else toast('হয়নি');
+  };
+
+  // ---- শিক্ষক: সিকিউরিটি লগ ----
+  window.renderSecReport = async function(){
+    trkInjectCss();
+    app.innerHTML = `${header('সিকিউরিটি লগ')}<div class="card center">লোড হচ্ছে...</div>`;
+    const r = await trkTeacherPost('secReport', {});
+    if(!r || r.status !== 'success'){
+      app.innerHTML = `${header('সিকিউরিটি লগ')}<div class="card center"><p class="hint" style="color:var(--red);">লোড করা যায়নি — নতুন Code.gs ডিপ্লয় করেছো তো?</p></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেল</a></div>`;
+      return;
+    }
+    window.__secData = r;
+    const bad = r.events.filter(e => e.event.indexOf('denied') === 0 || e.event.indexOf('teacher_') === 0).length;
+    const ua = ci => escapeHtml(String(ci || '').split('|').slice(0, 3).join(' · ').slice(0, 140));
+    const devs = r.devices.map(d => `<div class="trk-item" style="border-left-color:${d.bad ? '#D64545' : '#94A3B8'};">
+        <div class="trk-title" style="font-family:var(--font-mono,monospace);font-size:13px;">${escapeHtml(d.dev)} ${d.bad ? `<span class="trk-score trk-s-lo">⚠️ ${bnN(d.bad)}টা সন্দেহজনক</span>` : ''}</div>
+        <div class="trk-chips"><span>মোট ${bnN(d.n)}টা অনুরোধ</span><span>প্রথম: ${escapeHtml(d.first.replace('T', ' '))}</span><span>শেষ: ${escapeHtml(d.last.replace('T', ' '))}</span></div>
+        <div class="trk-q">${ua(d.ci)}</div>
+        ${d.slugs.length ? `<div class="trk-note">ছাত্র/আইডি: ${d.slugs.map(escapeHtml).join(', ')}</div>` : ''}
+        ${d.actions.length ? `<div class="trk-note">অ্যাকশন: ${d.actions.map(escapeHtml).join(', ')}</div>` : ''}</div>`).join('') || '<div class="empty-state">এখনো কিছু লগ হয়নি।</div>';
+    const evs = r.events.slice(0, 40).map(e => `<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px dashed rgba(128,128,128,.35);font-size:12.5px;">
+        <span><b>${escapeHtml(e.event)}</b> · ${escapeHtml(e.action)} ${e.slug ? '· ' + escapeHtml(e.slug) : ''}<br><span style="opacity:.75">${escapeHtml(e.detail)}</span></span>
+        <span style="opacity:.75;white-space:nowrap;">${escapeHtml(e.ts.replace('T', ' ').slice(5, 16))}</span></div>`).join('');
+    app.innerHTML = `${header('সিকিউরিটি লগ')}
+      <div class="card"><h2>🛡️ সিকিউরিটি লগ</h2>
+        <p class="hint">মোট লগ: <b>${bnN(r.total)}</b> · এখানে দেখাচ্ছে সাম্প্রতিক <b>${bnN(r.shown)}</b>টা · সন্দেহজনক ঘটনা: <b style="color:var(--red);">${bnN(bad)}</b></p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;"><button type="button" class="btn btn-primary" style="padding:8px 14px;" onclick="secCsv()">📄 প্রমাণ ডাউনলোড (CSV)</button><button type="button" class="btn btn-outline" style="padding:8px 14px;" onclick="renderSecReport()">🔄 রিফ্রেশ</button></div>
+        <div class="trk-note">⚠️ আসল IP এখানে নেই — Google Apps Script ক্লায়েন্টের IP দেয় না। ডিভাইস-আইডি, ব্রাউজারের তথ্য, সময় ও কী চেষ্টা হয়েছে — এগুলো রাখা হয়। IP দরকার হলে অ্যাপের সামনে Cloudflare বসাতে হবে। ডাউনলোড করা ফাইল বদলিও না — মূল শিট 'SecurityLog'-এর ভার্সন হিস্ট্রিও প্রমাণ।</div></div>
+      <div class="card"><h3>ডিভাইস অনুযায়ী (সন্দেহজনকরা ওপরে)</h3>${devs}</div>
+      <div class="card"><h3>সাম্প্রতিক ঘটনা</h3>${evs || '<div class="empty-state">কিছু নেই।</div>'}</div>
+      <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেলে ফিরে যাও</a></div>${creditFooter()}`;
+  };
+  window.secCsv = function(){
+    const r = window.__secData; if(!r) return;
+    const q = v => { v = String(v == null ? '' : v); if(/^[=+\-@\t\r]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
+    const rows = [['time', 'event', 'action', 'student', 'device_id', 'session_id', 'detail', 'client_info']].concat(r.events.map(e => [e.ts, e.event, e.action, e.slug, e.dev, e.sid, e.detail, e.ci]));
+    const csv = '\ufeff' + rows.map(x => x.map(q).join(',')).join('\r\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
+    a.download = 'security-log-' + todayStr() + '.csv'; document.body.appendChild(a); a.click(); a.remove();
   };
 
   // ---- শিক্ষক: Daily HW পেজের ওপরে "আজকের HW" প্যানেল (অ্যাসাইন করা + নিজের Daily HW একসাথে) ----
