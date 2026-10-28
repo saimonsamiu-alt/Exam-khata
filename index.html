@@ -18036,7 +18036,9 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
       const lr = await postToScriptRaw('pdfNoteBulkList', { tkey:TEACHER_PASSWORD });
       if(!lr || lr.status !== 'success'){ say('<p class="hint" style="color:var(--red);">তালিকা আনা যায়নি — Apps Script-এ নতুন version Deploy করা আছে তো?</p>'); return; }
       const todo = lr.notes.filter(n => !n.done);
-      if(!todo.length){ say('<p class="hint">✅ সব PDF-ই আগে হয়ে গেছে।</p>'); return; }
+      const info = `📚 মোট <b>${lr.notes.length}</b>টা PDF/স্লাইড নোট পাওয়া গেছে (আগে হয়ে গেছে ${lr.notes.length - todo.length}টা)` + (lr.otherLinks ? ` · আরও ${lr.otherLinks}টা নোট Drive-এর লিংক না, তাই বাদ` : '');
+      if(!todo.length){ say(`<p class="hint">${info}<br>✅ সবগুলোই আগে হয়ে গেছে।</p>`); return; }
+      say(`<p class="hint">${info}<br>এখন ${todo.length}টা করা হবে...</p>`);
       let lib; try{ lib = await qbPgLoadLib(); }catch(e){ say('<p class="hint" style="color:var(--red);">pdf.js লোড হয়নি — নেট দেখে আবার চেষ্টা করো।</p>'); return; }
       let okN = 0, pagesN = 0, dropN = 0;
       for(let i = 0; i < todo.length; i++){
@@ -18071,7 +18073,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
           if(qfail){ log.push(`⚠️ ${escapeHtml(n.title)} — পাতা আপলোড হয়েছে কিন্তু AI-র লাইনে দেওয়া যায়নি`); continue; }
           okN++; pagesN += pages.length;
         }catch(e){
-          log.push(`❌ ${escapeHtml(n.title)} — ${e && e.message === 'too_big' ? 'PDF অনেক বড় (২৫ MB-এর বেশি)' : 'পড়া যায়নি'}`);
+          log.push(`❌ ${escapeHtml(n.title)} — ${e && e.message === 'too_big' ? 'PDF অনেক বড় (২৫ MB-এর বেশি)' : (e && e.message === 'not_pdf' ? 'PDF/স্লাইড না, বা অ্যাক্সেস নেই' : 'পড়া যায়নি')}`);
         }
       }
       say(`<div style="color:var(--green);font-weight:700;">${window.__qbPgStop ? '⏹ থামানো হয়েছে' : '🏁 শেষ'} — ✅ ${okN}টা PDF, ${pagesN}টা পাতা AI-র লাইনে।</div>
