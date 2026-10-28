@@ -17899,6 +17899,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
   const QIMP = { 4:{ ic:'🔥', t:'সবচেয়ে গুরুত্বপূর্ণ', c:'#D64545' }, 3:{ ic:'⭐', t:'গুরুত্বপূর্ণ', c:'#C98A12' }, 2:{ ic:'▫️', t:'সাধারণ', c:'#7A8AA6' }, 1:{ ic:'🔹', t:'কম গুরুত্বপূর্ণ', c:'#8A97B0' } };
   const QL = ['ক', 'খ', 'গ', 'ঘ'];
   const qbSj = k => (typeof NOTES_SUBJECTS !== 'undefined' && NOTES_SUBJECTS[k]) ? NOTES_SUBJECTS[k].icon + ' ' + NOTES_SUBJECTS[k].label : (k || 'অন্যান্য');
+  const qbLim = () => (QB.tab === 'review' ? 15 : 100);   // রিভিউ কার্ডে বড় ছবি থাকে — অল্প অল্প করে দেখাই
   const qbReset = () => { QB.chapter = ''; QB.kind = ''; QB.imp = ''; QB.year = ''; QB.q = ''; };
   window.qbOpen = function(sj){ QB.subject = sj; QB.tab = 'mcq'; qbReset(); renderQBank(); };
   window.qbTab = function(t){ QB.tab = t; qbReset(); renderQBank(); };
@@ -17910,7 +17911,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
       app.innerHTML = `${header('প্রশ্নব্যাংক')}<div class="card center"><p class="hint" style="color:var(--red);">লোড করা যায়নি — নতুন Code.gs ডিপ্লয় করেছো তো?</p></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেল</a></div>`;
       return;
     }
-    QB.flagOpen = r.flagOpen || 0; QB.counts = r.counts || {}; QB.pend = r.pend || {}; QB.tabs = r.tabs || QB.tabs; QB.items = r.items || []; QB.total = r.total || 0; QB.sel = new Set(); QB.limit = 100;
+    QB.flagOpen = r.flagOpen || 0; QB.counts = r.counts || {}; QB.pend = r.pend || {}; QB.tabs = r.tabs || QB.tabs; QB.items = r.items || []; QB.total = r.total || 0; QB.sel = new Set(); QB.limit = qbLim();
     if(f && f.status === 'success') QB.feed = f;
     qbDraw();
   };
@@ -17926,6 +17927,71 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     if(!m) return `<small style="opacity:.7;">— গুরুত্ব ঠিক হয়নি</small>`;
     return `<span style="color:${m.c};font-weight:700;font-size:12px;">${m.ic} ${m.t}</span> <small style="opacity:.7;">(${x.impBy === 'teacher' ? 'শিক্ষক' : 'AI'})</small>`;
   }
+  // ---------------- [v23] রিভিউ কার্ড: পাতার ছবি + পুরো লেখা (সম্পাদনাযোগ্য) + বোর্ড + বিষয়/অধ্যায়/টপিক ----------------
+  const QB_SJ = ['physics', 'chemistry', 'mathematics', 'biology', 'ict'];
+  const qbG = k => document.getElementById(k);
+  function qbTaxRows(){ return (window.__revTax && window.__revTax.length) ? window.__revTax : (window.__SYL_FALLBACK_ROWS || []).map(a => ({ subject:a[0], chapter:a[1], topic:a[2], subtopic:a[3] })); }
+  function qbTaxLoad(){
+    if(window.__revTax && window.__revTax.length) return;
+    fetch(`${SCRIPT_URL}?action=revisionTaxonomy`).then(r => r.json()).then(r => { if(r && r.status === 'success' && Array.isArray(r.data) && r.data.length) window.__revTax = r.data; }).catch(() => {});
+  }
+  function qbOpts(list, cur){ const l = list.slice(); if(cur && l.indexOf(cur) === -1) l.unshift(cur); return l.map(v => `<option value="${escapeHtml(v)}" ${v === cur ? 'selected' : ''}>${escapeHtml(v)}</option>`).join(''); }
+  window.qbEdFill = function(id, lvl){   // ড্রপডাউনে ক্লিক করলে তবেই পুরো তালিকা ভরে (পাতা হালকা থাকে)
+    const sel = qbG((lvl === 'c' ? 'qeC_' : 'qeT_') + id); if(!sel || sel.dataset.f === '1') return;
+    const sj = qbG('qeS_' + id).value, rows = qbTaxRows().filter(r => r.subject === sj), cur = sel.value;
+    let list;
+    if(lvl === 'c') list = [...new Set(rows.map(r => r.chapter))];
+    else { const ch = qbG('qeC_' + id).value; list = [...new Set(rows.filter(r => r.chapter === ch).map(r => r.topic))]; }
+    sel.innerHTML = qbOpts(list, cur); sel.dataset.f = '1';
+  };
+  window.qbEdSj = function(id){ ['qeC_', 'qeT_'].forEach(k => { const e = qbG(k + id); e.innerHTML = ''; e.dataset.f = ''; }); qbEdFill(id, 'c'); qbEdFill(id, 't'); };
+  window.qbEdCh = function(id){ const t = qbG('qeT_' + id); t.innerHTML = ''; t.dataset.f = ''; qbEdFill(id, 't'); };
+  function qbEditCard(x){
+    const id = x.id, txt = x.text || '', rowsN = Math.min(16, Math.max(4, txt.split('\n').length + Math.ceil(txt.length / 50)));
+    const img = x.imgUrl ? `<a href="${driveImg(x.imgUrl)}" target="_blank" rel="noopener"><img loading="lazy" src="${driveImg(x.imgUrl)}" style="width:100%;max-height:460px;object-fit:contain;border-radius:8px;background:rgba(128,128,128,.08);margin:6px 0;"></a>` : '';
+    const sjOpts = QB_SJ.map(k => `<option value="${k}" ${k === x.subject ? 'selected' : ''}>${escapeHtml(qbSj(k))}</option>`).join('');
+    const body = x.kind === 'mcq'
+      ? `${[0, 1, 2, 3].map(j => `<div style="display:flex;gap:6px;align-items:center;margin:3px 0;"><b>${QL[j]})</b><input type="text" id="qeO_${id}_${j}" value="${escapeHtml((x.opts || [])[j] || '')}" style="margin:0;"></div>`).join('')}<label class="field-label">সঠিক উত্তর</label><select id="qeK_${id}">${QL.map((l, j) => `<option value="${j}" ${j === x.correct ? 'selected' : ''}>${l}</option>`).join('')}</select>`
+      : `<label class="field-label">মডেল উত্তর (ঐচ্ছিক)</label><textarea id="qeM_${id}" style="min-height:60px;font-size:14px;">${escapeHtml(x.model || '')}</textarea>`;
+    return `<div style="display:flex;gap:8px;align-items:flex-start;margin:14px 0;padding:12px;border:1px solid rgba(128,128,128,.3);border-radius:12px;" id="qeC${id}">
+      <input type="checkbox" style="width:auto;margin-top:4px;" ${QB.sel.has(id) ? 'checked' : ''} onchange="qbTog('${id}', this.checked)">
+      <div style="flex:1;min-width:0;"><div style="margin-bottom:4px;"><span class="q-tag">${x.kind.toUpperCase()}</span> ${qbBadge(x)}${x.years.map(y => ` <span class="trk-chip">📅 ${escapeHtml(y)}</span>`).join('')}${x.flags ? ` <span class="trk-chip" style="color:#C98A12;">⚠️ মার্ক ${bnN(x.flags)}</span>` : ''}</div>
+        ${img}
+        <label class="field-label">✍️ প্রশ্নের লেখা (ছবি দেখে ঠিক করো)</label>
+        <textarea id="qeX_${id}" style="min-height:${rowsN * 22}px;font-size:14px;font-family:inherit;">${escapeHtml(txt)}</textarea>
+        <input type="text" id="qeB_${id}" value="${escapeHtml(x.board || '')}" placeholder="বোর্ড/সাল ট্যাগ (যেমন: ম. বো. '২০)" style="margin-top:6px;">
+        ${body}
+        <div style="background:rgba(128,128,128,.1);border-radius:10px;padding:8px;margin-top:8px;"><div class="meta" style="margin-bottom:4px;">🏷️ ট্যাগ — মাস্টার তালিকা থেকে</div>
+          <select id="qeS_${id}" onchange="qbEdSj('${id}')">${sjOpts}</select>
+          <select id="qeC_${id}" onfocus="qbEdFill('${id}','c')" onchange="qbEdCh('${id}')" style="margin-top:6px;">${qbOpts([], x.chapter || '')}</select>
+          <select id="qeT_${id}" onfocus="qbEdFill('${id}','t')" style="margin-top:6px;">${qbOpts([], x.topic || '')}</select></div>
+        ${x.imgUrl ? `<label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-top:6px;"><input type="checkbox" id="qeD_${id}" style="width:auto;"> ছবিটা সরিয়ে দাও (শুধু লেখা থাকবে)</label>` : ''}
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          <button type="button" class="btn btn-primary" style="padding:6px 12px;font-size:13px;" onclick="qbEdApprove('${id}')">✅ সেভ ও অনুমোদন</button>
+          <button type="button" class="btn btn-outline" style="padding:6px 12px;font-size:13px;" onclick="qbEdSaveBtn('${id}')">💾 শুধু সেভ</button>
+          <button type="button" class="btn btn-outline" style="padding:6px 12px;font-size:13px;" onclick="qbOne('${id}','remove')">🗑️ মুছো</button>
+          <span id="qeSt_${id}" class="meta"></span></div>
+      </div></div>`;
+  }
+  async function qbEdSave(id){
+    const x = QB.items.find(z => z.id === id); if(!x) return false;
+    const body = { id, text:qbG('qeX_' + id).value, board:qbG('qeB_' + id).value, subject:qbG('qeS_' + id).value, chapter:qbG('qeC_' + id).value, topic:qbG('qeT_' + id).value };
+    if(!body.chapter || !body.topic){ toast('অধ্যায় ও টপিক বাছো'); return false; }
+    if(x.kind === 'mcq'){ body.options = JSON.stringify([0, 1, 2, 3].map(j => qbG('qeO_' + id + '_' + j).value)); body.correct = qbG('qeK_' + id).value; }
+    else body.model = qbG('qeM_' + id).value;
+    if((qbG('qeD_' + id) || {}).checked) body.dropImage = '1';
+    const r = await trkTeacherPost('qbEdit', body);
+    if(r && r.status === 'success'){
+      x.text = body.text; x.board = body.board; x.subject = body.subject; x.chapter = body.chapter; x.topic = body.topic;
+      if(x.kind === 'mcq'){ x.opts = JSON.parse(body.options); x.correct = Number(body.correct); } else x.model = body.model;
+      if(body.dropImage){ x.imgUrl = ''; x.hasImage = false; }
+      return true;
+    }
+    toast(r && r.message === 'invalid_input' ? 'লেখা/অপশন/উত্তর ঠিকমতো দাও' : 'সেভ হয়নি — নতুন Code.gs ডিপ্লয় করেছো তো?');
+    return false;
+  }
+  window.qbEdSaveBtn = async function(id){ const st = qbG('qeSt_' + id); if(st) st.textContent = 'সেভ হচ্ছে...'; const ok = await qbEdSave(id); if(st) st.textContent = ok ? '✔️ সেভ হয়েছে' : ''; };
+  window.qbEdApprove = async function(id){ toast('হচ্ছে...'); if(await qbEdSave(id)) qbOne(id, 'approve'); };
   // ---------------- [v7] সব পুরনো PDF → পাতা-ছবি সহ প্রশ্ন (ব্রাউজারে পাতা ভেঙে, AI ব্যাকগ্রাউন্ডে) ----------------
   function qbPgCard(){
     return `<div class="card"><h3>📸 সব PDF থেকে পাতা-ছবি সহ প্রশ্ন</h3>
@@ -18039,14 +18105,14 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
         <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেলে ফিরে যাও</a></div>${creditFooter()}`;
       return;
     }
-    const isRev = QB.tab === 'review';
+    const isRev = QB.tab === 'review'; if(isRev) qbTaxLoad();
     const chm = {}; QB.items.forEach(x => { if(isRev || QB.hw || !x.hw){ const c = x.chapter || '__none'; chm[c] = (chm[c] || 0) + 1; } });
     QB.chs = Object.keys(chm).sort();
     const years = {}; QB.items.forEach(x => x.years.forEach(y => { years[y] = (years[y] || 0) + 1; }));
     const yl = Object.keys(years).sort().reverse(), list = qbFiltered(), dist = { 4:0, 3:0, 2:0, 1:0, 0:0 }; QB.items.forEach(x => { dist[x.imp || 0]++; });
     const tabBtn = (t, label, n) => `<button type="button" class="btn ${QB.tab === t ? 'btn-primary' : 'btn-outline'}" style="flex:1;min-width:90px;padding:9px 6px;font-size:13.5px;" onclick="qbTab('${t}')">${label} (${bnN(n)})</button>`;
     const chips = `<button class="info-btn" style="${!QB.chapter ? 'font-weight:800;border-color:#2E9E5B;' : ''}" onclick="qbCh(-1)">📂 সব (${bnN(QB.items.filter(x => isRev || QB.hw || !x.hw).length)})</button>` + QB.chs.map((c, i) => `<button class="info-btn" style="${QB.chapter === c ? 'font-weight:800;border-color:#2E9E5B;' : ''}" onclick="qbCh(${i})">📂 ${escapeHtml(c === '__none' ? 'অধ্যায় ঠিক হয়নি' : c)} (${bnN(chm[c])})</button>`).join('');
-    const rows = list.slice(0, QB.limit).map(x => `<div style="display:flex;gap:8px;align-items:flex-start;margin:10px 0;padding-bottom:8px;border-bottom:1px dashed rgba(128,128,128,.3);font-size:13.5px;">
+    const rows = list.slice(0, QB.limit).map(x => isRev ? qbEditCard(x) : `<div style="display:flex;gap:8px;align-items:flex-start;margin:10px 0;padding-bottom:8px;border-bottom:1px dashed rgba(128,128,128,.3);font-size:13.5px;">
         <input type="checkbox" style="width:auto;margin-top:4px;" ${QB.sel.has(x.id) ? 'checked' : ''} onchange="qbTog('${x.id}', this.checked)">
         <div style="flex:1;min-width:0;"><span class="q-tag">${x.kind.toUpperCase()}</span> ${qbBadge(x)}${x.hw ? ' <span class="trk-chip">📌 HW</span>' : ''}${x.board ? ` <span class="trk-chip">🏷️ ${escapeHtml(x.board)}</span>` : ''}${x.years.map(y => ` <span class="trk-chip">📅 ${escapeHtml(y)}</span>`).join('')}<br>
         <span class="meta">${escapeHtml(x.chapter || '—')} › ${escapeHtml(x.topic)}</span><br>${x.flags ? `<span class="trk-chip" style="color:#C98A12;">⚠️ মার্ক ${bnN(x.flags)}</span> ` : ''}${x.imgUrl ? `<a href="${driveImg(x.imgUrl)}" target="_blank" rel="noopener" style="text-decoration:none;">🖼️</a> ` : (x.hasImage ? '🖼️ ' : '')}${escapeHtml(x.text) || '(ছবিসহ প্রশ্ন)'} <a class="link-back" style="font-size:12px;" onclick="qbMark('${x.id}')">⚠️ মিলছে না — মার্ক</a>
@@ -18146,11 +18212,11 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
   };
   window.qfOk = function(i){ toast('হচ্ছে...'); qfCall(i, { op:'dismiss' }, '✅ ঠিকই আছে — মার্ক সরানো হয়েছে'); };
   window.qfDel = function(i){ if(!confirm('এই প্রশ্নটা প্রশ্নব্যাংক থেকে মুছে ফেলবে? এটা ফেরানো যাবে না।')) return; toast('হচ্ছে...'); qfCall(i, { op:'remove' }, '🗑️ মুছে ফেলা হয়েছে'); };
-  window.qbCh = function(i){ QB.chapter = i < 0 ? '' : QB.chs[i]; QB.limit = 100; qbDraw(); };
-  window.qbF = function(k, v){ QB[k] = v; QB.limit = 100; qbDraw(); };
+  window.qbCh = function(i){ QB.chapter = i < 0 ? '' : QB.chs[i]; QB.limit = qbLim(); qbDraw(); };
+  window.qbF = function(k, v){ QB[k] = v; QB.limit = qbLim(); qbDraw(); };
   window.qbTog = function(id, on){ if(on) QB.sel.add(id); else QB.sel.delete(id); qbDraw(); };
   window.qbAll = function(on){ if(!on){ QB.sel = new Set(); } else qbFiltered().forEach(x => QB.sel.add(x.id)); qbDraw(); };
-  window.qbMore = function(){ QB.limit += 100; qbDraw(); };
+  window.qbMore = function(){ QB.limit += qbLim(); qbDraw(); };
   function qbDrop(ids, op){   // স্ক্রল না হারিয়ে স্থানীয়ভাবে সরিয়ে ফেলি
     const set = new Set(ids), gone = QB.items.filter(x => set.has(x.id));
     QB.items = QB.items.filter(x => !set.has(x.id)); QB.total = Math.max(0, QB.total - gone.length);
