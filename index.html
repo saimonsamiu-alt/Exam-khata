@@ -17909,13 +17909,103 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     if(!m) return `<small style="opacity:.7;">— গুরুত্ব ঠিক হয়নি</small>`;
     return `<span style="color:${m.c};font-weight:700;font-size:12px;">${m.ic} ${m.t}</span> <small style="opacity:.7;">(${x.impBy === 'teacher' ? 'শিক্ষক' : 'AI'})</small>`;
   }
+  // ---------------- [v7] সব পুরনো PDF → পাতা-ছবি সহ প্রশ্ন (ব্রাউজারে পাতা ভেঙে, AI ব্যাকগ্রাউন্ডে) ----------------
+  function qbPgCard(){
+    return `<div class="card"><h3>📸 সব PDF থেকে পাতা-ছবি সহ প্রশ্ন</h3>
+      <p class="hint">অ্যাপের সব PDF নোটের প্রতিটা পাতা ছবি হয়ে আপলোড হবে, তারপর AI ব্যাকগ্রাউন্ডে প্রতিটা পাতা পড়ে প্রশ্ন লিখবে ও ট্যাগ বসাবে — প্রশ্নের সাথে পাতার ছবিও থাকবে। যে PDF আগে একবার হয়ে গেছে সেটা বাদ যায়। ছবি বানানোর সময় (এই ধাপে) পেজ খোলা রাখতে হবে; লাইনে দেওয়া শেষ হলে পেজ বন্ধ করলেও AI-র কাজ চলবে।</p>
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:8px 0;"><input type="checkbox" id="qbPgHold" checked> ⏳ আমি দেখে অনুমোদন দেওয়ার আগে ছাত্রকে দেখিও না ("রিভিউ বাকি"-তে থাকবে)</label>
+      <div class="row"><button class="btn btn-primary" id="qbPgBtn" onclick="qbPgAll()">📸 সব PDF শুরু করো</button><button class="btn btn-outline" id="qbPgStop" onclick="window.__qbPgStop=true" style="display:none;">⏹ থামাও</button></div>
+      <div id="qbPgBox" style="margin-top:8px;"></div></div>`;
+  }
+  function qbPgLoadLib(){
+    if(window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if(window.__qbPgLib) return window.__qbPgLib;
+    window.__qbPgLib = new Promise((res, rej) => {
+      const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      sc.onload = () => { try{ window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; res(window.pdfjsLib); }catch(e){ rej(e); } };
+      sc.onerror = () => { window.__qbPgLib = null; rej(new Error('pdfjs')); };
+      document.head.appendChild(sc);
+    });
+    return window.__qbPgLib;
+  }
+  async function qbPgFetchPdf(id){
+    const chunks = []; let parts = 1;
+    for(let k = 0; k < parts; k++){
+      let r = null;
+      for(let t = 0; t < 3 && !(r && r.status === 'success'); t++){ try{ r = await postToScriptRaw('pdfNoteFile', { tkey:TEACHER_PASSWORD, id, part:k }); }catch(e){ r = null; } }
+      if(!r || r.status !== 'success') throw new Error((r && r.message) || 'fetch');
+      parts = r.parts || 1;
+      const bin = atob(r.b64), u8 = new Uint8Array(bin.length); for(let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      chunks.push(u8);
+    }
+    const all = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0)); let o = 0; chunks.forEach(c => { all.set(c, o); o += c.length; });
+    return all;
+  }
+  window.qbPgAll = async function(){
+    if(window.__qbPgBusy) return;
+    const box = document.getElementById('qbPgBox'), btn = document.getElementById('qbPgBtn'), stopB = document.getElementById('qbPgStop');
+    const hold = !!(document.getElementById('qbPgHold') || {}).checked;
+    const say = h => { if(box) box.innerHTML = h; };
+    window.__qbPgBusy = true; window.__qbPgStop = false; if(btn) btn.disabled = true; if(stopB) stopB.style.display = '';
+    const log = [];
+    try{
+      say('<p class="hint">PDF-এর তালিকা আনা হচ্ছে...</p>');
+      const lr = await postToScriptRaw('pdfNoteBulkList', { tkey:TEACHER_PASSWORD });
+      if(!lr || lr.status !== 'success'){ say('<p class="hint" style="color:var(--red);">তালিকা আনা যায়নি — Apps Script-এ নতুন version Deploy করা আছে তো?</p>'); return; }
+      const todo = lr.notes.filter(n => !n.done);
+      if(!todo.length){ say('<p class="hint">✅ সব PDF-ই আগে হয়ে গেছে।</p>'); return; }
+      let lib; try{ lib = await qbPgLoadLib(); }catch(e){ say('<p class="hint" style="color:var(--red);">pdf.js লোড হয়নি — নেট দেখে আবার চেষ্টা করো।</p>'); return; }
+      let okN = 0, pagesN = 0, dropN = 0;
+      for(let i = 0; i < todo.length; i++){
+        if(window.__qbPgStop) break;
+        const n = todo[i], head = `📄 ${i + 1}/${todo.length}: <b>${escapeHtml(n.title || 'নোট')}</b>`;
+        const prog = t => say(`<div class="hint">${head}<br>${t}<br><span style="color:var(--muted)">এ পর্যন্ত ✅ ${okN}টা PDF · ${pagesN}টা পাতা লাইনে</span></div>${log.map(x => `<div class="hint" style="color:#9B6A15;">${x}</div>`).join('')}`);
+        try{
+          prog('PDF আনা হচ্ছে...');
+          const bytes = await qbPgFetchPdf(n.id);
+          const doc = await lib.getDocument({ data:bytes }).promise, total = Math.min(doc.numPages, 200), tag = n.id.slice(-8), base = (n.title || 'note').replace(/[|]/g, ' ').slice(0, 40);
+          const pages = []; let bad = 0;
+          for(let p = 1; p <= total; p++){
+            if(window.__qbPgStop){ break; }
+            prog(`পাতা ${p}/${total} ছবি হচ্ছে ও আপলোড হচ্ছে — পেজ বন্ধ কোরো না`);
+            const pg = await doc.getPage(p), vp = pg.getViewport({ scale:1.7 }), cv = document.createElement('canvas');
+            cv.width = vp.width; cv.height = vp.height; await pg.render({ canvasContext:cv.getContext('2d'), viewport:vp }).promise;
+            const blob = await new Promise(rs => cv.toBlob(rs, 'image/jpeg', 0.85)), nm = tag + '|' + base + '_p' + String(p).padStart(3, '0') + '.jpg';
+            let r = null;
+            for(let t = 0; t < 3 && !(r && r.status === 'success'); t++){ try{ const cm = await compressImageFile(new File([blob], nm, { type:'image/jpeg' }), 1400, 0.82); r = await postToScriptRaw('bulkUploadImage', { base64:cm.base64, mimeType:cm.mimeType }); }catch(e){ r = null; } }
+            if(r && r.status === 'success') pages.push({ url:r.imageUrl, name:nm }); else bad++;
+            cv.width = cv.height = 0;
+          }
+          try{ doc.destroy(); }catch(e){}
+          if(window.__qbPgStop) break;   // অর্ধেক হওয়া PDF লাইনে দিই না — পরের বার আবার প্রথম থেকে
+          if(bad || !pages.length){ log.push(`❌ ${escapeHtml(n.title)} — ${bad}টা পাতা আপলোড হয়নি, লাইনে দিইনি (আবার চালালে এটা আবার হবে)`); continue; }
+          let qfail = false;
+          for(let c = 0; c < pages.length; c += 80){
+            const q = await postToScriptRaw('pdfNotePagesQueue', { tkey:TEACHER_PASSWORD, id:n.id, pages:JSON.stringify(pages.slice(c, c + 80)), kind:'cq', hold:hold ? '1' : '', first:c === 0 ? '1' : '' });
+            if(!q || q.status !== 'success'){ qfail = true; break; }
+            dropN += q.dropped || 0;
+          }
+          if(qfail){ log.push(`⚠️ ${escapeHtml(n.title)} — পাতা আপলোড হয়েছে কিন্তু AI-র লাইনে দেওয়া যায়নি`); continue; }
+          okN++; pagesN += pages.length;
+        }catch(e){
+          log.push(`❌ ${escapeHtml(n.title)} — ${e && e.message === 'too_big' ? 'PDF অনেক বড় (২৫ MB-এর বেশি)' : 'পড়া যায়নি'}`);
+        }
+      }
+      say(`<div style="color:var(--green);font-weight:700;">${window.__qbPgStop ? '⏹ থামানো হয়েছে' : '🏁 শেষ'} — ✅ ${okN}টা PDF, ${pagesN}টা পাতা AI-র লাইনে।</div>
+        <p class="hint">🧠 AI ব্যাকগ্রাউন্ডে একটা একটা করে পাতা পড়ছে — পেজ বন্ধ করলেও চলবে। কিছুক্ষণ পর এই পাতা রিলোড করে "রিভিউ বাকি" ট্যাবে নতুন প্রশ্নগুলো দেখো।${dropN ? ` আগের ছবি-ছাড়া ${dropN}টা অপেক্ষমাণ প্রশ্ন সরিয়েছি (ডুপ্লিকেট এড়াতে)।` : ''}</p>${log.map(x => `<div class="hint" style="color:#9B6A15;">${x}</div>`).join('')}`);
+    }catch(e){
+      say(`<p class="hint" style="color:var(--red);">কিছু একটা হয়নি: ${escapeHtml(String(e && e.message || e))}</p>`);
+    }finally{
+      window.__qbPgBusy = false; if(btn) btn.disabled = false; if(stopB) stopB.style.display = 'none';
+    }
+  };
   function qbFeedCard(){
     const f = QB.feed;
     if(!f) return `<div class="card"><h3>🤖 AI অটো-সাজানো</h3><p class="hint">স্ট্যাটাস লোড করা যায়নি — নতুন Code.gs ডিপ্লয় করেছো তো?</p></div>`;
     const prog = f.total ? Math.round(f.done * 100 / f.total) : 0;
     const probs = (f.files || []).map(x => `<div style="padding:8px 0;border-bottom:1px dashed rgba(128,128,128,.35);font-size:13px;"><b>${x.status === 'error' ? '❌' : (x.status === 'partial' ? '⚠️' : '📄')} ${escapeHtml(x.title || x.id)}</b> <span class="meta">· ${escapeHtml(qbSj(x.subject))} › ${escapeHtml(x.chapter)}</span><br><span style="opacity:.85;">${escapeHtml(x.message)}</span>${x.status === 'error' ? ` <a class="link-back" onclick="qbRetry('${escapeHtml(x.id)}')">🔁 আবার চেষ্টা</a>` : ''}</div>`).join('');
     return `<div class="card"><h3>🤖 AI অটো-সাজানো (ব্যাকগ্রাউন্ড)</h3>
-      <p class="hint">অ্যাপে থাকা সব PDF ও স্লাইড (অধ্যায় ট্যাগ হয়েছে এমন) থেকে AI ধীরে ধীরে প্রশ্ন আলাদা করে এখানে <b>"⏳ রিভিউ বাকি"</b> ট্যাবে রাখে। তুমি অনুমোদন না দেওয়া পর্যন্ত ছাত্ররা এগুলো দেখে না। পেজ বন্ধ থাকলেও চলে।</p>
+      <p class="hint">অ্যাপে থাকা সব PDF ও স্লাইড (ট্যাগ থাকুক বা না থাকুক) থেকে AI ধীরে ধীরে প্রশ্ন আলাদা করে এখানে <b>"⏳ রিভিউ বাকি"</b> ট্যাবে রাখে। তুমি অনুমোদন না দেওয়া পর্যন্ত ছাত্ররা এগুলো দেখে না। পেজ বন্ধ থাকলেও চলে।</p>
       <div style="height:6px;background:rgba(128,128,128,.25);border-radius:4px;overflow:hidden;margin:6px 0;"><div style="height:100%;width:${prog}%;background:#2E9E5B;"></div></div>
       <p class="hint">${f.on ? '🟢 চালু' : '⚪ বন্ধ'} · মোট ফাইল <b>${bnN(f.total)}</b> · AI পড়েছে <b>${bnN(f.done)}</b> · বাকি <b>${bnN(f.left + f.queued)}</b> · রিভিউ বাকি প্রশ্ন <b>${bnN(f.pending)}</b></p>
       <button type="button" class="btn ${f.on ? 'btn-outline' : 'btn-primary'}" style="padding:8px 16px;" onclick="qbFeedToggle(${f.on ? 'false' : 'true'})">${f.on ? '⏸ বন্ধ করো' : '▶️ AI-কে কাজ শুরু করতে দাও'}</button>
@@ -17927,7 +18017,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
       const sjs = [...new Set(Object.keys(QB.counts).concat(Object.keys(QB.pend)))].sort((a, b) => ((QB.counts[b] || 0) + (QB.pend[b] || 0)) - ((QB.counts[a] || 0) + (QB.pend[a] || 0))), tot = sjs.reduce((a, k) => a + (QB.counts[k] || 0), 0);
       app.innerHTML = `${header('প্রশ্নব্যাংক')}
         <div class="card"><h2>🗃️ প্রশ্নব্যাংক</h2><p class="hint">অ্যাপে অনুমোদিত মোট <b>${bnN(tot)}</b>টা প্রশ্ন। বিষয়ে ঢুকলে <b>MCQ</b> আর <b>CQ</b> আলাদা ট্যাবে, অধ্যায়, সাল ও গুরুত্ব অনুযায়ী দেখতে, যোগ করতে বা মুছতে পারবে।</p></div>
-        ${qbFeedCard()}${qbFlagCard()}
+        ${qbFeedCard()}${qbPgCard()}${qbFlagCard()}
         <div class="card"><h3>📁 বিষয় অনুযায়ী</h3>${sjs.map(sj => `<button class="btn btn-outline btn-block" style="margin:6px 0;display:flex;justify-content:space-between;gap:8px;" onclick="qbOpen('${escapeHtml(sj)}')"><span>${qbSj(sj)}</span><span><b>${bnN(QB.counts[sj] || 0)}</b>${QB.pend[sj] ? ` <span style="color:#C98A12;font-size:12px;">· ⏳ ${bnN(QB.pend[sj])} রিভিউ বাকি</span>` : ''}</span></button>`).join('') || '<div class="empty-state">এখনো কোনো প্রশ্ন নেই।</div>'}</div>
         <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেলে ফিরে যাও</a></div>${creditFooter()}`;
       return;
