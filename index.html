@@ -3335,9 +3335,8 @@ const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzop85YoNAYzEmfL92k0
         if(method === 'POST' && init && typeof init.body === 'string' && init.body.charAt(0) === '{'){
           const inner = init.body.slice(1), fields = '"dev":' + JSON.stringify(dev) + ',"sid":' + JSON.stringify(sid) + ',"ci":' + JSON.stringify(ci);
           init = Object.assign({}, init, { body: '{' + fields + (inner.trim() === '}' ? '}' : ',' + inner) });
-        } else if(method === 'GET' && isStr){
-          input = url + (url.indexOf('?') === -1 ? '?' : '&') + 'dev=' + encodeURIComponent(dev) + '&sid=' + encodeURIComponent(sid);
         }
+        // GET-e dev/sid jure dile Google "Sorry, unable to open the file" dey; backend-e GET-er jonno dorkar-o nei.
       }
     }catch(e){}
     return f0.call(this, input, init);
