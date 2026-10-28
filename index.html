@@ -12947,8 +12947,17 @@ window.doSmartSearch = async function(){
   const subjOpts = (sel) => SK().map(k => `<option value="${k}" ${sel === k ? 'selected' : ''}>${NOTES_SUBJECTS[k].icon} ${NOTES_SUBJECTS[k].label}</option>`).join('');
   const uniq = a => [...new Set(a)];
   async function loadTax(force){
-    if(window.__revTax && !force) return window.__revTax;
-    const r = await getJson('revisionTaxonomy', {});
+    if(window.__revTax && window.__revTax.length && !force) return window.__revTax;
+    // [v18] ক্যাশ এড়িয়ে (service worker/ব্রাউজার) সরাসরি আনে, ব্যর্থ হলে আরও একবার চেষ্টা করে, কারণ মনে রাখে
+    let r = null, err = '';
+    for(let i = 0; i < 2 && !(r && r.status === 'success'); i++){
+      try{
+        const x = await fetch(`${SCRIPT_URL}?action=revisionTaxonomy&_t=${Date.now()}`, { cache:'no-store' });
+        const t = await x.text();
+        try{ r = JSON.parse(t); }catch(e){ err = 'উত্তর JSON নয়: ' + t.slice(0, 80).replace(/\s+/g, ' '); }
+      }catch(e){ err = 'নেটওয়ার্ক: ' + e.message; }
+    }
+    window.__revTaxErr = (r && r.status === 'success') ? '' : (err || (r && r.message) || 'অজানা');
     window.__revTax = (r && r.status === 'success') ? r.data : [];
     return window.__revTax;
   }
@@ -13204,7 +13213,7 @@ window.doSmartSearch = async function(){
     app.innerHTML = `${header('রিভিশন আপলোড')}
       <div class="card"><h2>📥 রিভিশন ম্যাটেরিয়াল — অধ্যায় বেছে আপলোড</h2>
         <p class="hint">আগে অধ্যায় বাছো, তারপর PDF / প্রশ্ন / HTML কোড — যেটা খুশি দাও। ওই অধ্যায়ের রিভিশনে এগুলো অগ্রাধিকার পাবে (ডিফল্ট ৮৫% সময়; একাধিক অধ্যায় দিলে সমান ভাগ — অধ্যায় অনুযায়ী % বদলাতে "রিভিশনে শিক্ষকের অংশ" থেকে)।</p>
-        ${tax.length ? '' : `<p class="hint" style="color:var(--red);">অধ্যায়ের তালিকা পাওয়া যায়নি। পদার্থ/রসায়নের জন্য Apps Script প্রজেক্টে <b>SYLLABUS.gs</b> আলাদা ফাইল হিসেবে যোগ করে <b>নতুন ভার্সনে Deploy</b> করো। অন্য বিষয়ের জন্য "বই TOC" থেকে সূচিপত্র ইম্পোর্ট করো।</p>`}
+        ${tax.length ? '' : `<p class="hint" style="color:var(--red);">অধ্যায়ের তালিকা পাওয়া যায়নি। পদার্থ/রসায়নের জন্য Apps Script প্রজেক্টে <b>SYLLABUS.gs</b> আলাদা ফাইল হিসেবে যোগ করে <b>নতুন ভার্সনে Deploy</b> করো। অন্য বিষয়ের জন্য "বই TOC" থেকে সূচিপত্র ইম্পোর্ট করো।${window.__revTaxErr ? `<br><small>(কারণ: ${escapeHtml(window.__revTaxErr)})</small>` : ''}</p>`}
         <label class="field-label">বিষয়</label><select id="ruSubj" onchange="ruFill('subj')">${subjOpts(U.subj || 'physics')}</select>
         <label class="field-label">অধ্যায়</label><select id="ruChap" onchange="ruFill('chap')"></select>
         <div style="margin:-4px 0 6px;"><a class="link-back" style="color:var(--red);" onclick="ruDelChap()">🗑️ এই অধ্যায়টা তালিকা থেকে মোছো</a></div>
