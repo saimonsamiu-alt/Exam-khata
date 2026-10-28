@@ -116,9 +116,13 @@
     padding:9px 16px; font-family:var(--font-body); font-weight:600; font-size:13px;
     cursor:pointer; box-shadow:0 4px 14px -4px rgba(191,58,44,0.55);
   }
-  /* [v7] শিক্ষকের জন্য সবসময়-থাকা "ড্যাশবোর্ডে ফিরে যাও" বাটন */
-  #homeFab{ position:fixed; top:14px; left:14px; z-index:60; display:none; background:var(--ink); color:#fff; border:none; border-radius:20px;
-    padding:9px 16px; font-family:var(--font-body); font-weight:600; font-size:13px; box-shadow:0 6px 18px -6px rgba(0,0,0,0.45); cursor:pointer; }
+  /* [NEW] শিক্ষকের জন্য সবসময়-থাকা "ড্যাশবোর্ডে ফিরে যাও" বাটন (রিলোড দিলেও থাকে) */
+  #homeFab{
+    position:fixed; top:14px; left:14px; z-index:60; display:none;
+    background:var(--ink); color:#fff; border:none; border-radius:20px;
+    padding:9px 16px; font-family:var(--font-body); font-weight:600; font-size:13px;
+    box-shadow:0 6px 18px -6px rgba(0,0,0,0.45); cursor:pointer;
+  }
   #homeFab:active{ transform:translateY(1px); }
   @media (max-width:480px){ #homeFab{ top:auto; bottom:78px; left:12px; padding:8px 14px; font-size:12.5px; } }
   #logoutFab:active{ transform:translateY(1px); }
@@ -9370,10 +9374,13 @@ document.addEventListener('visibilitychange', function(){
   }
 });
 
+// [NEW] শিক্ষকের "ড্যাশবোর্ডে ফিরে যাও" — header-এ চিপ + ভাসমান বাটন; যেকোনো পাতায়, রিলোডের পরেও থাকে
 function teachChip_(){
   const t = (typeof currentTeacher !== 'undefined' && currentTeacher) || getLoggedTeacher();
   if(!t) return '';
-  return `<div style="display:flex; align-items:center; gap:6px; margin-top:4px; flex-wrap:wrap;"><button class="info-btn" onclick="goTeacherHome()" style="padding:2px 8px; font-size:11.5px;">🏠 ড্যাশবোর্ড</button></div>`;
+  return `<div style="display:flex; align-items:center; gap:6px; margin-top:4px; flex-wrap:wrap;">
+      <button class="info-btn" onclick="goTeacherHome()" style="padding:2px 8px; font-size:11.5px;">🏠 ড্যাশবোর্ড</button>
+    </div>`;
 }
 window.goTeacherHome = function(){ go('teacherDashboard'); };
 function syncHomeFab(){
@@ -9383,10 +9390,12 @@ function syncHomeFab(){
   fab.style.display = (t && scr !== 'teacherDashboard' && scr !== 'landing') ? 'block' : 'none';
 }
 (function(){
+  // পাতা বদলালেই (যেভাবেই render হোক) বাটনের অবস্থা ঠিক করে
   const a = document.getElementById('app');
   if(a && window.MutationObserver) new MutationObserver(syncHomeFab).observe(a, { childList:true });
   syncHomeFab();
 })();
+
 function syncLogoutFab(){
   const fab = document.getElementById('logoutFab');
   if(fab) fab.style.display = currentTeacher ? 'block' : 'none';
@@ -13195,7 +13204,7 @@ window.doSmartSearch = async function(){
     app.innerHTML = `${header('রিভিশন আপলোড')}
       <div class="card"><h2>📥 রিভিশন ম্যাটেরিয়াল — অধ্যায় বেছে আপলোড</h2>
         <p class="hint">আগে অধ্যায় বাছো, তারপর PDF / প্রশ্ন / HTML কোড — যেটা খুশি দাও। ওই অধ্যায়ের রিভিশনে এগুলো অগ্রাধিকার পাবে (ডিফল্ট ৮৫% সময়; একাধিক অধ্যায় দিলে সমান ভাগ — অধ্যায় অনুযায়ী % বদলাতে "রিভিশনে শিক্ষকের অংশ" থেকে)।</p>
-        ${tax.length ? '' : `<p class="hint" style="color:var(--red);">আগে "বই TOC" থেকে সূচিপত্র ইম্পোর্ট করো — তাহলে অধ্যায়/টপিক বাছতে পারবে।</p>`}
+        ${tax.length ? '' : `<p class="hint" style="color:var(--red);">অধ্যায়ের তালিকা পাওয়া যায়নি। পদার্থ/রসায়নের জন্য Apps Script প্রজেক্টে <b>SYLLABUS.gs</b> আলাদা ফাইল হিসেবে যোগ করে <b>নতুন ভার্সনে Deploy</b> করো। অন্য বিষয়ের জন্য "বই TOC" থেকে সূচিপত্র ইম্পোর্ট করো।</p>`}
         <label class="field-label">বিষয়</label><select id="ruSubj" onchange="ruFill('subj')">${subjOpts(U.subj || 'physics')}</select>
         <label class="field-label">অধ্যায়</label><select id="ruChap" onchange="ruFill('chap')"></select>
         <div style="margin:-4px 0 6px;"><a class="link-back" style="color:var(--red);" onclick="ruDelChap()">🗑️ এই অধ্যায়টা তালিকা থেকে মোছো</a></div>
@@ -17887,7 +17896,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     const prog = f.total ? Math.round(f.done * 100 / f.total) : 0;
     const probs = (f.files || []).map(x => `<div style="padding:8px 0;border-bottom:1px dashed rgba(128,128,128,.35);font-size:13px;"><b>${x.status === 'error' ? '❌' : (x.status === 'partial' ? '⚠️' : '📄')} ${escapeHtml(x.title || x.id)}</b> <span class="meta">· ${escapeHtml(qbSj(x.subject))} › ${escapeHtml(x.chapter)}</span><br><span style="opacity:.85;">${escapeHtml(x.message)}</span>${x.status === 'error' ? ` <a class="link-back" onclick="qbRetry('${escapeHtml(x.id)}')">🔁 আবার চেষ্টা</a>` : ''}</div>`).join('');
     return `<div class="card"><h3>🤖 AI অটো-সাজানো (ব্যাকগ্রাউন্ড)</h3>
-      <p class="hint">অ্যাপে থাকা সব PDF ও স্লাইড (ট্যাগ থাকুক বা না থাকুক) থেকে AI ধীরে ধীরে প্রশ্ন আলাদা করে এখানে <b>"⏳ রিভিউ বাকি"</b> ট্যাবে রাখে। তুমি অনুমোদন না দেওয়া পর্যন্ত ছাত্ররা এগুলো দেখে না। পেজ বন্ধ থাকলেও চলে।</p>
+      <p class="hint">অ্যাপে থাকা সব PDF ও স্লাইড (অধ্যায় ট্যাগ হয়েছে এমন) থেকে AI ধীরে ধীরে প্রশ্ন আলাদা করে এখানে <b>"⏳ রিভিউ বাকি"</b> ট্যাবে রাখে। তুমি অনুমোদন না দেওয়া পর্যন্ত ছাত্ররা এগুলো দেখে না। পেজ বন্ধ থাকলেও চলে।</p>
       <div style="height:6px;background:rgba(128,128,128,.25);border-radius:4px;overflow:hidden;margin:6px 0;"><div style="height:100%;width:${prog}%;background:#2E9E5B;"></div></div>
       <p class="hint">${f.on ? '🟢 চালু' : '⚪ বন্ধ'} · মোট ফাইল <b>${bnN(f.total)}</b> · AI পড়েছে <b>${bnN(f.done)}</b> · বাকি <b>${bnN(f.left + f.queued)}</b> · রিভিউ বাকি প্রশ্ন <b>${bnN(f.pending)}</b></p>
       <button type="button" class="btn ${f.on ? 'btn-outline' : 'btn-primary'}" style="padding:8px 16px;" onclick="qbFeedToggle(${f.on ? 'false' : 'true'})">${f.on ? '⏸ বন্ধ করো' : '▶️ AI-কে কাজ শুরু করতে দাও'}</button>
