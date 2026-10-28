@@ -5563,11 +5563,26 @@ async function addStudentRemote(name){
   return res ? slug : null;
 }
 async function listStudentsRemote(){
-  try{
-    const r = await fetch(`${SCRIPT_URL}?action=listStudents`);
-    const json = await r.json();
-    if(json.status==='success') return json.data;
-  }catch(e){}
+  window.__studentsListError = '';
+  let lastErr = '';
+  for(let attempt=0; attempt<2; attempt++){
+    try{
+      const ctl = new AbortController(); const tm = setTimeout(()=>ctl.abort(), 20000);
+      const r = await fetch(`${SCRIPT_URL}?action=listStudents`, { signal: ctl.signal });
+      clearTimeout(tm);
+      const text = await r.text();
+      let json = null;
+      try{ json = JSON.parse(text); }catch(pe){ lastErr = 'সার্ভার JSON দেয়নি (Apps Script ডিপ্লয়/অ্যাক্সেস সেটিং ঠিক আছে কি?)'; continue; }
+      if(json && json.status==='success'){
+        const list = (json.data||[]).filter(x=> x && String(x.slug||'').trim() !== '');
+        try{ localStorage.setItem('students_cache_v1', JSON.stringify(list)); }catch(se){}
+        return list;
+      }
+      lastErr = 'সার্ভারের উত্তর: ' + ((json && json.message) || 'অজানা সমস্যা');
+    }catch(e){ lastErr = 'নেটওয়ার্ক/টাইমআউট: ' + (e && e.message ? e.message : e); }
+  }
+  window.__studentsListError = lastErr || 'অজানা সমস্যা';
+  try{ const c = JSON.parse(localStorage.getItem('students_cache_v1')||'[]'); if(Array.isArray(c) && c.length){ window.__studentsFromCache = true; return c; } }catch(ce){}
   return [];
 }
 async function markAttendanceRemote(slug, dateStr, source){
@@ -5683,9 +5698,12 @@ async function renderAttendanceDashboard(){
 
   let studentRows = '';
   if(students.length === 0){
-    studentRows = `<div class="empty-state">এখনো কোনো স্টুডেন্ট যোগ করোনি। নিচ থেকে যোগ করো।</div>`;
+    studentRows = window.__studentsListError
+      ? `<div class="empty-state" style="color:#B91C1C;">⚠️ স্টুডেন্ট তালিকা লোড হয়নি।<br><span style="font-size:12px;">${escapeHtml(window.__studentsListError)}</span><br><button class="btn btn-outline" style="margin-top:10px;" onclick="renderAttendanceDashboard()">🔄 আবার চেষ্টা করো</button></div>`
+      : `<div class="empty-state">এখনো কোনো স্টুডেন্ট যোগ করোনি। নিচ থেকে যোগ করো।</div>`;
   } else {
-    studentRows = students.map(s=>{
+    const __warn = window.__studentsListError ? `<div class="empty-state" style="color:#B45309;font-size:12px;">⚠️ সার্ভার থেকে নতুন তালিকা আসেনি, আগের সেভ করা তালিকা দেখাচ্ছে (${escapeHtml(window.__studentsListError)}) <button class="btn btn-outline" onclick="renderAttendanceDashboard()">🔄</button></div>` : '';
+    studentRows = __warn + students.map(s=>{
       return `<div class="exam-item">
         <div class="row-top">
           <div><h3 style="margin-bottom:2px;">${escapeHtml(s.name)}</h3>
