@@ -3670,6 +3670,12 @@ function genId(prefix){ return prefix + '_' + Date.now() + '_' + Math.floor(Math
 function slugify(name){ return name.trim().toLowerCase().replace(/[^a-z0-9\u0980-\u09FF]+/g,'_').slice(0,40) || 'student'; }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 // Drive-এর "view" লিংক সরাসরি <img>-এ দেখায় না — তাই thumbnail লিংকে বদলে নেয় (Drive ছাড়া অন্য লিংক যেমন আছে তেমনই থাকে)
+  // [v25] ছাত্রের খাতা/উত্তরের ছবি — "দেখো" লিংকের বদলে সরাসরি বড় ছবি (প্রশ্নের মতো); ছবি না এলে আগের লিংক বাটন
+  window.ansImgFail = function(img){ const d = document.createElement('a'); d.className = 'btn btn-outline btn-block'; d.href = img.dataset.u; d.target = '_blank'; d.rel = 'noopener'; d.style.textDecoration = 'none'; d.textContent = (img.dataset.l || '🖼 ছবি') + ' দেখো'; if(img.parentNode) img.parentNode.replaceWith(d); };
+  function ansImgBlock(url, label){
+    const u = escapeHtml(String(url || '')), lab = escapeHtml(label || '🖼 খাতার ছবি');
+    return `<div style="margin:8px 0;"><a href="${u}" target="_blank" rel="noopener"><img loading="lazy" src="${driveImg(url)}" alt="${lab}" data-u="${u}" data-l="${lab}" onerror="ansImgFail(this)" style="width:100%;max-height:560px;object-fit:contain;border-radius:8px;background:rgba(128,128,128,.08);"></a></div>`;
+  }
 function driveImg(url){
   const s = String(url||'');
   if(/drive\.google\.com/.test(s)){
@@ -6548,7 +6554,7 @@ async function renderMasterySubmissions(){
     <div class="exam-item">
       <h3 style="margin-bottom:4px;">${escapeHtml(s.studentSlug)}</h3>
       <div class="meta">${new Date(s.submittedAt).toLocaleString('bn-BD')}</div>
-      <a href="${escapeHtml(s.driveUrl)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="text-decoration:none; margin-top:8px;">🖼️ ছবি দেখো</a>
+      ${ansImgBlock(s.driveUrl, '🖼️ ছবি')}
       <div class="say" style="margin-top:8px;">🤖 <b>AI ফিডব্যাক:</b> ${fbHtml(s.aiFeedback||'')}</div>
     </div>`).join('');
   if(subs.length===0) rows = `<div class="empty-state">এখনো কেউ খাতা জমা দেয়নি।</div>`;
@@ -7667,7 +7673,7 @@ async function renderWrittenSubmissions(code){
             ${q.markingScheme ? `<div style="margin-top:6px;"><b>নম্বর বণ্টন:</b> ${escapeHtml(q.markingScheme)}</div>` : ''}
           </div>
         </details>
-        <a href="${escapeHtml(s.driveUrl)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="margin-bottom:8px;">🖼️ ছাত্রের খাতার ছবি দেখো</a>
+        ${ansImgBlock(s.driveUrl, '🖼️ ছাত্রের খাতার ছবি')}
         <div class="review-ans wrong">🤖 ${marks}/${maxMarks} নম্বর (AI ${s.percent}%) — ${fbHtml(s.aiFeedback||'')}</div>
         <div class="row" style="margin-top:6px;">
           <input type="number" id="wmarks${idxInCache}" value="${marks}" min="0" max="${maxMarks}" step="0.5" style="margin-bottom:0;">
@@ -17603,7 +17609,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
         body += (x.opts || []).map((tx, k) => { const mine = x.choice === k, right = x.correct === k; return `<div>${right ? '✅' : (mine ? '❌' : '▫️')} ${L[k] || ''}) ${escapeHtml(tx)}${mine ? ' <i>(ছাত্রের উত্তর)</i>' : ''}</div>`; }).join('');
         if(x.choice === undefined) body += `<div class="trk-note">ℹ️ ছাত্র কোন অপশন বেছেছিল সেটা সেভ নেই (আগের উত্তর) — শুধু সঠিক/ভুল আছে।</div>`;
       } else {
-        body += x.url ? `<div style="margin:6px 0;"><a class="trk-chip" href="${escapeHtml(x.url)}" target="_blank" rel="noopener" style="text-decoration:none;">🖼 ছাত্রের খাতা/ছবি দেখো</a></div>` : (x.noAns ? '<div class="trk-note">ℹ️ খাতার ছবি/AI মন্তব্য সেভ নেই।</div>' : '');
+        body += x.url ? ansImgBlock(x.url, '🖼 ছাত্রের খাতা/ছবি') : (x.noAns ? '<div class="trk-note">ℹ️ খাতার ছবি/AI মন্তব্য সেভ নেই।</div>' : '');
         if(x.feedback) body += `<details><summary>🤖 AI-র মন্তব্য দেখো</summary><div class="trk-ai">${escapeHtml(x.feedback)}</div></details>`;
       }
       return `<div style="margin:10px 0;padding:8px 10px;border:1px solid rgba(128,128,128,.35);border-radius:10px;">
@@ -17808,8 +17814,8 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     const k = KMAP[it.kind] || { ic:'•' };
     const nm = (opts.showName && it.name) ? `<span class="trk-chip" style="background:#E8EEFB; font-weight:700;">👤 ${escapeHtml(it.name)}</span>` : '';
     const dup = it.dupN > 1 ? `<span class="trk-chip">🔁 ${bnN(it.dupN)} বার জমা</span>` : '';
-    const img = it.url ? `<a class="trk-chip" href="${escapeHtml(it.url)}" target="_blank" rel="noopener" style="text-decoration:none;">🖼 খাতা/ছবি দেখো</a>` : '';
-    const q = (it.qText || it.qUrl) ? `<details><summary>❓ প্রশ্ন দেখো</summary><div class="trk-q">${escapeHtml(it.qText || '')}${it.qUrl ? `<div style="margin-top:6px;"><a href="${escapeHtml(it.qUrl)}" target="_blank" rel="noopener">🖼 প্রশ্নের ছবি দেখো</a></div>` : ''}</div></details>` : '';
+    const img = it.url ? ansImgBlock(it.url, '🖼 খাতা/ছবি') : '';
+    const q = (it.qText || it.qUrl) ? `<details><summary>❓ প্রশ্ন দেখো</summary><div class="trk-q">${escapeHtml(it.qText || '')}${it.qUrl ? ansImgBlock(it.qUrl, '🖼 প্রশ্নের ছবি') : ''}</div></details>` : '';
     const ai = it.feedback ? `<details><summary>🤖 AI-র মন্তব্য দেখো</summary><div class="trk-ai">${escapeHtml(it.feedback)}</div></details>` : '';
     const rr = it.reviewReq ? `<div class="trk-note" style="color:#7B5A10;">🚩 ছাত্র রিভিউ চেয়েছে${it.reason ? ': ' + escapeHtml(it.reason) : ''}${it.resolved ? ' · ✅ নিষ্পত্তি হয়েছে' : ''}${it.tnote ? '<br>💬 শিক্ষকের উত্তর: ' + escapeHtml(it.tnote) : ''}</div>` : '';
     const nr = it.noReply ? `<div class="trk-note">ℹ️ এই দিনের রিভিশন নতুন সেভ-ব্যবস্থার আগের — শুধু সংখ্যা জমা আছে; প্রশ্ন, ছাত্রের উত্তর ও AI-র মন্তব্য তখন সেভ হতো না (এখন থেকে সব সেভ হয় ও এখানে দেখা যায়)।</div>` : '';
