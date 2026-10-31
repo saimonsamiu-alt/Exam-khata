@@ -30139,14 +30139,15 @@ window.PagePicker = PagePicker;
       .vkb-ctl{ width:100%; max-width:620px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 12px; padding-bottom:max(12px, env(safe-area-inset-bottom)); box-sizing:border-box; }
       .vkb-arr{ border:none; background:rgba(255,255,255,.14); color:#fff; border-radius:12px; width:54px; height:42px; font-size:18px; cursor:pointer; }
       .vkb-arr:disabled{ opacity:.3; cursor:default; }
+      .vkb-q details{ margin-top:8px; } .vkb-q summary{ cursor:pointer; }
       .vkb-ind{ flex:1; text-align:center; font-size:13px; opacity:.9; cursor:pointer; }
     `;
     document.head.appendChild(st);
   })();
 
   function chParts(name){
-    const m = String(name || '').match(/^\s*অধ্যায়[-\s]*([0-9০-৯]+)\s*[:：]?\s*(.*)$/);
-    return m ? { no:m[1], title:m[2] || name } : { no:'', title:String(name || '') };
+    const m = String(name || '').match(/^\s*(?:(.*?)\s*[·|]\s*)?অধ্যায়[-\s]*([0-9০-৯]+)\s*[:：]?\s*(.*)$/);
+    return m ? { no:m[2], title:m[3] || name, pre:m[1] || '' } : { no:'', title:String(name || ''), pre:'' };
   }
 
   // মডেল → পাতার তালিকা (প্রচ্ছদ, সূচিপত্র, অধ্যায়-ওপেনার, টপিক-পাতা, শেষ)
@@ -30154,6 +30155,13 @@ window.PagePicker = PagePicker;
     const TOC_PER = 10, FILE_COST = 1.7, HEAD_COST = 1.3, BUDGET = 11;
     const chs = model.chapters || [], content = [], starts = [];
     chs.forEach((ch, ci) => {
+      if(model.qMode){   // [v43] মাই নোট: অধ্যায়-ওপেনার + প্রতি প্রশ্নে একটা পাতা
+        const cq = chParts(ch.name), its = ch.items || [];
+        starts[ci] = content.length;
+        content.push({ type:'opener', ci, cp:cq, ch, hasBd:false, nT:0, nF:0, nQ:its.length });
+        its.forEach((it, qi) => content.push({ type:'q', ci, cp:cq, ch, item:it, qi, qn:its.length }));
+        return;
+      }
       const cp = chParts(ch.name), board = ch.board || [], seen = {};
       let nF = 0; const cnt = f => { if(!seen[f.title + '|' + (f.data && (f.data.hash || f.data.fileHash) || '')]){ seen[f.title + '|' + (f.data && (f.data.hash || f.data.fileHash) || '')] = 1; nF++; } };
       board.forEach(cnt); (ch.topics || []).forEach(t => t.files.forEach(cnt));
@@ -30242,8 +30250,18 @@ window.PagePicker = PagePicker;
         head(inner, p);
         inner.appendChild(el('div', 'vkb-chl', p.cp.no ? 'অধ্যায়' : 'অধ্যায়')); if(p.cp.no) inner.appendChild(el('div', 'vkb-bign', p.cp.no));
         inner.appendChild(el('div', 'vkb-cht', p.cp.title)); inner.appendChild(el('div', 'vkb-rule'));
+        if(p.nQ != null){
+          if(p.cp.pre) inner.appendChild(el('div', 'vkb-stat', p.cp.pre));
+          inner.appendChild(el('div', 'vkb-stat', bn(p.nQ) + 'টি প্রশ্ন — তোমার উত্তরসহ'));
+          inner.appendChild(el('div', 'vkb-stat', 'প্রশ্নগুলো পরের পাতা থেকে ▶'));
+        } else {
         inner.appendChild(el('div', 'vkb-stat', bn(p.nT) + 'টি টপিক · ' + bn(p.nF) + 'টি ফাইল'));
         inner.appendChild(el('div', 'vkb-stat', p.hasBd ? '📚 জ্ঞানমূলক, অনুধাবনমূলক ফাইল আর টপিকগুলো পরের পাতা থেকে ▶' : 'টপিকগুলো পরের পাতা থেকে ▶'));
+        }
+      } else if(p.type === 'q'){
+        head(inner, p);
+        const qb = el('div', 'vkb-q'); inner.appendChild(qb);
+        if(opts.renderQ) opts.renderQ(p.item, qb, p);
       } else if(p.type === 'boardmore'){
         head(inner, p);
         const bd = el('div', 'vkb-bd'); bd.appendChild(el('div', 'h', '💡 অনুধাবন (চলছে)')); p.board.forEach(F => bd.appendChild(fileRow(F))); inner.appendChild(bd);
@@ -31053,13 +31071,26 @@ window.PagePicker = PagePicker;
         const n = Object.keys(d.bySj[sj]).reduce((a, c) => a + d.bySj[sj][c].length, 0);
         return `<button class="btn btn-primary btn-block" style="margin-top:8px;text-align:left;" onclick="mnSj(${i})">${esc(sjLabel(sj))} <span class="meta" style="color:#fff;opacity:.8;">(${bn(n)}টা প্রশ্ন)</span></button>`; }).join('')}</div>`, HOME()); return;
     }
-    const chs = Object.keys(d.bySj[state.mnSj]); window.__mnCh = chs;
-    if(state.mnCh == null || !d.bySj[state.mnSj][state.mnCh]){
-      page(`<div class="card"><h2>${esc(sjLabel(state.mnSj))}</h2><p class="hint">অধ্যায় বাছো</p>${chs.map((c, i) => `<button class="btn btn-outline btn-block" style="margin-top:8px;text-align:left;" onclick="mnCh(${i})">📖 ${esc(c)} <span class="meta">(${bn(d.bySj[state.mnSj][c].length)}টা)</span></button>`).join('')}</div>`, goMn()); return;
-    }
-    const list = d.bySj[state.mnSj][state.mnCh];
-    page(`<div class="card"><h2>📖 ${esc(state.mnCh)}</h2><p class="hint">${esc(sjLabel(state.mnSj))} · ${bn(list.length)}টা প্রশ্ন — সঠিক/সেরা উত্তর আগে থেকেই খোলা; সব উত্তর দেখতে "সব উত্তর" চাপো।</p></div>${list.map(mnCard).join('')}`, goMn({ mnSj:state.mnSj }));
-    renderAllMath(app);
+    // [v43] বিষয় বাছলে বইয়ের মতো খোলে: প্রচ্ছদ → সূচিপত্র → অধ্যায় → প্রতি প্রশ্নে একটা পাতা
+    const sj = state.mnSj, by = d.bySj[sj];
+    const chs = Object.keys(by).sort((x, y) => x.localeCompare(y, 'bn'));
+    const model = { title:'📒 মাই নোট', sub:sjLabel(sj), owner:state.mnT ? (state.mnName || state.mnT) : ((getLoggedStudent() || {}).name || ''), qMode:true,
+      chapters:chs.map(c => ({ name:c, items:by[c].slice().sort((x, y) => String(x.topic).localeCompare(String(y.topic), 'bn') || (x.last - y.last)) })) };
+    const PG = VKBook._paginate(model);
+    const ci = state.mnCh != null ? chs.indexOf(state.mnCh) : -1;
+    page(`<div class="card center"><p class="hint">বই খোলা হচ্ছে...</p></div>`, HOME());
+    let bk = null;
+    bk = VKBook.open(model, {
+      startPage: ci >= 0 ? PG.chapterPage[ci] : 0,
+      renderQ: (it, box) => { box.innerHTML = mnBody(it); renderAllMath(box); },
+      onFind: () => {
+        const q = (prompt('কী খুঁজবে? (প্রশ্নের শব্দ বা টপিক)', '') || '').trim().toLowerCase(); if(!q) return;
+        const hit = PG.pages.findIndex(p => p.type === 'q' && (String(p.item.text) + ' ' + String(p.item.topic)).toLowerCase().indexOf(q) !== -1);
+        if(hit < 0){ toast('পাওয়া যায়নি'); return; }
+        if(bk) bk.go(hit);
+      },
+      onClose: () => go('myNote', Object.assign(MT(), { mnName:state.mnName }))
+    });
   }
   window.mnSj = i => go('myNote', Object.assign(MT(), { mnName:state.mnName, mnSj:window.__mnSj[i] }));
   window.mnCh = i => go('myNote', Object.assign(MT(), { mnName:state.mnName, mnSj:state.mnSj, mnCh:window.__mnCh[i] }));
@@ -31077,7 +31108,8 @@ window.PagePicker = PagePicker;
     window.__mn = null; go('myNote', { mnT:s.slug, mnName:s.name });
   };
   const img = u => u ? `<img src="${driveImg(u)}" style="max-width:100%;border-radius:8px;margin-top:8px;">` : '';
-  function mnCard(it){
+  const mnCard = it => `<div class="card">${mnBody(it)}</div>`;
+  function mnBody(it){
     const att = it.attempts || [], b = att[it.best] || att[0] || {};
     const head = `<div class="meta" style="margin-bottom:6px;">${esc(it.topic || '')}</div>`;
     if(it.kind === 'mcq'){
@@ -31087,19 +31119,19 @@ window.PagePicker = PagePicker;
         return `<div class="bubble-opt ${cls}"><div class="bubble">${LB[j] || ''}</div><div class="opt-text">${esc(o)}${right ? ' ✅' : ''}${mine ? ' <span class="meta">← তোমার উত্তর</span>' : ''}</div></div>`;
       }).join('');
       const all = att.map(a => `<div class="meta" style="padding:3px 0;">${a.ok ? '✅' : '❌'} ${esc(a.date)} — ${a.chosen >= 0 ? 'বেছেছিলে ' + (LB[a.chosen] || '') : ''}</div>`).join('');
-      return `<div class="card">${head}<div class="q-text">${esc(it.text)}</div>${img(it.imageUrl)}${opts}
+      return `${head}<div class="q-text">${esc(it.text)}</div>${img(it.imageUrl)}${opts}
         ${att.length > 1 ? `<details style="margin-top:8px;"><summary><b>📋 সব উত্তর (${bn(att.length)}বার)</b></summary>${all}</details>` : ''}
-        ${it.explain ? `<details style="margin-top:8px;"><summary><b>💡 AI-র ব্যাখ্যা</b></summary><div style="white-space:pre-wrap;line-height:1.7;background:#F5F9FE;border-radius:10px;padding:10px;margin-top:6px;">${esc(it.explain)}</div></details>` : ''}</div>`;
+        ${it.explain ? `<details style="margin-top:8px;"><summary><b>💡 AI-র ব্যাখ্যা</b></summary><div style="white-space:pre-wrap;line-height:1.7;background:#F5F9FE;border-radius:10px;padding:10px;margin-top:6px;">${esc(it.explain)}</div></details>` : ''}`;
     }
     const one = a => `<div style="margin-top:8px;padding:10px;border-radius:10px;background:${a.percent >= 90 ? '#F1FAF4' : '#FEF8EC'};">
         <div class="meta">${esc(a.date)} · 🤖 <b>${bn(a.percent)}%</b></div>${img(a.url)}
         ${a.feedback ? `<div style="white-space:pre-wrap;margin-top:6px;font-size:13.5px;">🤖 ${esc(a.feedback)}</div>` : ''}</div>`;
     const others = att.map((a, i) => i === it.best ? '' : one(a)).join('');
-    return `<div class="card">${head}<div class="q-text" style="white-space:pre-wrap;">${esc(it.text)}</div>${img(it.imageUrl)}
+    return `${head}<div class="q-text" style="white-space:pre-wrap;">${esc(it.text)}</div>${img(it.imageUrl)}
       <div style="margin-top:10px;font-weight:700;">🏆 তোমার সেরা উত্তর</div>${one(b)}
       ${att.length > 1 ? `<details style="margin-top:8px;"><summary><b>📋 সব উত্তর (${bn(att.length)}বার)</b></summary>${others}</details>` : ''}
       ${(it.model || it.modelImageUrl) ? `<details open style="margin-top:8px;"><summary><b>✅ সঠিক / মডেল উত্তর</b></summary><div style="white-space:pre-wrap;line-height:1.7;margin-top:6px;">${esc(it.model)}</div>${img(it.modelImageUrl)}</details>` : ''}
-      ${it.explain ? `<details style="margin-top:8px;"><summary><b>💡 AI-র ব্যাখ্যা</b></summary><div style="white-space:pre-wrap;line-height:1.7;background:#F5F9FE;border-radius:10px;padding:10px;margin-top:6px;">${esc(it.explain)}</div></details>` : ''}</div>`;
+      ${it.explain ? `<details style="margin-top:8px;"><summary><b>💡 AI-র ব্যাখ্যা</b></summary><div style="white-space:pre-wrap;line-height:1.7;background:#F5F9FE;border-radius:10px;padding:10px;margin-top:6px;">${esc(it.explain)}</div></details>` : ''}`;
   }
 
   // ---------------- শিক্ষক: টপিক রিকোয়েস্ট ----------------
