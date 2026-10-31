@@ -31125,7 +31125,7 @@ window.PagePicker = PagePicker;
     const t = document.querySelector('#app button[data-revt]');
     if(t && t.parentElement && !t.parentElement.querySelector('[data-mnt]')){
       const b = document.createElement('button'); b.className = 'btn btn-outline btn-block'; b.setAttribute('data-mnt', '1');
-      b.textContent = '📒 ছাত্রের মাই নোট'; b.onclick = () => go('myNoteT'); t.parentElement.appendChild(b);
+      b.textContent = '📒 রিভিশন: ছাত্রের মাই নোট'; b.onclick = () => go('myNoteT'); t.parentElement.appendChild(b);
     }
   }
   new MutationObserver(injectMnT).observe(document.getElementById('app'), { childList:true, subtree:true });
@@ -31134,8 +31134,8 @@ window.PagePicker = PagePicker;
     const t = document.querySelector('#app button[data-revt]');
     if(t && t.parentElement && !t.parentElement.querySelector('[data-trq]')){
       const b = document.createElement('button'); b.className = 'btn btn-outline btn-block'; b.setAttribute('data-trq', '1');
-      b.textContent = '🔔 টপিক রিকোয়েস্ট (ভুলে গেছি / পড়ানো হয়নি)'; b.onclick = () => go('topicReqT'); t.parentElement.appendChild(b);
-      tcall('revisionTopicReqList').then(r => { if(r && r.status === 'success' && r.items.length) b.textContent = `🔔 টপিক রিকোয়েস্ট (${bn(r.items.length)}টা নতুন)`; }).catch(() => {});
+      b.textContent = '🔔 রিভিশন টপিক রিকোয়েস্ট'; b.onclick = () => go('topicReqT'); t.parentElement.appendChild(b);
+      tcall('revisionTopicReqList').then(r => { if(r && r.status === 'success' && r.items.length) b.textContent = `🔔 রিভিশন টপিক রিকোয়েস্ট (${bn(r.items.length)}টা নতুন)`; }).catch(() => {});
     }
   }
   new MutationObserver(injectTr).observe(document.getElementById('app'), { childList:true, subtree:true });
