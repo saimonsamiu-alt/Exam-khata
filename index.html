@@ -15648,7 +15648,8 @@ window.doSmartSearch = async function(){
     big('📚','HW','শিক্ষকের HW ও নিজের HW',"hwHubOpen()") +
     big('🎯','প্র্যাকটিস','বিষয়ভিত্তিক প্র্যাকটিস',"go('battleWorldMap')") +
     big('📊','মাস্টারি','চ্যাপ্টার অনুযায়ী প্রোগ্রেস',"openMyMastery()") +
-    big('📒','মাই নোট','',"go('myNote')") +
+    big('📒','মাই নোট','',"go('myNote',{mnKind:'cq'})") +
+    big('📝','মাই MCQ নোট','',"go('myNote',{mnKind:'mcq'})") +
     big('📑','ক্লাস নোট ও স্লাইড','',"go('notesGate')") +
     big('🤖','AI ডাউট সমাধান','',"go('doubtEntry')")); }
   function ehRender(){ page('পরীক্ষা',
@@ -31070,31 +31071,32 @@ window.PagePicker = PagePicker;
     if(!force && window.__mn && window.__mn.slug === sl) return window.__mn;
     const r = state.mnT ? await tcall('revisionMyNote', { slug:sl }) : await postToScriptRaw('revisionMyNote', { slug:sl });
     if(!r || r.status !== 'success') return null;
-    const bySj = {};
-    (r.items || []).forEach(it => { const sj = it.subject || 'other', ch = it.chapter || 'অন্যান্য'; ((bySj[sj] = bySj[sj] || {})[ch] = bySj[sj][ch] || []).push(it); });
-    window.__mn = { slug:sl, bySj };
+    window.__mn = { slug:sl, items:r.items || [] };
     return window.__mn;
   }
-  const MT = () => state.mnT ? { mnT:state.mnT } : {};
+  const MT = () => Object.assign(state.mnT ? { mnT:state.mnT } : {}, state.mnKind ? { mnKind:state.mnKind } : {});
   const goMn = extra => "go('myNote'," + JSON.stringify(Object.assign(MT(), extra || {})).replace(/"/g, "'") + ")";
   const HOME = () => state.mnT ? "go('myNoteT')" : "go('studyHub')";
-  const page = (inner, back) => { app.innerHTML = `${header(state.mnT ? 'ছাত্রের মাই নোট' : 'মাই নোট')}${state.mnT ? `<div class="card" style="padding:8px 12px;">👁️ <b>${esc(state.mnName || state.mnT)}</b>-এর মাই নোট (শুধু দেখা)</div>` : ''}${inner}<div class="center"><a class="link-back" onclick="${back}">← ফিরে যাও</a></div>${creditFooter()}`; };
+  const page = (inner, back) => { app.innerHTML = `${header(state.mnKind === 'mcq' ? 'মাই MCQ নোট' : 'মাই নোট')}${state.mnT ? `<div class="card" style="padding:8px 12px;">👁️ <b>${esc(state.mnName || state.mnT)}</b>-এর ${state.mnKind === 'mcq' ? 'মাই MCQ নোট' : 'মাই নোট'} (শুধু দেখা)</div>` : ''}${inner}<div class="center"><a class="link-back" onclick="${back}">← ফিরে যাও</a></div>${creditFooter()}`; };
   async function mnRender(){
     if(!state.mnT && !getLoggedStudent()){ go('studentAuth'); return; }
     app.innerHTML = `${header('মাই নোট')}<div class="card center">লোড হচ্ছে...</div>`;
     const d = await mnLoad(!state.mnSj);
     if(!d){ page(`<div class="card"><p class="hint" style="color:var(--red);">❌ লোড করা যায়নি — ইন্টারনেট চেক করে আবার চেষ্টা করো।</p><button class="btn btn-outline btn-block" onclick="${goMn()}">আবার চেষ্টা</button></div>`, HOME()); return; }
+    const KIND = state.mnKind === 'mcq' ? 'mcq' : 'cq', TTL = KIND === 'mcq' ? 'মাই MCQ নোট' : 'মাই নোট';
+    d.bySj = {};
+    (d.items || []).filter(it => it.kind === KIND).forEach(it => { const s = it.subject || 'other', c = it.chapter || 'অন্যান্য'; ((d.bySj[s] = d.bySj[s] || {})[c] = d.bySj[s][c] || []).push(it); });
     const sjs = Object.keys(d.bySj); window.__mnSj = sjs;
-    if(!sjs.length){ page(`<div class="card"><h2>📒 মাই নোট</h2><p class="hint">${state.mnT ? 'এই ছাত্রের এখনো কিছু জমেনি।' : 'এখনো কিছু জমেনি। রিভিশনে MCQ/CQ করলে প্রশ্ন, তোমার উত্তর, মার্ক ও AI-র মন্তব্য এখানে নিজে থেকে সেভ হবে — বিষয় › অধ্যায় অনুযায়ী।'}</p>${state.mnT ? '' : `<button class="btn btn-gold btn-block" onclick="go('revSets')">🔁 রিভিশন শুরু করো</button>`}</div>`, HOME()); return; }
+    if(!sjs.length){ page(`<div class="card"><h2>${KIND === 'mcq' ? '📝' : '📒'} ${TTL}</h2><p class="hint">${state.mnT ? 'এই ছাত্রের এখনো কিছু জমেনি।' : (KIND === 'mcq' ? 'এখনো কিছু জমেনি। রিভিশনে MCQ করলে প্রশ্ন, অপশন, তোমার বাছাই আর সঠিক উত্তর এখানে নিজে থেকে সেভ হবে — বিষয় › অধ্যায় অনুযায়ী।' : 'এখনো কিছু জমেনি। রিভিশনে CQ করলে প্রশ্ন, তোমার উত্তর, মার্ক ও AI-র মন্তব্য এখানে নিজে থেকে সেভ হবে — বিষয় › অধ্যায় অনুযায়ী।')}</p>${state.mnT ? '' : `<button class="btn btn-gold btn-block" onclick="go('revSets')">🔁 রিভিশন শুরু করো</button>`}</div>`, HOME()); return; }
     if(!state.mnSj || !d.bySj[state.mnSj]){
-      page(`<div class="card"><h2>📒 মাই নোট</h2><p class="hint">বিষয় বাছো — প্রশ্ন আর উত্তর বইয়ের মতো সাজানো আছে।</p>${sjs.map((sj, i) => {
+      page(`<div class="card"><h2>${KIND === 'mcq' ? '📝' : '📒'} ${TTL}</h2><p class="hint">বিষয় বাছো — প্রশ্ন আর উত্তর বইয়ের মতো সাজানো আছে।</p>${sjs.map((sj, i) => {
         const n = Object.keys(d.bySj[sj]).reduce((a, c) => a + d.bySj[sj][c].length, 0);
         return `<button class="btn btn-primary btn-block" style="margin-top:8px;text-align:left;" onclick="mnSj(${i})">${esc(sjLabel(sj))} <span class="meta" style="color:#fff;opacity:.8;">(${bn(n)}টা প্রশ্ন)</span></button>`; }).join('')}</div>`, HOME()); return;
     }
     // [v43] বিষয় বাছলে বইয়ের মতো খোলে: প্রচ্ছদ → সূচিপত্র → অধ্যায় → প্রতি প্রশ্নে একটা পাতা
     const sj = state.mnSj, by = d.bySj[sj];
     const chs = Object.keys(by).sort((x, y) => x.localeCompare(y, 'bn'));
-    const model = { title:'📒 মাই নোট', sub:sjLabel(sj), owner:state.mnT ? (state.mnName || state.mnT) : ((getLoggedStudent() || {}).name || ''), qMode:true,
+    const model = { title:(KIND === 'mcq' ? '📝 মাই MCQ নোট' : '📒 মাই নোট'), sub:sjLabel(sj), owner:state.mnT ? (state.mnName || state.mnT) : ((getLoggedStudent() || {}).name || ''), qMode:true,
       chapters:chs.map(c => ({ name:c, items:by[c].slice().sort((x, y) => String(x.topic).localeCompare(String(y.topic), 'bn') || (x.last - y.last)) })) };
     const PG = VKBook._paginate(model);
     const ci = state.mnCh != null ? chs.indexOf(state.mnCh) : -1;
@@ -31120,12 +31122,12 @@ window.PagePicker = PagePicker;
     const studs = (await listStudentsRemote()) || []; window.__mntStuds = studs;
     app.innerHTML = `${header('ছাত্রের মাই নোট')}<div class="card"><h2>📒 ছাত্রের মাই নোট</h2><p class="hint">ছাত্র বাছো — সে যেভাবে দেখে (বিষয় › অধ্যায় › প্রশ্ন, উত্তর, মার্ক, AI মন্তব্য) ঠিক সেভাবে দেখবে।</p>
       <select id="mntSel"><option value="">— ছাত্র বাছো —</option>${studs.map((s, i) => `<option value="${i}">${esc(s.name)} (${esc(s.slug)})</option>`).join('')}</select>
-      <button class="btn btn-gold btn-block" onclick="mntOpen()">📒 খোলো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+      <button class="btn btn-gold btn-block" onclick="mntOpen('cq')">📒 মাই নোট (CQ) খোলো</button><button class="btn btn-gold btn-block" style="margin-top:8px;" onclick="mntOpen('mcq')">📝 মাই MCQ নোট খোলো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
   }
-  window.mntOpen = function(){
+  window.mntOpen = function(kind){
     const i = (document.getElementById('mntSel') || {}).value; if(i === '' || i == null){ toast('আগে ছাত্র বাছো'); return; }
     const s = window.__mntStuds[Number(i)]; if(!s) return;
-    window.__mn = null; go('myNote', { mnT:s.slug, mnName:s.name });
+    window.__mn = null; go('myNote', { mnT:s.slug, mnName:s.name, mnKind:kind === 'mcq' ? 'mcq' : 'cq' });
   };
   const img = u => u ? `<img src="${driveImg(u)}" style="max-width:100%;border-radius:8px;margin-top:8px;">` : '';
   const mnCard = it => `<div class="card">${mnBody(it)}</div>`;
