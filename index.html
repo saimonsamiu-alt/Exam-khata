@@ -4372,6 +4372,7 @@ async function renderTeacherDashboard(){
             <button class="btn btn-outline" onclick="viewEditExam('${ex.code}')">✏️ দেখো/এডিট করো</button>
             <button class="btn btn-outline" onclick="go('teacherResults',{code:'${ex.code}'})">📊 রেজাল্ট</button>
             <button class="btn btn-outline" onclick="shareExamByCode('${ex.code}')">🔗 শেয়ার</button>
+            ${ex.isPublic ? `<button class="btn btn-outline" disabled title="উন্মুক্ত প্র্যাকটিসের প্রশ্ন আগে থেকেই রিভিশনে আসে">🔁 রিভিশনে আছে</button>` : `<button class="btn btn-outline" onclick="exToggleRev('${ex.code}', ${ex.revision ? 'false' : 'true'})">${ex.revision ? '✅ রিভিশনে আছে (বন্ধ করো)' : '🔁 রিভিশনে নাও'}</button>`}
             <button class="btn btn-danger" onclick="deleteExam('${ex.code}')">মুছে ফেলো</button>
           </div>
         </div>`;
@@ -18125,12 +18126,31 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
       <div class="trk-note">⚠️ AI সব সময় নির্ভুল নয়: স্ক্যান করা পাতা, চিত্রসহ প্রশ্ন, সমীকরণ-ভারী পাতা বা খুব বড় PDF-এ কিছু প্রশ্ন বাদ যেতে পারে। যেগুলো AI পারেনি বা অসম্পূর্ণ মনে করেছে সেগুলো নিচে দেখায় — সেগুলোর প্রশ্ন <b>নিজে আলাদা করে বাল্কে আপলোড</b> দিলেই হবে। <button type="button" class="info-btn" onclick="bulkOpen()">📥 বাল্ক আপলোড খোলো</button></div>
       ${probs ? `<details open style="margin-top:8px;"><summary>⚠️ AI যেগুলো ঠিকমতো পারেনি (${bnN(f.files.length)}টা)</summary>${probs}</details>` : ''}</div>`;
   }
+  function qbExamCard(){
+    return `<div class="card"><h3>📥 exam-এর MCQ → প্রশ্নব্যাংক</h3>
+      <p class="hint">তোমার সব exam-এর MCQ এখানে এনে একই জায়গায় রাখো। ট্যাগ করা প্রশ্ন সরাসরি ব্যাংকে ঢোকে, ট্যাগ-ছাড়াগুলো "⏳ রিভিউ বাকি"-তে যায় (বিষয়/অধ্যায় ঠিক করে অনুমোদন দিও)। আগে আনা প্রশ্ন দ্বিতীয়বার আসে না।</p>
+      <button type="button" class="btn btn-primary" id="qbExBtn" onclick="qbExamImport()">📥 সব exam-এর MCQ আনো</button>
+      <div id="qbExOut" class="hint" style="margin-top:8px;"></div>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-top:10px;"><input type="checkbox" id="qbBankOnly" style="width:auto;margin-top:3px;" onchange="qbBankOnlySet(this.checked)"> <span>🔒 রিভিশন <b>শুধু প্রশ্নব্যাংক</b> থেকে চলুক (exam/Mastery/লিখিত থেকে সরাসরি আর আসবে না) — আগে exam-এর MCQ ব্যাংকে এনে নিও</span></label></div>`;
+  }
+  setTimeout(function chk(){ const c = document.getElementById('qbBankOnly'); if(c && !c.dataset.l){ c.dataset.l = '1'; postToScriptRaw('revisionBankOnlyGet', { tkey:TEACHER_PASSWORD }).then(r => { if(r && r.status === 'success') c.checked = !!r.on; }); } setTimeout(chk, 1500); }, 1500);
+  window.qbExamImport = async function(){
+    const b = document.getElementById('qbExBtn'), o = document.getElementById('qbExOut'); if(b) b.disabled = true; if(o) o.textContent = 'আনা হচ্ছে...';
+    const r = await postToScriptRaw('revisionExamImport', { tkey:TEACHER_PASSWORD });
+    if(b) b.disabled = false;
+    if(r && r.status === 'success'){ if(o) o.innerHTML = `✅ <b>${bnN(r.added)}</b>টা ব্যাংকে যোগ হয়েছে · ⏳ <b>${bnN(r.pending)}</b>টা রিভিউ বাকিতে (ট্যাগ নেই) · ${bnN(r.skipped)}টা আগেই ছিল`; }
+    else if(o) o.textContent = '❌ হয়নি — Apps Script নতুন version Deploy করা আছে তো?';
+  };
+  window.qbBankOnlySet = async function(on){
+    const r = await postToScriptRaw('revisionBankOnlySet', { tkey:TEACHER_PASSWORD, on:on ? 'true' : 'false' });
+    toast(r && r.status === 'success' ? (on ? '🔒 রিভিশন এখন শুধু প্রশ্নব্যাংক থেকে' : 'রিভিশন আবার সব উৎস থেকে') : 'হয়নি');
+  };
   function qbDraw(){
     if(!QB.subject){
       const sjs = [...new Set(Object.keys(QB.counts).concat(Object.keys(QB.pend)))].sort((a, b) => ((QB.counts[b] || 0) + (QB.pend[b] || 0)) - ((QB.counts[a] || 0) + (QB.pend[a] || 0))), tot = sjs.reduce((a, k) => a + (QB.counts[k] || 0), 0);
       app.innerHTML = `${header('প্রশ্নব্যাংক')}
         <div class="card"><h2>🗃️ প্রশ্নব্যাংক</h2><p class="hint">অ্যাপে অনুমোদিত মোট <b>${bnN(tot)}</b>টা প্রশ্ন। বিষয়ে ঢুকলে <b>MCQ</b> আর <b>CQ</b> আলাদা ট্যাবে, অধ্যায়, সাল ও গুরুত্ব অনুযায়ী দেখতে, যোগ করতে বা মুছতে পারবে।</p></div>
-        ${qbFeedCard()}${qbPgCard()}${qbFlagCard()}
+        ${qbFeedCard()}${qbExamCard()}${qbPgCard()}${qbFlagCard()}
         <div class="card"><h3>📁 বিষয় অনুযায়ী</h3>${sjs.map(sj => `<button class="btn btn-outline btn-block" style="margin:6px 0;display:flex;justify-content:space-between;gap:8px;" onclick="qbOpen('${escapeHtml(sj)}')"><span>${qbSj(sj)}</span><span><b>${bnN(QB.counts[sj] || 0)}</b>${QB.pend[sj] ? ` <span style="color:#C98A12;font-size:12px;">· ⏳ ${bnN(QB.pend[sj])} রিভিউ বাকি</span>` : ''}</span></button>`).join('') || '<div class="empty-state">এখনো কোনো প্রশ্ন নেই।</div>'}</div>
         <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেলে ফিরে যাও</a></div>${creditFooter()}`;
       return;
@@ -31134,6 +31154,11 @@ window.PagePicker = PagePicker;
       ${it.explain ? `<details style="margin-top:8px;"><summary><b>💡 AI-র ব্যাখ্যা</b></summary><div style="white-space:pre-wrap;line-height:1.7;background:#F5F9FE;border-radius:10px;padding:10px;margin-top:6px;">${esc(it.explain)}</div></details>` : ''}`;
   }
 
+  window.exToggleRev = async function(code, on){
+    const r = await tcall('revisionExamToggle', { code, on:on ? 'true' : 'false' });
+    if(r && r.status === 'success'){ toast(on ? '✅ এই exam-এর MCQ এখন রিভিশনে আসবে' : 'রিভিশন থেকে বাদ দেওয়া হয়েছে'); go('teacherDashboard'); }
+    else toast('হয়নি — Apps Script নতুন version Deploy করা আছে তো?');
+  };
   // ---------------- শিক্ষক: টপিক রিকোয়েস্ট ----------------
   const RS = { forgot:'😵 ভুলে গেছে', notTaught:'📚 পড়ানো হয়নি' };
   async function trRender(){
