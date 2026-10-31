@@ -31105,14 +31105,59 @@ window.PagePicker = PagePicker;
     bk = VKBook.open(model, {
       startPage: ci >= 0 ? PG.chapterPage[ci] : 0,
       renderQ: (it, box) => { box.innerHTML = mnBody(it); renderAllMath(box); },
-      onFind: () => {
-        const q = (prompt('কী খুঁজবে? (প্রশ্নের শব্দ বা টপিক)', '') || '').trim().toLowerCase(); if(!q) return;
-        const hit = PG.pages.findIndex(p => p.type === 'q' && (String(p.item.text) + ' ' + String(p.item.topic)).toLowerCase().indexOf(q) !== -1);
-        if(hit < 0){ toast('পাওয়া যায়নি'); return; }
-        if(bk) bk.go(hit);
-      },
+      onFind: () => mnFindOpen(PG, () => bk, KIND, sj),
       onClose: () => go('myNote', Object.assign(MT(), { mnName:state.mnName }))
     });
+  }
+  // ---- 🔎 খোঁজো: লেখা (আগে নিজে মিলিয়ে, না পেলে AI) + 📷 ছবি দিয়ে AI-খোঁজা ----
+  function mnFindOpen(PG, getBk, KIND, sj){
+    const old = document.getElementById('mnFind'); if(old) old.remove();
+    const box = document.createElement('div'); box.id = 'mnFind';
+    box.style.cssText = 'position:fixed;inset:0;z-index:9600;background:rgba(5,10,20,.72);display:flex;align-items:flex-start;justify-content:center;padding:70px 12px 12px;overflow:auto;';
+    box.innerHTML = `<div style="background:#fff;color:#1b2540;border-radius:16px;max-width:520px;width:100%;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.4);">
+      <div style="display:flex;justify-content:space-between;align-items:center;"><b style="font-size:16px;">🔎 খোঁজো</b><button type="button" id="mnFx" style="border:0;background:none;font-size:22px;cursor:pointer;color:#555;">✕</button></div>
+      <input type="text" id="mnFq" placeholder="প্রশ্নের শব্দ বা টপিক লেখো..." style="width:100%;margin-top:10px;padding:10px;border:1px solid #c9d1e0;border-radius:10px;font-size:15px;">
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-primary" id="mnFgo" style="flex:1;min-width:120px;">🔎 খোঁজো</button>
+        <button type="button" class="btn btn-outline" id="mnFai" style="flex:1;min-width:120px;">🤖 AI দিয়ে খোঁজো</button>
+        <button type="button" class="btn btn-outline" id="mnFimg" style="flex:1;min-width:120px;">📷 ছবি দিয়ে খোঁজো</button></div>
+      <input type="file" id="mnFfile" accept="image/*" style="display:none;">
+      <div class="hint" style="margin-top:6px;">লেখায় না পেলে নিজে থেকে AI খুঁজবে। ছবিতে প্রশ্ন বা তোমার হাতের সমাধান — যেটাই দাও, AI মিলিয়ে বের করবে।</div>
+      <div id="mnFout" style="margin-top:10px;"></div></div>`;
+    document.body.appendChild(box);
+    const $ = id => document.getElementById(id), out = $('mnFout'), close = () => box.remove();
+    $('mnFx').onclick = close; box.onclick = e => { if(e.target === box) close(); };
+    const pages = PG.pages;
+    const pageOf = (key, kind) => pages.findIndex(p => p.type === 'q' && p.item.key === key && p.item.kind === kind);
+    const snippet = it => String(it.text || '').replace(/\s+/g, ' ').slice(0, 90) || '(ছবি-প্রশ্ন)';
+    function show(items, note){
+      if(!items.length){ out.innerHTML = `<p class="hint">${note || 'কিছু পাওয়া যায়নি।'}</p>`; return; }
+      out.innerHTML = (note ? `<p class="hint">${note}</p>` : '') + items.map((it, i) => `<div data-i="${i}" style="padding:9px 10px;border:1px solid #dde3ef;border-radius:10px;margin-top:6px;cursor:pointer;"><div class="meta">${esc(it.chapter || '')} › ${esc(it.topic || '')}</div><div style="font-size:14px;">${esc(snippet(it))}</div></div>`).join('');
+      out.querySelectorAll('[data-i]').forEach(el => el.onclick = () => { const it = items[Number(el.dataset.i)], pi = pageOf(it.key, it.kind); const bk = getBk(); if(pi >= 0 && bk){ close(); bk.go(pi); } });
+    }
+    const local = q => {
+      const w = q.toLowerCase().split(/\s+/).filter(Boolean);
+      return pages.filter(p => p.type === 'q').map(p => p.item).filter(it => { const s = (String(it.text) + ' ' + String(it.topic) + ' ' + String(it.chapter) + ' ' + (it.options || []).join(' ')).toLowerCase(); return w.every(x => s.indexOf(x) !== -1); }).slice(0, 15);
+    };
+    const byKey = ms => ms.map(m => { const p = pages.find(x => x.type === 'q' && x.item.key === m.key && x.item.kind === m.kind); return p ? p.item : null; }).filter(Boolean);
+    async function ai(text, img){
+      out.innerHTML = '<p class="hint">🤖 AI খুঁজছে... (একটু সময় লাগতে পারে)</p>';
+      const args = { slug:(state.mnT || (getLoggedStudent() || {}).slug), kind:KIND, subject:sj, text:text || '' };
+      if(img){ args.base64 = img.base64; args.mimeType = img.mimeType; }
+      let r = null; try{ r = state.mnT ? await tcall('revisionMyNoteFind', args) : await postToScriptRaw('revisionMyNoteFind', args); }catch(e){ r = null; }
+      if(!r || r.status !== 'success'){ out.innerHTML = '<p class="hint" style="color:#c0392b;">❌ AI এখন খুঁজতে পারছে না — একটু পরে আবার চেষ্টা করো।</p>'; return; }
+      show(byKey(r.matches || []), r.matches && r.matches.length ? '🤖 AI-র বের করা সবচেয়ে মিলগুলো:' : '🤖 AI কিছু মিল পায়নি। অন্য শব্দে বা পরিষ্কার ছবিতে আবার চেষ্টা করো।');
+    }
+    $('mnFgo').onclick = () => { const q = $('mnFq').value.trim(); if(!q){ toast('কিছু লেখো'); return; } const l = local(q); if(l.length) show(l, `${bn(l.length)}টা পাওয়া গেছে:`); else ai(q, null); };
+    $('mnFai').onclick = () => { const q = $('mnFq').value.trim(); if(!q){ toast('কিছু লেখো'); return; } ai(q, null); };
+    $('mnFq').onkeydown = e => { if(e.key === 'Enter') $('mnFgo').click(); };
+    $('mnFimg').onclick = () => $('mnFfile').click();
+    $('mnFfile').onchange = async e => {
+      const f = e.target.files && e.target.files[0]; if(!f) return;
+      out.innerHTML = '<p class="hint">ছবি তৈরি হচ্ছে...</p>';
+      try{ const cm = await compressImageFile(f, 1400, 0.82); await ai($('mnFq').value.trim(), cm); }catch(err){ out.innerHTML = '<p class="hint" style="color:#c0392b;">ছবি পড়া যায়নি।</p>'; }
+    };
+    setTimeout(() => { const q = $('mnFq'); if(q) q.focus(); }, 50);
   }
   window.mnSj = i => go('myNote', Object.assign(MT(), { mnName:state.mnName, mnSj:window.__mnSj[i] }));
   window.mnCh = i => go('myNote', Object.assign(MT(), { mnName:state.mnName, mnSj:state.mnSj, mnCh:window.__mnCh[i] }));
