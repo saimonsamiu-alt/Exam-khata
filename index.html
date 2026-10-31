@@ -17646,7 +17646,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
       return `<div style="margin:10px 0;padding:8px 10px;border:1px solid rgba(128,128,128,.35);border-radius:10px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><b>${bnN(j + 1)}. ${x.kind === 'mcq' ? 'MCQ' : 'CQ'}${x.topic ? ' · ' + escapeHtml(x.topic) : ''}</b>${chip}</div>
         ${body}${editNote(x.edited, x.kind === 'mcq')}
-        ${x.fkey ? `<button type="button" class="btn btn-outline" style="margin-top:6px;padding:6px 12px;font-size:12.5px;" onclick="trkSiOpen(${idx},${j})">🎯 মার্ক বদলাও</button>${(x.kind !== 'mcq' && x.url) ? `<button type="button" class="btn btn-outline" style="margin-top:6px;margin-left:6px;padding:6px 12px;font-size:12.5px;" onclick="trkRecheck(${idx},${j})">🔁 AI আবার চেক করুক</button>` : ''}<div id="trksiEd_${idx}_${j}" style="display:none;"></div>` : ''}</div>`;
+        ${x.fkey ? `<button type="button" class="btn btn-outline" style="margin-top:6px;padding:6px 12px;font-size:12.5px;" onclick="trkSiOpen(${idx},${j})">🎯 মার্ক বদলাও</button>${(x.kind !== 'mcq' && x.url) ? `<button type="button" class="btn btn-outline" style="margin-top:6px;margin-left:6px;padding:6px 12px;font-size:12.5px;" onclick="trkRecheck(${idx},${j})">🔁 AI আবার চেক করুক</button>` : ''}${(x.kind !== 'mcq' && x.url) ? `<button type="button" class="btn btn-outline" style="margin-top:6px;margin-left:6px;padding:6px 12px;font-size:12.5px;" onclick="annShareSet(${idx},${j})">📤 মার্কসহ পাঠাও</button>` : ''}<div id="trksiEd_${idx}_${j}" style="display:none;"></div>` : ''}</div>`;
     }).join('');
     return `<details open><summary>🗂️ প্রতিটা প্রশ্ন — ছাত্রের উত্তর, AI মন্তব্য ও মার্ক (${bnN(it.setItems.length)}টা)</summary>${rows}</details>`;
   }
@@ -17684,10 +17684,11 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
   // ---- শিক্ষক মার্ক বদলাবে (শুধু অ্যাসাইন HW ও CQ-তে, যেখানে % আছে) ----
   function markBtn(it, idx){
     if(!it.fkey) return '';
+    const snd = it.url ? `<button type="button" class="btn btn-outline" style="margin-top:6px; margin-left:6px; padding:6px 12px; font-size:12.5px;" onclick="annShareItem(${idx})">📤 মার্কসহ পাঠাও</button>` : '';   // [v43]
     const okKey = it.fkey.indexOf('as:') === 0 || it.fkey.indexOf('cq:') === 0 || (it.fkey.indexOf('rv:') === 0 && pctOf(it) !== null);
-    if(!okKey) return '';
+    if(!okKey) return snd;
     const rc = (it.url && (it.fkey.indexOf('as:') === 0 || it.fkey.indexOf('rv:') === 0)) ? `<button type="button" class="btn btn-outline" style="margin-top:6px; margin-left:6px; padding:6px 12px; font-size:12.5px;" onclick="trkRecheck(${idx})">🔁 AI আবার চেক করুক</button>` : '';
-    return `<button type="button" class="btn btn-outline" style="margin-top:6px; margin-left:6px; padding:6px 12px; font-size:12.5px;" onclick="trkMkOpen(${idx})">🎯 মার্ক বদলাও</button>${rc}`;
+    return `<button type="button" class="btn btn-outline" style="margin-top:6px; margin-left:6px; padding:6px 12px; font-size:12.5px;" onclick="trkMkOpen(${idx})">🎯 মার্ক বদলাও</button>${rc}${snd}`;
   }
   function editNote(e, mcq){   // শিক্ষক/AI মার্ক বদলালে "আগে কত ছিল"
     if(!e) return '';
@@ -31318,6 +31319,30 @@ window.PagePicker = PagePicker;
   const __rot = window.imgZoomRotate;
   window.imgZoomRotate = function(){ const a = A(); if(a && a.edit){ toast('মার্ক করার সময় ঘোরানো যাবে না'); return; } __rot(); };
 
+  // মূল ছবি + মার্ক মিলিয়ে একটা আসল ছবি বানিয়ে ফোনের শেয়ার মেনু (WhatsApp ইত্যাদি) খোলে
+  async function composeShare(id, strokes){
+    const r = await postToScriptRaw('revisionAnnImage', { id });
+    if(!r || r.status !== 'success') throw new Error('img');
+    const im = new Image(); await new Promise((ok, bad) => { im.onload = ok; im.onerror = bad; im.src = 'data:' + (r.mime || 'image/jpeg') + ';base64,' + r.b64; });
+    const W = Math.min(1600, im.naturalWidth), H = Math.round(W * im.naturalHeight / im.naturalWidth);
+    const cc = document.createElement('canvas'); cc.width = W; cc.height = H; const cx = cc.getContext('2d'); cx.drawImage(im, 0, 0, W, H);
+    const t = document.createElement('canvas'); t.width = W; t.height = H; draw(t.getContext('2d'), W, H, strokes); cx.drawImage(t, 0, 0);
+    const blob = await new Promise(ok => cc.toBlob(ok, 'image/jpeg', 0.88));
+    const file = new File([blob], 'khata-mark.jpg', { type:'image/jpeg' });
+    if(navigator.canShare && navigator.canShare({ files:[file] })){ await navigator.share({ files:[file], text:'✍️ স্যারের মার্ক করা খাতা' }); }
+    else { const a2 = document.createElement('a'); a2.href = URL.createObjectURL(blob); a2.download = 'khata-mark.jpg'; document.body.appendChild(a2); a2.click(); a2.remove(); toast('ছবি ডাউনলোড হয়েছে — WhatsApp-এ পাঠাও'); }
+  }
+  async function shareUrl(url){
+    const id = driveId(driveImg(url) || url) || driveId(url);
+    if(!id){ toast('এই ছবিটা পাঠানো যাবে না'); return; }
+    let st = window.__annCache[id];
+    if(st === undefined){ const r = await api('revisionAnnGet', { id }).catch(() => null); st = (r && r.status === 'success' && Array.isArray(r.strokes)) ? r.strokes : []; window.__annCache[id] = st; }
+    if(!st.length){ toast('আগে ছবিটায় চেপে ✍️ মার্ক করো, তারপর পাঠাও'); return; }
+    toast('⏳ ছবি তৈরি হচ্ছে...');
+    try{ await composeShare(id, st); }catch(e){ if(!(e && e.name === 'AbortError')) toast('পাঠানো যায়নি — আবার চেষ্টা করো'); }
+  }
+  window.annShareItem = idx => { const it = (window.__trkItems || [])[idx]; if(it && it.url) shareUrl(it.url); };
+  window.annShareSet = (idx, j) => { const it = (window.__trkItems || [])[idx], x = it && it.setItems && it.setItems[j]; if(x && x.url) shareUrl(x.url); };
   window.annStart = function(){
     const a = A(), c = cv(), ov = document.getElementById('imgZoomOverlay'); if(!a || !c || !ov || a.edit) return;
     a.edit = true; a.backup = JSON.stringify(a.strokes);
@@ -31335,16 +31360,7 @@ window.PagePicker = PagePicker;
     document.getElementById('annSend').onclick = async () => {
       const btn = document.getElementById('annSend'); btn.disabled = true; btn.textContent = '⏳';
       try{
-        const r = await postToScriptRaw('revisionAnnImage', { id:a.id });
-        if(!r || r.status !== 'success') throw new Error('img');
-        const im = new Image(); await new Promise((ok, bad) => { im.onload = ok; im.onerror = bad; im.src = 'data:' + (r.mime || 'image/jpeg') + ';base64,' + r.b64; });
-        const W = Math.min(1600, im.naturalWidth), H = Math.round(W * im.naturalHeight / im.naturalWidth);
-        const cc = document.createElement('canvas'); cc.width = W; cc.height = H; const cx = cc.getContext('2d'); cx.drawImage(im, 0, 0, W, H);
-        const t = document.createElement('canvas'); t.width = W; t.height = H; draw(t.getContext('2d'), W, H, a.strokes); cx.drawImage(t, 0, 0);
-        const blob = await new Promise(ok => cc.toBlob(ok, 'image/jpeg', 0.88));
-        const file = new File([blob], 'khata-mark.jpg', { type:'image/jpeg' });
-        if(navigator.canShare && navigator.canShare({ files:[file] })){ await navigator.share({ files:[file], text:'✍️ স্যারের মার্ক করা খাতা' }); }
-        else { const a2 = document.createElement('a'); a2.href = URL.createObjectURL(blob); a2.download = 'khata-mark.jpg'; document.body.appendChild(a2); a2.click(); a2.remove(); toast('ছবি ডাউনলোড হয়েছে — WhatsApp-এ পাঠাও'); }
+        await composeShare(a.id, a.strokes);
       }catch(e){ if(!(e && e.name === 'AbortError')) toast('পাঠানো যায়নি — আবার চেষ্টা করো'); }
       btn.disabled = false; btn.textContent = '📤 পাঠাও';
     };
