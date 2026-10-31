@@ -31313,7 +31313,7 @@ window.PagePicker = PagePicker;
     wrap.appendChild(c);
     new MutationObserver(sync).observe(img, { attributes:true, attributeFilter:['style'] });
     img.addEventListener('load', sizeCanvas); if(img.complete && img.naturalWidth) sizeCanvas();
-    api('revisionAnnGet', { id }).then(r => { const a = A(); if(a && a.id === id && r && r.status === 'success'){ a.strokes = Array.isArray(r.strokes) ? r.strokes : []; a.backup = JSON.stringify(a.strokes); render(); } }).catch(() => {});
+    api('revisionAnnGet', { id }).then(r => { const a = A(); if(a && a.id === id && r && r.status === 'success'){ a.strokes = Array.isArray(r.strokes) ? r.strokes : []; a.backup = JSON.stringify(a.strokes); window.__annCache[id] = a.strokes; render(); } }).catch(() => {});
   };
   const __rot = window.imgZoomRotate;
   window.imgZoomRotate = function(){ const a = A(); if(a && a.edit){ toast('মার্ক করার সময় ঘোরানো যাবে না'); return; } __rot(); };
@@ -31325,13 +31325,29 @@ window.PagePicker = PagePicker;
     window.imgZoomReset();
     const bar = document.createElement('div'); bar.id = 'annBar';
     bar.innerHTML = `<button data-t="pen" class="on">✏️ কলম</button><button data-t="x">❌ ভুল</button><button data-t="v">✔️ ঠিক</button><button data-t="t">🔤 লেখা</button>
-      <button id="annCol" style="color:${COLORS[0]};">🎨 ●</button><button id="annUndo">↩️</button><button id="annPan">🖐 সরাও</button><button id="annSave" class="sv">💾 সেভ</button><button id="annX">✕ বাদ</button>`;
+      <button id="annCol" style="color:${COLORS[0]};">🎨 ●</button><button id="annUndo">↩️</button><button id="annPan">🖐 সরাও</button><button id="annSave" class="sv">💾 সেভ</button><button id="annSend">📤 পাঠাও</button><button id="annX">✕ বাদ</button>`;
     ov.querySelector('#imgZoomBar').insertAdjacentElement('afterend', bar);
     c.style.pointerEvents = 'auto'; c.style.cursor = 'crosshair';
     bar.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { a.tool = b.dataset.t; a.pan = false; bar.querySelectorAll('[data-t]').forEach(x => x.classList.toggle('on', x === b)); document.getElementById('annPan').classList.remove('on'); c.style.pointerEvents = 'auto'; });
     document.getElementById('annCol').onclick = e => { a.ci = (a.ci + 1) % COLORS.length; e.target.style.color = COLORS[a.ci]; };
     document.getElementById('annUndo').onclick = () => { a.strokes.pop(); render(); };
     document.getElementById('annPan').onclick = e => { a.pan = !a.pan; e.target.classList.toggle('on', a.pan); c.style.pointerEvents = a.pan ? 'none' : 'auto'; };
+    document.getElementById('annSend').onclick = async () => {
+      const btn = document.getElementById('annSend'); btn.disabled = true; btn.textContent = '⏳';
+      try{
+        const r = await postToScriptRaw('revisionAnnImage', { id:a.id });
+        if(!r || r.status !== 'success') throw new Error('img');
+        const im = new Image(); await new Promise((ok, bad) => { im.onload = ok; im.onerror = bad; im.src = 'data:' + (r.mime || 'image/jpeg') + ';base64,' + r.b64; });
+        const W = Math.min(1600, im.naturalWidth), H = Math.round(W * im.naturalHeight / im.naturalWidth);
+        const cc = document.createElement('canvas'); cc.width = W; cc.height = H; const cx = cc.getContext('2d'); cx.drawImage(im, 0, 0, W, H);
+        const t = document.createElement('canvas'); t.width = W; t.height = H; draw(t.getContext('2d'), W, H, a.strokes); cx.drawImage(t, 0, 0);
+        const blob = await new Promise(ok => cc.toBlob(ok, 'image/jpeg', 0.88));
+        const file = new File([blob], 'khata-mark.jpg', { type:'image/jpeg' });
+        if(navigator.canShare && navigator.canShare({ files:[file] })){ await navigator.share({ files:[file], text:'✍️ স্যারের মার্ক করা খাতা' }); }
+        else { const a2 = document.createElement('a'); a2.href = URL.createObjectURL(blob); a2.download = 'khata-mark.jpg'; document.body.appendChild(a2); a2.click(); a2.remove(); toast('ছবি ডাউনলোড হয়েছে — WhatsApp-এ পাঠাও'); }
+      }catch(e){ if(!(e && e.name === 'AbortError')) toast('পাঠানো যায়নি — আবার চেষ্টা করো'); }
+      btn.disabled = false; btn.textContent = '📤 পাঠাও';
+    };
     document.getElementById('annX').onclick = () => { try{ a.strokes = JSON.parse(a.backup); }catch(e){ a.strokes = []; } annEnd(); };
     document.getElementById('annSave').onclick = async () => {
       const r4 = n => Math.round(n * 10000) / 10000;
@@ -31341,7 +31357,7 @@ window.PagePicker = PagePicker;
       const btn = document.getElementById('annSave'); btn.disabled = true; btn.textContent = '⏳';
       const r = await postToScriptRaw('revisionAnnSave', { id:a.id, strokes:js });
       btn.disabled = false; btn.textContent = '💾 সেভ';
-      if(r && r.status === 'success'){ a.strokes = out; a.backup = js; toast('✅ মার্ক সেভ হয়েছে — ছাত্রও দেখতে পাবে'); annEnd(); }
+      if(r && r.status === 'success'){ a.strokes = out; a.backup = js; window.__annCache[a.id] = out; document.querySelectorAll('img[data-annid="' + a.id + '"]').forEach(paintInline); toast('✅ মার্ক সেভ হয়েছে — ছাত্রের অ্যাপে দেখাবে। WhatsApp-এও পাঠাতে 📤 চাপো'); annEnd(); }
       else toast(r && r.message === 'too_big' ? 'দাগ অনেক বেশি' : 'সেভ হয়নি — Apps Script নতুন version Deploy করা আছে তো?');
     };
     const pos = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
@@ -31369,6 +31385,76 @@ window.PagePicker = PagePicker;
     if(c){ c.style.pointerEvents = 'none'; c.style.cursor = ''; } render();
     const b = document.getElementById('annBtn'); if(b) b.classList.remove('on');
   }
+
+  // ---- 🖼 কার্ডের ভেতরের (ছোট) ছবিতেও মার্ক সরাসরি দেখানো — ক্লিক লাগে না ----
+  window.__annCache = window.__annCache || {};
+  const inlineQ = new Set(); let inlineTimer = null;
+  const wrapOf = img => { const p = img.parentElement; return (p && p.classList && p.classList.contains('annw')) ? p : null; };
+  function paintInline(img){
+    const id = img.getAttribute('data-annid'), st = window.__annCache[id]; if(!st) return;
+    const doIt = () => {
+      let w = wrapOf(img), c = w && w.querySelector('canvas.annc');
+      if(!st.length){ if(c) c.getContext('2d').clearRect(0, 0, c.width, c.height); return; }
+      if(!w){ w = document.createElement('span'); w.className = 'annw'; w.style.cssText = 'position:relative;display:inline-block;max-width:100%;line-height:0;vertical-align:top;'; img.parentNode.insertBefore(w, img); w.appendChild(img); }
+      if(!c){ c = document.createElement('canvas'); c.className = 'annc'; c.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;'; w.appendChild(c); }
+      c.width = Math.min(1400, img.naturalWidth || 1000); c.height = Math.round(c.width * (img.naturalHeight || 1) / (img.naturalWidth || 1));
+      draw(c.getContext('2d'), c.width, c.height, st);
+    };
+    if(img.complete && img.naturalWidth) doIt(); else img.addEventListener('load', doIt, { once:true });
+  }
+  async function flushInline(){
+    inlineTimer = null; const ids = Array.from(inlineQ).slice(0, 60); ids.forEach(i => inlineQ.delete(i)); if(!ids.length) return;
+    const r = await api('revisionAnnGetMany', { ids:JSON.stringify(ids) }).catch(() => null);
+    if(r && r.status === 'success'){
+      ids.forEach(i => { window.__annCache[i] = (r.map && Array.isArray(r.map[i])) ? r.map[i] : []; });
+      document.querySelectorAll('img[data-annid]').forEach(img => { if(ids.indexOf(img.dataset.annid) !== -1) paintInline(img); });
+    }
+    if(inlineQ.size) inlineTimer = setTimeout(flushInline, 250);
+  }
+  function scanInline(){
+    document.querySelectorAll('#app img, .vkb-ov img').forEach(img => {
+      if(img.dataset.annid !== undefined || img.classList.contains('brand-logo') || img.classList.contains('about-logo')) return;
+      const id = driveId(img.currentSrc || img.src); img.dataset.annid = id || '';
+      if(!id) return;
+      if(window.__annCache[id] !== undefined) paintInline(img); else inlineQ.add(id);
+    });
+    if(inlineQ.size && !inlineTimer) inlineTimer = setTimeout(flushInline, 250);
+  }
+  // ---- 🔔 ছাত্রের অ্যাপে "স্যার মার্ক করেছেন" ব্যানার + ইনবক্স ----
+  let annNewAt = 0;
+  async function studentBanner(){
+    const stu = (typeof getLoggedStudent === 'function') ? getLoggedStudent() : null;
+    if(!stu || (typeof getLoggedTeacher === 'function' && getLoggedTeacher())) return;
+    const app = document.getElementById('app'); if(!app) return;
+    if(Date.now() - annNewAt > 180000 && !window.__annNewBusy){
+      window.__annNewBusy = true; annNewAt = Date.now();
+      const since = Number(localStorage.getItem('annSeen_' + stu.slug) || 0);
+      const r = await postToScriptRaw('revisionAnnNew', { slug:stu.slug, since }).catch(() => null);
+      window.__annNewBusy = false;
+      window.__annNew = (r && r.status === 'success') ? (r.items || []) : []; window.__annNow = r && r.now;
+    }
+    const n = (window.__annNew || []).length;
+    if(n && !document.getElementById('annBanner') && state.screen !== 'annInbox' && app.firstElementChild){
+      const b = document.createElement('div'); b.id = 'annBanner'; b.className = 'card';
+      b.style.cssText = 'cursor:pointer;border-left:5px solid #c0392b;padding:10px 14px;';
+      b.innerHTML = '✍️ <b>স্যার ' + String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]) + 'টা খাতায় মার্ক করেছেন</b> — দেখতে চাপো →';
+      b.onclick = () => go('annInbox');
+      app.insertBefore(b, app.firstElementChild);
+    }
+  }
+  const __rm1 = render;
+  render = function(){ if(state.screen === 'annInbox'){ syncLogoutFab(); annInbox(); return; } __rm1(); };
+  function annInbox(){
+    const stu = getLoggedStudent(); if(!stu){ go('studentAuth'); return; }
+    const items = window.__annNew || [];
+    app.innerHTML = `${header('স্যারের মার্ক')}<div class="card"><h2>✍️ স্যার যে খাতায় মার্ক করেছেন</h2><p class="hint">ছবিতে চাপ দিলে বড় করে দেখবে।</p>
+      ${items.length ? items.map(it => `<div style="margin:12px 0;"><div class="meta">${escapeHtml(new Date(it.ts).toLocaleDateString('bn-BD'))}</div><img loading="lazy" src="${escapeHtml(driveImg('https://drive.google.com/file/d/' + it.id + '/view'))}" style="max-width:100%;max-height:520px;object-fit:contain;border-radius:10px;border:1px solid rgba(128,128,128,.35);background:#fff;"></div>`).join('') : '<div class="empty-state">নতুন কিছু নেই।</div>'}
+      <button class="btn btn-primary btn-block" onclick="annSeenAll()">✔️ সব দেখেছি</button></div><div class="center"><a class="link-back" onclick="go('studyHub')">← ফিরে যাও</a></div>${creditFooter()}`;
+  }
+  window.annSeenAll = () => { const stu = getLoggedStudent(); if(stu) localStorage.setItem('annSeen_' + stu.slug, String(window.__annNow || Date.now())); window.__annNew = []; const b = document.getElementById('annBanner'); if(b) b.remove(); go('studyHub'); };
+  new MutationObserver(() => { scanInline(); studentBanner(); }).observe(document.body, { childList:true, subtree:true });
+  scanInline(); studentBanner();
+
 })();
 </script>
 
