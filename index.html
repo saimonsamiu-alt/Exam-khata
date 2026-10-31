@@ -3670,12 +3670,6 @@ function genId(prefix){ return prefix + '_' + Date.now() + '_' + Math.floor(Math
 function slugify(name){ return name.trim().toLowerCase().replace(/[^a-z0-9\u0980-\u09FF]+/g,'_').slice(0,40) || 'student'; }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 // Drive-এর "view" লিংক সরাসরি <img>-এ দেখায় না — তাই thumbnail লিংকে বদলে নেয় (Drive ছাড়া অন্য লিংক যেমন আছে তেমনই থাকে)
-  // [v25] ছাত্রের খাতা/উত্তরের ছবি — "দেখো" লিংকের বদলে সরাসরি বড় ছবি (প্রশ্নের মতো); ছবি না এলে আগের লিংক বাটন
-  window.ansImgFail = function(img){ const d = document.createElement('a'); d.className = 'btn btn-outline btn-block'; d.href = img.dataset.u; d.target = '_blank'; d.rel = 'noopener'; d.style.textDecoration = 'none'; d.textContent = (img.dataset.l || '🖼 ছবি') + ' দেখো'; if(img.parentNode) img.parentNode.replaceWith(d); };
-  function ansImgBlock(url, label){
-    const u = escapeHtml(String(url || '')), lab = escapeHtml(label || '🖼 খাতার ছবি');
-    return `<div style="margin:8px 0;"><a href="${u}" target="_blank" rel="noopener"><img loading="lazy" src="${driveImg(url)}" alt="${lab}" data-u="${u}" data-l="${lab}" onerror="ansImgFail(this)" style="width:100%;max-height:560px;object-fit:contain;border-radius:8px;background:rgba(128,128,128,.08);"></a></div>`;
-  }
 function driveImg(url){
   const s = String(url||'');
   if(/drive\.google\.com/.test(s)){
@@ -6554,7 +6548,7 @@ async function renderMasterySubmissions(){
     <div class="exam-item">
       <h3 style="margin-bottom:4px;">${escapeHtml(s.studentSlug)}</h3>
       <div class="meta">${new Date(s.submittedAt).toLocaleString('bn-BD')}</div>
-      ${ansImgBlock(s.driveUrl, '🖼️ ছবি')}
+      <a href="${escapeHtml(s.driveUrl)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="text-decoration:none; margin-top:8px;">🖼️ ছবি দেখো</a>
       <div class="say" style="margin-top:8px;">🤖 <b>AI ফিডব্যাক:</b> ${fbHtml(s.aiFeedback||'')}</div>
     </div>`).join('');
   if(subs.length===0) rows = `<div class="empty-state">এখনো কেউ খাতা জমা দেয়নি।</div>`;
@@ -7673,7 +7667,7 @@ async function renderWrittenSubmissions(code){
             ${q.markingScheme ? `<div style="margin-top:6px;"><b>নম্বর বণ্টন:</b> ${escapeHtml(q.markingScheme)}</div>` : ''}
           </div>
         </details>
-        ${ansImgBlock(s.driveUrl, '🖼️ ছাত্রের খাতার ছবি')}
+        <a href="${escapeHtml(s.driveUrl)}" target="_blank" rel="noopener" class="btn btn-outline btn-block" style="margin-bottom:8px;">🖼️ ছাত্রের খাতার ছবি দেখো</a>
         <div class="review-ans wrong">🤖 ${marks}/${maxMarks} নম্বর (AI ${s.percent}%) — ${fbHtml(s.aiFeedback||'')}</div>
         <div class="row" style="margin-top:6px;">
           <input type="number" id="wmarks${idxInCache}" value="${marks}" min="0" max="${maxMarks}" step="0.5" style="margin-bottom:0;">
@@ -12461,7 +12455,7 @@ window.doSmartSearch = async function(){
     const it = R().cur, q = it.q || it, box = document.getElementById('revExp'); if(!box) return;
     box.innerHTML = `<p class="hint">সহজ করে ভাবছি...</p>`;
     const res = await revWait(postToScriptRaw('revisionExplain', { topic:it.topic || '', text:q.text || '', options:JSON.stringify(q.options || []),
-      correct:q.correct === undefined ? '' : q.correct, model:q.modelAnswerText || '', pre:(it.kind !== 'mcq' && !it.submitted) }));
+      correct:q.correct === undefined ? '' : q.correct, model:q.modelAnswerText || '', pre:(it.kind !== 'mcq' && !it.submitted), slug:R().slug, itemKey:String(it.key || '') }));
     if(res && res.status === 'success') it.__exp = String(res.text || '');   // [v19] স্যারকে জানাতে AI-র ব্যাখ্যাও পাঠানো যাবে
     box.innerHTML = (res && res.status === 'success')
       ? `<div style="white-space:pre-wrap;line-height:1.7;margin-top:10px;background:#F5F9FE;border-radius:10px;padding:12px;font-size:14px;">${escapeHtml(res.text)}</div>`
@@ -12470,8 +12464,8 @@ window.doSmartSearch = async function(){
   };
   // [v6] ছাত্র: প্রশ্নের ছবি আর AI-র লেখা না মিললে / ভুল থাকলে স্যারকে পরিবর্তনের অনুরোধ (শুধু শিক্ষকের ব্যাংকের প্রশ্নে)
   function revFlagLink(it){
-    if(!it || String(it.key || '').indexOf('bank:') !== 0) return '';
-    return `<a class="link-back" id="revFlagLnk" style="display:block;margin-top:10px;color:#9B6A15;" onclick="revFlag()">${it.flagged ? '✅ স্যারকে জানানো হয়েছে' : '⚠️ ছবির সাথে লেখা মিলছে না / প্রশ্নে ভুল আছে — স্যারকে জানাও'}</a>`;
+    if(!it || String(it.key || '').indexOf('bank:') !== 0) return revNrLink(it);
+    return `<a class="link-back" id="revFlagLnk" style="display:block;margin-top:10px;color:#9B6A15;" onclick="revFlag()">${it.flagged ? '✅ স্যারকে জানানো হয়েছে' : '⚠️ ছবির সাথে লেখা মিলছে না / প্রশ্নে ভুল আছে — স্যারকে জানাও'}</a>` + revNrLink(it);
   }
   window.revFlag = async function(){
     const r = R(), it = r && r.cur;
@@ -12534,6 +12528,33 @@ window.doSmartSearch = async function(){
   }
 
   window.revSkip = function(){ revNext(); };
+
+  // [v43] "এই টপিক ভুলে গেছি / এখনো পড়ানো হয়নি" → শিক্ষকের কাছে নোটিফিকেশন
+  function revNrLink(it){
+    return `<a class="link-back" id="revNrLnk" style="display:block;margin-top:10px;color:#7A3DB8;" onclick="revNotReady()">${it && it.nrSent ? '✅ স্যারকে জানানো হয়েছে' : '🔔 এই টপিক ভুলে গেছি / এখনো পড়া হয়নি — স্যারকে জানাও'}</a><div id="revNrBox"></div>`;
+  }
+  window.revNotReady = function(){
+    const r = R(), it = r && r.cur, box = document.getElementById('revNrBox'); if(!it || !box) return;
+    if(box.innerHTML){ box.innerHTML = ''; return; }
+    if(it.nrSent){ toast('স্যারকে আগেই জানানো হয়েছে'); return; }
+    const sj = it.subject && NOTES_SUBJECTS[it.subject] ? NOTES_SUBJECTS[it.subject].label : (it.subject || '');
+    box.innerHTML = `<div style="margin-top:8px;padding:12px;border-radius:12px;background:#F6F1FC;border:1px solid #D9C8F0;">
+      <div style="font-weight:700;margin-bottom:2px;">${escapeHtml([sj, it.topic].filter(Boolean).join(' › ') || 'এই টপিক')}</div>
+      <div class="hint" style="margin-bottom:8px;">কোনটা হয়েছে? বাছলে স্যারের কাছে নোটিফিকেশন যাবে।</div>
+      <button class="btn btn-outline btn-block" onclick="revNotReadySend('forgot')">😵 ভুলে গেছি — আবার বুঝিয়ে দিতে হবে</button>
+      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="revNotReadySend('notTaught')">📚 এটা এখনো পড়ানো/পড়া হয়নি</button></div>`;
+  };
+  window.revNotReadySend = async function(reason){
+    const r = R(), it = r && r.cur, box = document.getElementById('revNrBox'); if(!it) return;
+    if(box) box.innerHTML = `<p class="hint">স্যারকে জানানো হচ্ছে...</p>`;
+    const chapter = it.chk ? String(it.chk).split('|').slice(1).join('|') : ((it.q && it.q.chapter) || it.chapterTag || '');
+    const res = await postToScriptRaw('revisionTopicNotReady', { slug:r.slug, subject:it.subject || '', chapter, topic:it.topic || '', reason, itemKey:String(it.key || '') });
+    if(res && res.status === 'success'){
+      it.nrSent = reason;
+      if(box) box.innerHTML = `<div class="rev-verdict good">✅ স্যারের কাছে নোটিফিকেশন গেছে</div><button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="revSkip()">এটা বাদ দিয়ে পরের প্রশ্নে যাও →</button>`;
+      const l = document.getElementById('revNrLnk'); if(l) l.textContent = '✅ স্যারকে জানানো হয়েছে';
+    } else { if(box) box.innerHTML = ''; toast('জানানো যায়নি, আবার চেষ্টা করো'); }
+  };
 
   window.revSubmitCq = async function(){
     const r = R(), it = r.cur, f = (document.getElementById('revFile') || {}).files[0];
@@ -15626,6 +15647,7 @@ window.doSmartSearch = async function(){
     big('📚','HW','শিক্ষকের HW ও নিজের HW',"hwHubOpen()") +
     big('🎯','প্র্যাকটিস','বিষয়ভিত্তিক প্র্যাকটিস',"go('battleWorldMap')") +
     big('📊','মাস্টারি','চ্যাপ্টার অনুযায়ী প্রোগ্রেস',"openMyMastery()") +
+    big('📒','মাই নোট','রিভিশনের প্রশ্ন + তোমার উত্তর — বিষয় › অধ্যায়',"go('myNote')") +
     big('📑','ক্লাস নোট ও স্লাইড','',"go('notesGate')") +
     big('🤖','AI ডাউট সমাধান','',"go('doubtEntry')")); }
   function ehRender(){ page('পরীক্ষা',
@@ -17609,7 +17631,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
         body += (x.opts || []).map((tx, k) => { const mine = x.choice === k, right = x.correct === k; return `<div>${right ? '✅' : (mine ? '❌' : '▫️')} ${L[k] || ''}) ${escapeHtml(tx)}${mine ? ' <i>(ছাত্রের উত্তর)</i>' : ''}</div>`; }).join('');
         if(x.choice === undefined) body += `<div class="trk-note">ℹ️ ছাত্র কোন অপশন বেছেছিল সেটা সেভ নেই (আগের উত্তর) — শুধু সঠিক/ভুল আছে।</div>`;
       } else {
-        body += x.url ? ansImgBlock(x.url, '🖼 ছাত্রের খাতা/ছবি') : (x.noAns ? '<div class="trk-note">ℹ️ খাতার ছবি/AI মন্তব্য সেভ নেই।</div>' : '');
+        body += x.url ? `<div style="margin:6px 0;"><a class="trk-chip" href="${escapeHtml(x.url)}" target="_blank" rel="noopener" style="text-decoration:none;">🖼 ছাত্রের খাতা/ছবি দেখো</a></div>` : (x.noAns ? '<div class="trk-note">ℹ️ খাতার ছবি/AI মন্তব্য সেভ নেই।</div>' : '');
         if(x.feedback) body += `<details><summary>🤖 AI-র মন্তব্য দেখো</summary><div class="trk-ai">${escapeHtml(x.feedback)}</div></details>`;
       }
       return `<div style="margin:10px 0;padding:8px 10px;border:1px solid rgba(128,128,128,.35);border-radius:10px;">
@@ -17814,8 +17836,8 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     const k = KMAP[it.kind] || { ic:'•' };
     const nm = (opts.showName && it.name) ? `<span class="trk-chip" style="background:#E8EEFB; font-weight:700;">👤 ${escapeHtml(it.name)}</span>` : '';
     const dup = it.dupN > 1 ? `<span class="trk-chip">🔁 ${bnN(it.dupN)} বার জমা</span>` : '';
-    const img = it.url ? ansImgBlock(it.url, '🖼 খাতা/ছবি') : '';
-    const q = (it.qText || it.qUrl) ? `<details><summary>❓ প্রশ্ন দেখো</summary><div class="trk-q">${escapeHtml(it.qText || '')}${it.qUrl ? ansImgBlock(it.qUrl, '🖼 প্রশ্নের ছবি') : ''}</div></details>` : '';
+    const img = it.url ? `<a class="trk-chip" href="${escapeHtml(it.url)}" target="_blank" rel="noopener" style="text-decoration:none;">🖼 খাতা/ছবি দেখো</a>` : '';
+    const q = (it.qText || it.qUrl) ? `<details><summary>❓ প্রশ্ন দেখো</summary><div class="trk-q">${escapeHtml(it.qText || '')}${it.qUrl ? `<div style="margin-top:6px;"><a href="${escapeHtml(it.qUrl)}" target="_blank" rel="noopener">🖼 প্রশ্নের ছবি দেখো</a></div>` : ''}</div></details>` : '';
     const ai = it.feedback ? `<details><summary>🤖 AI-র মন্তব্য দেখো</summary><div class="trk-ai">${escapeHtml(it.feedback)}</div></details>` : '';
     const rr = it.reviewReq ? `<div class="trk-note" style="color:#7B5A10;">🚩 ছাত্র রিভিউ চেয়েছে${it.reason ? ': ' + escapeHtml(it.reason) : ''}${it.resolved ? ' · ✅ নিষ্পত্তি হয়েছে' : ''}${it.tnote ? '<br>💬 শিক্ষকের উত্তর: ' + escapeHtml(it.tnote) : ''}</div>` : '';
     const nr = it.noReply ? `<div class="trk-note">ℹ️ এই দিনের রিভিশন নতুন সেভ-ব্যবস্থার আগের — শুধু সংখ্যা জমা আছে; প্রশ্ন, ছাত্রের উত্তর ও AI-র মন্তব্য তখন সেভ হতো না (এখন থেকে সব সেভ হয় ও এখানে দেখা যায়)।</div>` : '';
@@ -30989,6 +31011,135 @@ window.PagePicker = PagePicker;
     }catch(e){}
     return r;
   };
+})();
+
+// ===== 📒 মাই নোট (ছাত্র) + 🔔 টপিক রিকোয়েস্ট (শিক্ষক) — v43 =====
+(function(){
+  const esc = s => escapeHtml(String(s == null ? '' : s));
+  const bn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  const LB = ['ক','খ','গ','ঘ'];
+  const sjLabel = sj => (typeof NOTES_SUBJECTS !== 'undefined' && NOTES_SUBJECTS[sj]) ? ((NOTES_SUBJECTS[sj].icon || '') + ' ' + NOTES_SUBJECTS[sj].label).trim() : (sj || 'অন্যান্য');
+  const tcall = (a, p) => postToScriptRaw(a, Object.assign({ tkey:TEACHER_PASSWORD }, p || {}));
+  const __m0 = render;
+  render = function(){
+    if(state.screen === 'myNote'){ syncLogoutFab(); mnRender(); return; }
+    if(state.screen === 'topicReqT'){ syncLogoutFab(); trRender(); return; }
+    if(state.screen === 'myNoteT'){ syncLogoutFab(); mntRender(); return; }
+    __m0();
+  };
+  async function mnLoad(force){
+    const stud = getLoggedStudent(), sl = state.mnT || (stud && stud.slug); if(!sl) return null;
+    if(!force && window.__mn && window.__mn.slug === sl) return window.__mn;
+    const r = state.mnT ? await tcall('revisionMyNote', { slug:sl }) : await postToScriptRaw('revisionMyNote', { slug:sl });
+    if(!r || r.status !== 'success') return null;
+    const bySj = {};
+    (r.items || []).forEach(it => { const sj = it.subject || 'other', ch = it.chapter || 'অন্যান্য'; ((bySj[sj] = bySj[sj] || {})[ch] = bySj[sj][ch] || []).push(it); });
+    window.__mn = { slug:sl, bySj };
+    return window.__mn;
+  }
+  const MT = () => state.mnT ? { mnT:state.mnT } : {};
+  const goMn = extra => "go('myNote'," + JSON.stringify(Object.assign(MT(), extra || {})).replace(/"/g, "'") + ")";
+  const HOME = () => state.mnT ? "go('myNoteT')" : "go('studyHub')";
+  const page = (inner, back) => { app.innerHTML = `${header(state.mnT ? 'ছাত্রের মাই নোট' : 'মাই নোট')}${state.mnT ? `<div class="card" style="padding:8px 12px;">👁️ <b>${esc(state.mnName || state.mnT)}</b>-এর মাই নোট (শুধু দেখা)</div>` : ''}${inner}<div class="center"><a class="link-back" onclick="${back}">← ফিরে যাও</a></div>${creditFooter()}`; };
+  async function mnRender(){
+    if(!state.mnT && !getLoggedStudent()){ go('studentAuth'); return; }
+    app.innerHTML = `${header('মাই নোট')}<div class="card center">লোড হচ্ছে...</div>`;
+    const d = await mnLoad(!state.mnSj);
+    if(!d){ page(`<div class="card"><p class="hint" style="color:var(--red);">❌ লোড করা যায়নি — ইন্টারনেট চেক করে আবার চেষ্টা করো।</p><button class="btn btn-outline btn-block" onclick="${goMn()}">আবার চেষ্টা</button></div>`, HOME()); return; }
+    const sjs = Object.keys(d.bySj); window.__mnSj = sjs;
+    if(!sjs.length){ page(`<div class="card"><h2>📒 মাই নোট</h2><p class="hint">${state.mnT ? 'এই ছাত্রের এখনো কিছু জমেনি।' : 'এখনো কিছু জমেনি। রিভিশনে MCQ/CQ করলে প্রশ্ন, তোমার উত্তর, মার্ক ও AI-র মন্তব্য এখানে নিজে থেকে সেভ হবে — বিষয় › অধ্যায় অনুযায়ী।'}</p>${state.mnT ? '' : `<button class="btn btn-gold btn-block" onclick="go('revSets')">🔁 রিভিশন শুরু করো</button>`}</div>`, HOME()); return; }
+    if(!state.mnSj || !d.bySj[state.mnSj]){
+      page(`<div class="card"><h2>📒 মাই নোট</h2><p class="hint">বিষয় বাছো — প্রশ্ন আর উত্তর বইয়ের মতো সাজানো আছে।</p>${sjs.map((sj, i) => {
+        const n = Object.keys(d.bySj[sj]).reduce((a, c) => a + d.bySj[sj][c].length, 0);
+        return `<button class="btn btn-primary btn-block" style="margin-top:8px;text-align:left;" onclick="mnSj(${i})">${esc(sjLabel(sj))} <span class="meta" style="color:#fff;opacity:.8;">(${bn(n)}টা প্রশ্ন)</span></button>`; }).join('')}</div>`, HOME()); return;
+    }
+    const chs = Object.keys(d.bySj[state.mnSj]); window.__mnCh = chs;
+    if(state.mnCh == null || !d.bySj[state.mnSj][state.mnCh]){
+      page(`<div class="card"><h2>${esc(sjLabel(state.mnSj))}</h2><p class="hint">অধ্যায় বাছো</p>${chs.map((c, i) => `<button class="btn btn-outline btn-block" style="margin-top:8px;text-align:left;" onclick="mnCh(${i})">📖 ${esc(c)} <span class="meta">(${bn(d.bySj[state.mnSj][c].length)}টা)</span></button>`).join('')}</div>`, goMn()); return;
+    }
+    const list = d.bySj[state.mnSj][state.mnCh];
+    page(`<div class="card"><h2>📖 ${esc(state.mnCh)}</h2><p class="hint">${esc(sjLabel(state.mnSj))} · ${bn(list.length)}টা প্রশ্ন — সঠিক/সেরা উত্তর আগে থেকেই খোলা; সব উত্তর দেখতে "সব উত্তর" চাপো।</p></div>${list.map(mnCard).join('')}`, goMn({ mnSj:state.mnSj }));
+    renderAllMath(app);
+  }
+  window.mnSj = i => go('myNote', Object.assign(MT(), { mnName:state.mnName, mnSj:window.__mnSj[i] }));
+  window.mnCh = i => go('myNote', Object.assign(MT(), { mnName:state.mnName, mnSj:state.mnSj, mnCh:window.__mnCh[i] }));
+  // ---------------- শিক্ষক: যেকোনো ছাত্রের মাই নোট দেখা ----------------
+  async function mntRender(){
+    app.innerHTML = `${header('ছাত্রের মাই নোট')}<div class="card center">লোড হচ্ছে...</div>`;
+    const studs = (await listStudentsRemote()) || []; window.__mntStuds = studs;
+    app.innerHTML = `${header('ছাত্রের মাই নোট')}<div class="card"><h2>📒 ছাত্রের মাই নোট</h2><p class="hint">ছাত্র বাছো — সে যেভাবে দেখে (বিষয় › অধ্যায় › প্রশ্ন, উত্তর, মার্ক, AI মন্তব্য) ঠিক সেভাবে দেখবে।</p>
+      <select id="mntSel"><option value="">— ছাত্র বাছো —</option>${studs.map((s, i) => `<option value="${i}">${esc(s.name)} (${esc(s.slug)})</option>`).join('')}</select>
+      <button class="btn btn-gold btn-block" onclick="mntOpen()">📒 খোলো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+  }
+  window.mntOpen = function(){
+    const i = (document.getElementById('mntSel') || {}).value; if(i === '' || i == null){ toast('আগে ছাত্র বাছো'); return; }
+    const s = window.__mntStuds[Number(i)]; if(!s) return;
+    window.__mn = null; go('myNote', { mnT:s.slug, mnName:s.name });
+  };
+  const img = u => u ? `<img src="${driveImg(u)}" style="max-width:100%;border-radius:8px;margin-top:8px;">` : '';
+  function mnCard(it){
+    const att = it.attempts || [], b = att[it.best] || att[0] || {};
+    const head = `<div class="meta" style="margin-bottom:6px;">${esc(it.topic || '')}</div>`;
+    if(it.kind === 'mcq'){
+      const opts = (it.options || []).map((o, j) => {
+        const right = j === it.correct, mine = j === b.chosen;
+        const cls = right ? 'rev-right' : (mine ? 'rev-wrong' : '');
+        return `<div class="bubble-opt ${cls}"><div class="bubble">${LB[j] || ''}</div><div class="opt-text">${esc(o)}${right ? ' ✅' : ''}${mine ? ' <span class="meta">← তোমার উত্তর</span>' : ''}</div></div>`;
+      }).join('');
+      const all = att.map(a => `<div class="meta" style="padding:3px 0;">${a.ok ? '✅' : '❌'} ${esc(a.date)} — ${a.chosen >= 0 ? 'বেছেছিলে ' + (LB[a.chosen] || '') : ''}</div>`).join('');
+      return `<div class="card">${head}<div class="q-text">${esc(it.text)}</div>${img(it.imageUrl)}${opts}
+        ${att.length > 1 ? `<details style="margin-top:8px;"><summary><b>📋 সব উত্তর (${bn(att.length)}বার)</b></summary>${all}</details>` : ''}
+        ${it.explain ? `<details style="margin-top:8px;"><summary><b>💡 AI-র ব্যাখ্যা</b></summary><div style="white-space:pre-wrap;line-height:1.7;background:#F5F9FE;border-radius:10px;padding:10px;margin-top:6px;">${esc(it.explain)}</div></details>` : ''}</div>`;
+    }
+    const one = a => `<div style="margin-top:8px;padding:10px;border-radius:10px;background:${a.percent >= 90 ? '#F1FAF4' : '#FEF8EC'};">
+        <div class="meta">${esc(a.date)} · 🤖 <b>${bn(a.percent)}%</b></div>${img(a.url)}
+        ${a.feedback ? `<div style="white-space:pre-wrap;margin-top:6px;font-size:13.5px;">🤖 ${esc(a.feedback)}</div>` : ''}</div>`;
+    const others = att.map((a, i) => i === it.best ? '' : one(a)).join('');
+    return `<div class="card">${head}<div class="q-text" style="white-space:pre-wrap;">${esc(it.text)}</div>${img(it.imageUrl)}
+      <div style="margin-top:10px;font-weight:700;">🏆 তোমার সেরা উত্তর</div>${one(b)}
+      ${att.length > 1 ? `<details style="margin-top:8px;"><summary><b>📋 সব উত্তর (${bn(att.length)}বার)</b></summary>${others}</details>` : ''}
+      ${(it.model || it.modelImageUrl) ? `<details open style="margin-top:8px;"><summary><b>✅ সঠিক / মডেল উত্তর</b></summary><div style="white-space:pre-wrap;line-height:1.7;margin-top:6px;">${esc(it.model)}</div>${img(it.modelImageUrl)}</details>` : ''}
+      ${it.explain ? `<details style="margin-top:8px;"><summary><b>💡 AI-র ব্যাখ্যা</b></summary><div style="white-space:pre-wrap;line-height:1.7;background:#F5F9FE;border-radius:10px;padding:10px;margin-top:6px;">${esc(it.explain)}</div></details>` : ''}</div>`;
+  }
+
+  // ---------------- শিক্ষক: টপিক রিকোয়েস্ট ----------------
+  const RS = { forgot:'😵 ভুলে গেছে', notTaught:'📚 পড়ানো হয়নি' };
+  async function trRender(){
+    app.innerHTML = `${header('টপিক রিকোয়েস্ট')}<div class="card center">লোড হচ্ছে...</div>`;
+    const r = await tcall('revisionTopicReqList');
+    if(!r || r.status !== 'success'){ app.innerHTML = `${header('টপিক রিকোয়েস্ট')}<div class="card"><p class="hint" style="color:var(--red);">❌ তালিকা আনা যায়নি — Apps Script নতুন version Deploy করা আছে তো?</p></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>`; return; }
+    window.__trItems = r.items;
+    const rows = r.items.map((x, i) => `<div class="exam-item"><div style="font-weight:700;">${esc(x.name)} <span class="meta">${esc(x.date)}</span></div>
+        <div>${RS[x.reason] || esc(x.reason)}</div><div class="meta">${esc([sjLabel(x.subject), x.chapter, x.topic].filter(Boolean).join(' › '))}</div>
+        <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">
+          ${x.reason === 'notTaught' ? `<button class="info-btn" onclick="trDone(${i},1)">✅ পড়ানো হয়েছে — রিভিশনে খুলে দাও</button>` : ''}
+          <button class="info-btn" onclick="trDone(${i},0)">✔️ দেখেছি / সম্পন্ন</button></div></div>`).join('') || `<div class="empty-state">নতুন কোনো রিকোয়েস্ট নেই।</div>`;
+    app.innerHTML = `${header('টপিক রিকোয়েস্ট')}<div class="card"><h2>🔔 ভুলে গেছি / পড়ানো হয়নি</h2><p class="hint">ছাত্র রিভিশনে বাটন চাপলে এখানে আসে (ইমেইলও যায়)।</p>${rows}<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('topicReqT')">🔄 নতুন করো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+  }
+  window.trDone = async function(i, cover){
+    const x = (window.__trItems || [])[i]; if(!x) return;
+    const r = await tcall('revisionTopicReqDone', { id:x.id, cover:cover ? '1' : '0' });
+    if(r && r.status === 'success'){ toast(cover ? '✅ রিভিশনে খুলে দেওয়া হয়েছে' : '✅ সম্পন্ন'); trRender(); } else toast('হয়নি, আবার চেষ্টা করো');
+  };
+  function injectMnT(){
+    const t = document.querySelector('#app button[data-revt]');
+    if(t && t.parentElement && !t.parentElement.querySelector('[data-mnt]')){
+      const b = document.createElement('button'); b.className = 'btn btn-outline btn-block'; b.setAttribute('data-mnt', '1');
+      b.textContent = '📒 ছাত্রের মাই নোট'; b.onclick = () => go('myNoteT'); t.parentElement.appendChild(b);
+    }
+  }
+  new MutationObserver(injectMnT).observe(document.getElementById('app'), { childList:true, subtree:true });
+  injectMnT();
+  function injectTr(){
+    const t = document.querySelector('#app button[data-revt]');
+    if(t && t.parentElement && !t.parentElement.querySelector('[data-trq]')){
+      const b = document.createElement('button'); b.className = 'btn btn-outline btn-block'; b.setAttribute('data-trq', '1');
+      b.textContent = '🔔 টপিক রিকোয়েস্ট (ভুলে গেছি / পড়ানো হয়নি)'; b.onclick = () => go('topicReqT'); t.parentElement.appendChild(b);
+      tcall('revisionTopicReqList').then(r => { if(r && r.status === 'success' && r.items.length) b.textContent = `🔔 টপিক রিকোয়েস্ট (${bn(r.items.length)}টা নতুন)`; }).catch(() => {});
+    }
+  }
+  new MutationObserver(injectTr).observe(document.getElementById('app'), { childList:true, subtree:true });
+  injectTr();
 })();
 </script>
 
