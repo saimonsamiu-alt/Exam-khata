@@ -15643,11 +15643,11 @@ window.doSmartSearch = async function(){
   const big = (ic, label, sub, on, cls) => `<button class="btn ${cls || 'btn-outline'} btn-block" style="text-align:left;padding:14px 16px;margin-bottom:8px;" onclick="${on}"><span style="font-size:20px;margin-right:8px;">${ic}</span><b>${label}</b><div class="hint" style="margin:2px 0 0 30px;">${sub}</div></button>`;
   const page = (title, inner) => { app.innerHTML = `${header(title)}<div class="card">${inner}</div><div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>${creditFooter()}`; };
   function shRender(){ page('স্টাডি',
-    big('🔁','রিভিশন','শিক্ষকের সেট + অটো রিভিশন — একই জায়গায়',"go('revSets')",'btn-gold') +
+    big('🔁','রিভিশন','',"go('revSets')",'btn-gold') +
     big('📚','HW','শিক্ষকের HW ও নিজের HW',"hwHubOpen()") +
     big('🎯','প্র্যাকটিস','বিষয়ভিত্তিক প্র্যাকটিস',"go('battleWorldMap')") +
     big('📊','মাস্টারি','চ্যাপ্টার অনুযায়ী প্রোগ্রেস',"openMyMastery()") +
-    big('📒','মাই নোট','রিভিশনের প্রশ্ন + তোমার উত্তর — বিষয় › অধ্যায়',"go('myNote')") +
+    big('📒','মাই নোট','',"go('myNote')") +
     big('📑','ক্লাস নোট ও স্লাইড','',"go('notesGate')") +
     big('🤖','AI ডাউট সমাধান','',"go('doubtEntry')")); }
   function ehRender(){ page('পরীক্ষা',
