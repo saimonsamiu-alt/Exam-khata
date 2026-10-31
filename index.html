@@ -17634,12 +17634,13 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     const rows = it.setItems.map((x, j) => {
       const sc = Number(x.score) || 0;
       const chip = x.kind === 'mcq' ? `<span class="trk-score ${sc >= 50 ? 'trk-s-hi' : 'trk-s-lo'}">${sc >= 50 ? '✅ সঠিক' : '❌ ভুল'}</span>` : `<span class="trk-score ${scoreCls(sc)}">${bnN(sc)}%</span>`;
-      let body = `<div class="trk-q">${escapeHtml(x.text || '(প্রশ্ন পাওয়া যায়নি)')}</div>`;
+      const spic = (u, cap) => u ? `<div style="margin:6px 0;"><div class="meta" style="margin-bottom:3px;">${cap}</div><img loading="lazy" src="${escapeHtml(driveImg(u))}" alt="${cap}" style="max-width:100%;max-height:420px;object-fit:contain;border-radius:10px;border:1px solid rgba(128,128,128,.35);background:#fff;"></div>` : '';
+      let body = `<div class="trk-q">${escapeHtml(x.text || '(প্রশ্ন পাওয়া যায়নি)')}</div>${spic(x.qUrl, '🖼 প্রশ্নের ছবি')}`;
       if(x.kind === 'mcq'){
         body += (x.opts || []).map((tx, k) => { const mine = x.choice === k, right = x.correct === k; return `<div>${right ? '✅' : (mine ? '❌' : '▫️')} ${L[k] || ''}) ${escapeHtml(tx)}${mine ? ' <i>(ছাত্রের উত্তর)</i>' : ''}</div>`; }).join('');
         if(x.choice === undefined) body += `<div class="trk-note">ℹ️ ছাত্র কোন অপশন বেছেছিল সেটা সেভ নেই (আগের উত্তর) — শুধু সঠিক/ভুল আছে।</div>`;
       } else {
-        body += x.url ? `<div style="margin:6px 0;"><a class="trk-chip" href="${escapeHtml(x.url)}" target="_blank" rel="noopener" style="text-decoration:none;">🖼 ছাত্রের খাতা/ছবি দেখো</a></div>` : (x.noAns ? '<div class="trk-note">ℹ️ খাতার ছবি/AI মন্তব্য সেভ নেই।</div>' : '');
+        body += x.url ? spic(x.url, '📒 ছাত্রের খাতা') : (x.noAns ? '<div class="trk-note">ℹ️ খাতার ছবি/AI মন্তব্য সেভ নেই।</div>' : '');
         if(x.feedback) body += `<details><summary>🤖 AI-র মন্তব্য দেখো</summary><div class="trk-ai">${escapeHtml(x.feedback)}</div></details>`;
       }
       return `<div style="margin:10px 0;padding:8px 10px;border:1px solid rgba(128,128,128,.35);border-radius:10px;">
@@ -17844,8 +17845,10 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     const k = KMAP[it.kind] || { ic:'•' };
     const nm = (opts.showName && it.name) ? `<span class="trk-chip" style="background:#E8EEFB; font-weight:700;">👤 ${escapeHtml(it.name)}</span>` : '';
     const dup = it.dupN > 1 ? `<span class="trk-chip">🔁 ${bnN(it.dupN)} বার জমা</span>` : '';
-    const img = it.url ? `<a class="trk-chip" href="${escapeHtml(it.url)}" target="_blank" rel="noopener" style="text-decoration:none;">🖼 খাতা/ছবি দেখো</a>` : '';
-    const q = (it.qText || it.qUrl) ? `<details><summary>❓ প্রশ্ন দেখো</summary><div class="trk-q">${escapeHtml(it.qText || '')}${it.qUrl ? `<div style="margin-top:6px;"><a href="${escapeHtml(it.qUrl)}" target="_blank" rel="noopener">🖼 প্রশ্নের ছবি দেখো</a></div>` : ''}</div></details>` : '';
+    const img = '';   // [v43] খাতার ছবি এখন কার্ডেই সরাসরি দেখানো হয় (নিচে)
+    const trkPic = (u, cap) => u ? `<div style="margin:8px 0 4px;"><div class="meta" style="margin-bottom:3px;">${cap}</div><img loading="lazy" src="${escapeHtml(driveImg(u))}" alt="${cap}" style="max-width:100%;max-height:460px;object-fit:contain;border-radius:10px;border:1px solid rgba(128,128,128,.35);background:#fff;"></div>` : '';
+    const q = (it.qText || it.qUrl) ? `<details open><summary>❓ প্রশ্ন</summary><div class="trk-q">${escapeHtml(it.qText || '')}${trkPic(it.qUrl, '🖼 প্রশ্নের ছবি')}</div></details>` : '';
+    const ans = trkPic(it.url, '📒 ছাত্রের খাতা');
     const ai = it.feedback ? `<details><summary>🤖 AI-র মন্তব্য দেখো</summary><div class="trk-ai">${escapeHtml(it.feedback)}</div></details>` : '';
     const rr = it.reviewReq ? `<div class="trk-note" style="color:#7B5A10;">🚩 ছাত্র রিভিউ চেয়েছে${it.reason ? ': ' + escapeHtml(it.reason) : ''}${it.resolved ? ' · ✅ নিষ্পত্তি হয়েছে' : ''}${it.tnote ? '<br>💬 শিক্ষকের উত্তর: ' + escapeHtml(it.tnote) : ''}</div>` : '';
     const nr = it.noReply ? `<div class="trk-note">ℹ️ এই দিনের রিভিশন নতুন সেভ-ব্যবস্থার আগের — শুধু সংখ্যা জমা আছে; প্রশ্ন, ছাত্রের উত্তর ও AI-র মন্তব্য তখন সেভ হতো না (এখন থেকে সব সেভ হয় ও এখানে দেখা যায়)।</div>` : '';
@@ -17853,7 +17856,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     return `<div class="trk-item k-${it.kind}" id="trkc_${idx}">
       <div class="trk-title">${k.ic} ${escapeHtml(it.title || '')}</div>
       <div class="trk-chips">${nm}${it.tag ? `<span class="trk-chip">${escapeHtml(it.tag)}</span>` : ''}<span>${dayLabel(it.date)}</span>${scoreChip(it)}${dup}${img}</div>
-      ${q}${ql}${ai}${editNote(it.edited, false)}${rr}${nr}${setBlock(it, idx)}${fbHtml(it, idx)}
+      ${q}${ans}${ql}${ai}${editNote(it.edited, false)}${rr}${nr}${setBlock(it, idx)}${fbHtml(it, idx)}
     </div>`;
   }
   function byDate(items, opts){
@@ -31250,6 +31253,122 @@ window.PagePicker = PagePicker;
   }
   new MutationObserver(injectTr).observe(document.getElementById('app'), { childList:true, subtree:true });
   injectTr();
+})();
+
+// ===== ✍️ খাতার ছবিতে শিক্ষকের মার্ক (কলম / ❌ / ✔ / লেখা) — v43 =====
+(function(){
+  const st = document.createElement('style');
+  st.textContent = `
+    #annBar{ display:flex; align-items:center; gap:6px; padding:0 12px 8px; flex-wrap:wrap; }
+    #annBar button{ background:rgba(255,255,255,0.12); color:#fff; border:1px solid rgba(255,255,255,0.28); border-radius:16px; padding:5px 11px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
+    #annBar button.on{ background:#F2C14E; color:#1F2A44; border-color:#F2C14E; }
+    #annBar .sv{ background:#1e8449; border-color:#1e8449; }
+    #imgZoomAnn{ touch-action:none; }`;
+  document.head.appendChild(st);
+  const driveId = u => { const s = String(u || ''), m = s.match(/drive\.google\.com\/thumbnail\?id=([-\w]+)/) || s.match(/[?&]id=([-\w]+)/) || s.match(/\/file\/d\/([-\w]+)/); return (m && /drive\.google\.com|googleusercontent/.test(s)) ? m[1] : null; };
+  const COLORS = ['#e11d1d', '#1d4ed8', '#16a34a'];
+  function draw(ctx, W, H, list){
+    ctx.clearRect(0, 0, W, H); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    list.forEach(s => {
+      if(s.t === 'p' && s.pts && s.pts.length){
+        ctx.strokeStyle = s.c; ctx.lineWidth = s.w * W; ctx.beginPath();
+        s.pts.forEach((p, i) => i ? ctx.lineTo(p[0] * W, p[1] * H) : ctx.moveTo(p[0] * W, p[1] * H));
+        if(s.pts.length === 1) ctx.lineTo(s.pts[0][0] * W + 0.1, s.pts[0][1] * H);
+        ctx.stroke();
+      } else if(s.t === 'x'){
+        const r = s.s * W / 2, x = s.x * W, y = s.y * H; ctx.strokeStyle = '#e11d1d'; ctx.lineWidth = Math.max(3, 0.006 * W);
+        ctx.beginPath(); ctx.moveTo(x - r, y - r); ctx.lineTo(x + r, y + r); ctx.moveTo(x + r, y - r); ctx.lineTo(x - r, y + r); ctx.stroke();
+      } else if(s.t === 'v'){
+        const r = s.s * W / 2, x = s.x * W, y = s.y * H; ctx.strokeStyle = '#16a34a'; ctx.lineWidth = Math.max(3, 0.006 * W);
+        ctx.beginPath(); ctx.moveTo(x - r, y); ctx.lineTo(x - r * 0.3, y + r * 0.8); ctx.lineTo(x + r, y - r * 0.9); ctx.stroke();
+      } else if(s.t === 't'){
+        const fs = s.s * W; ctx.font = '700 ' + fs + 'px sans-serif'; ctx.textBaseline = 'top';
+        ctx.lineWidth = fs * 0.18; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(s.txt, s.x * W, s.y * H);
+        ctx.fillStyle = s.c; ctx.fillText(s.txt, s.x * W, s.y * H);
+      }
+    });
+  }
+  const A = () => window.__ann;
+  function cv(){ return document.getElementById('imgZoomAnn'); }
+  function render(){ const c = cv(), a = A(); if(!c || !a) return; draw(c.getContext('2d'), c.width, c.height, a.cur ? a.strokes.concat([a.cur]) : a.strokes); }
+  function sync(){
+    const c = cv(), img = document.getElementById('imgZoomImg'); if(!c || !img) return;
+    c.style.width = img.style.width; c.style.height = img.style.height; c.style.transform = img.style.transform;
+  }
+  function sizeCanvas(){
+    const c = cv(), img = document.getElementById('imgZoomImg'); if(!c || !img || !img.naturalWidth) return;
+    c.width = Math.min(2000, img.naturalWidth); c.height = Math.round(c.width * img.naturalHeight / img.naturalWidth);
+    sync(); render();
+  }
+  const api = (action, args) => { const s = (typeof getLoggedStudent === 'function') ? getLoggedStudent() : null; return postToScriptRaw(action, Object.assign({ slug:s && s.slug }, args)); };
+  const __open = window.openImgZoom;
+  window.openImgZoom = function(url, openUrl, extraHtml){
+    const id = driveId(url), isT = !!(typeof getLoggedTeacher === 'function' && getLoggedTeacher());
+    __open(url, openUrl, (extraHtml || '') + ((id && isT) ? '<button id="annBtn" onclick="annStart()">✍️ মার্ক করো</button>' : ''));
+    window.__ann = { id, strokes:[], edit:false, tool:'pen', ci:0, pan:false, cur:null, backup:'[]' };
+    if(!id) return;
+    const wrap = document.getElementById('imgZoomWrap'), img = document.getElementById('imgZoomImg'); if(!wrap || !img) return;
+    const c = document.createElement('canvas'); c.id = 'imgZoomAnn'; c.width = 800; c.height = 1000;
+    c.style.cssText = 'position:absolute;left:50%;top:50%;pointer-events:none;border-radius:6px;';
+    wrap.appendChild(c);
+    new MutationObserver(sync).observe(img, { attributes:true, attributeFilter:['style'] });
+    img.addEventListener('load', sizeCanvas); if(img.complete && img.naturalWidth) sizeCanvas();
+    api('revisionAnnGet', { id }).then(r => { const a = A(); if(a && a.id === id && r && r.status === 'success'){ a.strokes = Array.isArray(r.strokes) ? r.strokes : []; a.backup = JSON.stringify(a.strokes); render(); } }).catch(() => {});
+  };
+  const __rot = window.imgZoomRotate;
+  window.imgZoomRotate = function(){ const a = A(); if(a && a.edit){ toast('মার্ক করার সময় ঘোরানো যাবে না'); return; } __rot(); };
+
+  window.annStart = function(){
+    const a = A(), c = cv(), ov = document.getElementById('imgZoomOverlay'); if(!a || !c || !ov || a.edit) return;
+    a.edit = true; a.backup = JSON.stringify(a.strokes);
+    if(window.__zoomState && window.__zoomState.rot){ window.__zoomState.rot = 0; }
+    window.imgZoomReset();
+    const bar = document.createElement('div'); bar.id = 'annBar';
+    bar.innerHTML = `<button data-t="pen" class="on">✏️ কলম</button><button data-t="x">❌ ভুল</button><button data-t="v">✔️ ঠিক</button><button data-t="t">🔤 লেখা</button>
+      <button id="annCol" style="color:${COLORS[0]};">🎨 ●</button><button id="annUndo">↩️</button><button id="annPan">🖐 সরাও</button><button id="annSave" class="sv">💾 সেভ</button><button id="annX">✕ বাদ</button>`;
+    ov.querySelector('#imgZoomBar').insertAdjacentElement('afterend', bar);
+    c.style.pointerEvents = 'auto'; c.style.cursor = 'crosshair';
+    bar.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { a.tool = b.dataset.t; a.pan = false; bar.querySelectorAll('[data-t]').forEach(x => x.classList.toggle('on', x === b)); document.getElementById('annPan').classList.remove('on'); c.style.pointerEvents = 'auto'; });
+    document.getElementById('annCol').onclick = e => { a.ci = (a.ci + 1) % COLORS.length; e.target.style.color = COLORS[a.ci]; };
+    document.getElementById('annUndo').onclick = () => { a.strokes.pop(); render(); };
+    document.getElementById('annPan').onclick = e => { a.pan = !a.pan; e.target.classList.toggle('on', a.pan); c.style.pointerEvents = a.pan ? 'none' : 'auto'; };
+    document.getElementById('annX').onclick = () => { try{ a.strokes = JSON.parse(a.backup); }catch(e){ a.strokes = []; } annEnd(); };
+    document.getElementById('annSave').onclick = async () => {
+      const r4 = n => Math.round(n * 10000) / 10000;
+      const out = a.strokes.map(s => s.t === 'p' ? { t:'p', c:s.c, w:s.w, pts:s.pts.map(p => [r4(p[0]), r4(p[1])]) } : Object.assign({}, s, { x:r4(s.x), y:r4(s.y) }));
+      const js = JSON.stringify(out);
+      if(js.length > 47000){ toast('দাগ অনেক বেশি হয়ে গেছে — কিছু কমাও (↩️)'); return; }
+      const btn = document.getElementById('annSave'); btn.disabled = true; btn.textContent = '⏳';
+      const r = await postToScriptRaw('revisionAnnSave', { id:a.id, strokes:js });
+      btn.disabled = false; btn.textContent = '💾 সেভ';
+      if(r && r.status === 'success'){ a.strokes = out; a.backup = js; toast('✅ মার্ক সেভ হয়েছে — ছাত্রও দেখতে পাবে'); annEnd(); }
+      else toast(r && r.message === 'too_big' ? 'দাগ অনেক বেশি' : 'সেভ হয়নি — Apps Script নতুন version Deploy করা আছে তো?');
+    };
+    const pos = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+    const ptrs = new Set();
+    c.onmousedown = e => { if(a.edit && !a.pan) e.stopPropagation(); };
+    c.addEventListener('touchend', e => { if(a.edit && !a.pan) e.stopPropagation(); }, { passive:true });
+    c.onpointerdown = e => {
+      if(!a.edit || a.pan) return; ptrs.add(e.pointerId);
+      if(ptrs.size > 1){ a.cur = null; render(); return; }
+      e.stopPropagation(); const p = pos(e);
+      if(a.tool === 'pen'){ a.cur = { t:'p', c:COLORS[a.ci], w:0.0035, pts:[p] }; try{ c.setPointerCapture(e.pointerId); }catch(x){} render(); }
+      else if(a.tool === 'x'){ a.strokes.push({ t:'x', x:p[0], y:p[1], s:0.05 }); render(); }
+      else if(a.tool === 'v'){ a.strokes.push({ t:'v', x:p[0], y:p[1], s:0.05 }); render(); }
+      else if(a.tool === 't'){ const txt = (prompt('কী লিখবে? (যেমন: সূত্র ভুল / ধাপ বাদ)', '') || '').trim(); if(txt){ a.strokes.push({ t:'t', x:p[0], y:p[1], s:0.03, c:COLORS[a.ci], txt:txt.slice(0, 60) }); render(); } }
+    };
+    c.onpointermove = e => { if(!a.cur || ptrs.size > 1) return; const p = pos(e), l = a.cur.pts[a.cur.pts.length - 1]; if(Math.hypot(p[0] - l[0], p[1] - l[1]) > 0.0015){ a.cur.pts.push(p); render(); } };
+    const up = e => { ptrs.delete(e.pointerId); if(a.cur){ a.strokes.push(a.cur); a.cur = null; render(); } };
+    c.onpointerup = up; c.onpointercancel = up;
+    const b = document.getElementById('annBtn'); if(b){ b.classList.add('on'); }
+    toast('✍️ কলম দিয়ে দাগো, ❌/✔️ বসাও। দুই আঙুলে জুম, 🖐 চেপে সরাও।');
+  };
+  function annEnd(){
+    const a = A(), c = cv(); if(!a) return; a.edit = false; a.cur = null;
+    const bar = document.getElementById('annBar'); if(bar) bar.remove();
+    if(c){ c.style.pointerEvents = 'none'; c.style.cursor = ''; } render();
+    const b = document.getElementById('annBtn'); if(b) b.classList.remove('on');
+  }
 })();
 </script>
 
