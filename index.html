@@ -13703,13 +13703,19 @@ window.doSmartSearch = async function(){
     const [studs, tax] = await Promise.all([listStudentsRemote(), postToScriptRaw('taxMaster', {})]);
     WKT.studs = studs || []; WKT.tree = (tax && tax.tree) || {};
     WKT.subj = Object.keys(NOTES_SUBJECTS)[0];
+    try{ const wd = await postToScriptRaw('revisionWeeklyAll', { tkey:TEACHER_PASSWORD }); WKT.days = (wd && wd.days) || {}; }catch(e){ WKT.days = {}; }
     await wkLoadScope('');
     wkDraw();
   }
   function wkDraw(){
     const sm = WKT.summary || {};
     const nameOf = s => { const f = WKT.studs.find(x => x.slug === s); return f ? f.name : s; };
+    const WD = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'], today = new Date().getDay(), days = WKT.days || {};
+    const dayRows = WKT.studs.map(s => { const d = days[s.slug], has = d !== undefined && d >= 0;
+      return `<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--paper-edge);font-size:14px;"><span>${escapeHtml(s.name)}</span><span>${has ? `<b>${WD[d]}</b>${d === today ? ' <span style="color:#1e8449;">· আজই</span>' : ''}` : '<span class="meta">⏳ এখনো বাছেনি</span>'}</span></div>`; }).join('');
     app.innerHTML = `${header('সাপ্তাহিক রিভিশন')}
+      <div class="card"><h2>📅 কোন দিন সাপ্তাহিক ১২০ মিনিট রিভিশন</h2>
+        <p class="hint">প্রতিটা ছাত্র নিজে সপ্তাহের প্রথম দিন বেছে নিয়েছে — ওই দিনটাই তার ২ ঘণ্টার বাধ্যতামূলক রিভিশনের দিন।</p>${dayRows || '<div class="empty-state">কোনো ছাত্র নেই।</div>'}</div>
       <div class="card"><h2>⭐ সাপ্তাহিক রিভিশনের গুরুত্বপূর্ণ টপিক</h2>
         <p class="hint">ছাত্ররা সপ্তাহের প্রথম দিনে ১২০ মিনিটের সাপ্তাহিক রিভিশন করে। এখানে যে টপিকগুলো বাছবে সেগুলো ওই সেশনে <b>সবার আগে</b> আসবে (বেশি প্রশ্নসহ, নতুন প্রশ্নও বানানো হবে)। একবার সেভ করলে প্রতি সপ্তাহে নিজে থেকেই থাকবে — আবার ফর্ম পূরণ লাগবে না। কিছু না বাছলে আগের মতো AI নিজেই বাছবে।</p>
         <label class="field-label">কাদের জন্য</label>
