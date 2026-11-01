@@ -15817,7 +15817,7 @@ window.doSmartSearch = async function(){
     const head = `<div style="border:1.5px dashed #6B7A99;border-radius:6px;padding:6px 10px;margin:6px 0 8px;font-weight:700;">প্রশ্ন ${bn(n)}${q.board ? ' ▶ ' + esc(q.board) : ''}</div>`;
     if(!q.parts) return head + `<div class="q-text" style="white-space:pre-wrap;">${esc(q.text)}</div>`;
     const row = (l, t, m) => `<div style="display:flex;justify-content:space-between;gap:12px;margin:6px 0;"><div style="flex:1;white-space:pre-wrap;"><b>${l}.</b> ${esc(t)}</div><b>${esc(m)}</b></div>`;
-    return head + (q.parts.stem ? `<div class="q-text" style="white-space:pre-wrap;margin-bottom:6px;">${esc(q.parts.stem)}</div>` : '') + row('গ', q.parts.g, q.parts.gm) + row('ঘ', q.parts.gh, q.parts.ghm);
+    return head + (q.parts.stem ? `<div class="q-text" style="white-space:pre-wrap;margin-bottom:6px;">${esc(q.parts.stem)}</div>` : '') + (q.parts.k ? row('ক', q.parts.k, q.parts.km || '১') : '') + (q.parts.kh ? row('খ', q.parts.kh, q.parts.khm || '২') : '') + row('গ', q.parts.g, q.parts.gm) + row('ঘ', q.parts.gh, q.parts.ghm);
   }
 
   // ---------- ছবি: কম্প্রেস + একাধিক পাতা জোড়া ----------
@@ -15900,7 +15900,7 @@ window.doSmartSearch = async function(){
     lkPagesDraw(); lkCalcShow();
   }
   window.lkTypeChg = function(){ const t = L.types[val('lkType')]; if(t){ document.getElementById('lkMW').value = t.written; document.getElementById('lkMM').value = t.mcq; document.getElementById('lkMP').value = t.practical || 0; } lkCalcShow(); };
-  window.lkCalcShow = function(){ const c = lkCalc(val('lkMW'), val('lkMM'), val('lkMP')), el = document.getElementById('lkCalc'); if(el) el.innerHTML = `প্রতি সেটে <b>${bn(c.cq)}টা CQ</b> (শুধু গ ও ঘ অংশ${c.cq > c.answer ? '; ' + bn(c.answer) + 'টা লিখতে হবে' : ''}) + <b>${bn(c.mcq)}টা MCQ</b>${Number(val('lkMP')) ? ' · ব্যবহারিক ' + bn(val('lkMP')) + ' নম্বর (সেটে নেই)' : ''} · মোট <b>${bn(c.sets)}টা সেট</b>`; };
+  window.lkCalcShow = function(){ const c = lkCalc(val('lkMW'), val('lkMM'), val('lkMP')), el = document.getElementById('lkCalc'); if(el) el.innerHTML = `প্রতি সেটে <b>${bn(c.cq)}টা CQ</b> (গ ও ঘ অংশ (ভান্ডারে মিললে ক ও খ-ও)${c.cq > c.answer ? '; ' + bn(c.answer) + 'টা লিখতে হবে' : ''}) + <b>${bn(c.mcq)}টা MCQ</b>${Number(val('lkMP')) ? ' · ব্যবহারিক ' + bn(val('lkMP')) + ' নম্বর (সেটে নেই)' : ''} · মোট <b>${bn(c.sets)}টা সেট</b>`; };
   window.lkMode = function(m){ L.mode = m; lsKeep(); };
   function lsKeep(){   // মোড বদলালে লেখা হারিয়ে না যায়
     const v = { c:val('lkCollege'), n:val('lkNote'), w:val('lkMW'), m:val('lkMM'), pr:val('lkMP'), t:val('lkType'), s:val('lkSubj'), p:val('lkPaper') };
@@ -16012,9 +16012,9 @@ window.doSmartSearch = async function(){
   function lvDraw(){
     const d = L.data, cfg = d.cfg || d.counts || { cq:0, mcq:0, sets:3 }; cfg.n = cfg.n || cfg.sets || 3;
     const chip = (k, t) => `<button class="btn ${L.focus === k ? 'btn-primary' : 'btn-outline'}" style="flex:1;font-size:12px;padding:8px 4px;" onclick="lkFocus('${k}')">${t}</button>`;
-    const cqUnits = list => list.reduce((a, q) => a + (q.parts ? 2 : 1), 0);
+    const cqUnits = list => list.reduce((a, q) => a + (q.parts ? 2 + (q.parts.k ? 1 : 0) + (q.parts.kh ? 1 : 0) : 1), 0);
     const setRow = (s, part) => { const arr = part === 'cq' ? s.cq : s.mcq; if(!arr.length) return '';
-      return `<div style="display:flex;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--rule);"><div style="flex:1;min-width:0;font-weight:700;font-size:13.5px;">${part === 'cq' ? '✍️ CQ সেট ' : '🔘 MCQ সেট '}${s.no} <span class="meta" style="font-weight:400;">(${bn(arr.length)}টা${part === 'cq' && cqUnits(arr) !== arr.length ? ' · গ+ঘ মিলিয়ে ' + bn(cqUnits(arr)) + 'টি প্রশ্ন' : ''})</span></div><button class="btn btn-gold" style="padding:8px 12px;" onclick="lkOpenSet(${s.no}, '${part}')">📖 পড়ো</button><button class="btn btn-outline" style="padding:8px 12px;" onclick="lkPrint(${s.no}, false, '${part}')">📄 PDF</button></div>`; };
+      return `<div style="display:flex;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--rule);"><div style="flex:1;min-width:0;font-weight:700;font-size:13.5px;">${part === 'cq' ? '✍️ CQ সেট ' : '🔘 MCQ সেট '}${s.no} <span class="meta" style="font-weight:400;">(${bn(arr.length)}টা${part === 'cq' && cqUnits(arr) !== arr.length ? ' · অংশ মিলিয়ে ' + bn(cqUnits(arr)) + 'টি প্রশ্ন' : ''})</span></div><button class="btn btn-gold" style="padding:8px 12px;" onclick="lkOpenSet(${s.no}, '${part}')">📖 পড়ো</button><button class="btn btn-outline" style="padding:8px 12px;" onclick="lkPrint(${s.no}, false, '${part}')">📄 PDF</button></div>`; };
     const sets = d.sets.map(s => `<div class="exam-item" style="border-left:5px solid ${s.prob >= 90 ? '#2E9E5B' : (s.prob >= 80 ? '#D9A21B' : '#6B7A99')};">
         <div class="row-top"><div><div style="font-weight:800;font-size:16px;">সেট ${s.no}</div>
           <div style="font-size:13.5px;margin-top:2px;">শিক্ষকের মতে এই সেট আসার সম্ভাবনা <b style="color:var(--green);font-size:17px;">${s.prob}%</b></div>
@@ -16108,14 +16108,14 @@ window.doSmartSearch = async function(){
     if(!s){ go('leakView', { key:L.key }); return; }
     let n = 0;
     const part = state.part || 'all', showCq = part !== 'mcq' && s.cq.length, showMcq = part !== 'cq' && s.mcq.length, pTag = part === 'cq' ? ' — CQ' : (part === 'mcq' ? ' — MCQ' : '');
-    const cqUnits = s.cq.reduce((a, q) => a + (q.parts ? 2 : 1), 0), sw = P ? '' : `<div class="center" style="margin-top:8px;">${part !== 'cq' && s.cq.length ? `<a class="link-back" onclick="lkOpenSet(${s.no}, 'cq')">✍️ CQ সেট ${s.no}</a>` : ''}${part !== 'mcq' && s.mcq.length ? ` &nbsp; <a class="link-back" onclick="lkOpenSet(${s.no}, 'mcq')">🔘 MCQ সেট ${s.no}</a>` : ''}</div>`;
+    const cqUnits = s.cq.reduce((a, q) => a + (q.parts ? 2 + (q.parts.k ? 1 : 0) + (q.parts.kh ? 1 : 0) : 1), 0), sw = P ? '' : `<div class="center" style="margin-top:8px;">${part !== 'cq' && s.cq.length ? `<a class="link-back" onclick="lkOpenSet(${s.no}, 'cq')">✍️ CQ সেট ${s.no}</a>` : ''}${part !== 'mcq' && s.mcq.length ? ` &nbsp; <a class="link-back" onclick="lkOpenSet(${s.no}, 'mcq')">🔘 MCQ সেট ${s.no}</a>` : ''}</div>`;
     const pf = P ? `lkPrintPick('${pickKey}', ` : `lkPrint(${s.no}, `, rf = P ? `lkRevPick('${pickKey}')` : `lkRev(${s.no})`;
     app.innerHTML = `${header(P ? s.title : 'সেট ' + s.no)}
       <div class="card center"><div style="font-size:12.5px;color:var(--pencil);">${esc(L.data.college)} · ${esc(subjLabel(L.data.subject))} · ${esc(L.data.paper)}</div>
         <h2 style="margin:4px 0;">${(P ? s.title : 'সেট ' + s.no) + pTag}</h2>${P ? '' : `<div style="font-size:15px;">শিক্ষকের মতে আসার সম্ভাবনা <b style="color:var(--green);font-size:20px;">${s.prob}%</b></div>`}
         <div class="row" style="margin-top:10px;"><button class="btn btn-outline btn-block" onclick="${pf}false, '${part}')">📄 PDF (প্রশ্ন)</button><button class="btn btn-outline btn-block" onclick="${pf}true, '${part}')">📄 PDF (উত্তরসহ)</button></div>${sw}
         <button class="btn btn-gold btn-block" style="margin-top:6px;" onclick="${rf}">🔁 ${P ? 'এগুলো' : 'এই সেট'} রিভিশনে নাও</button></div>
-      ${showCq ? `<div class="card"><h2>✍️ সৃজনশীল (CQ)</h2><p class="hint" style="margin-top:-4px;">${bn(s.cq.length)}টা CQ${cqUnits !== s.cq.length ? ' — গ+ঘ মিলিয়ে ' + bn(cqUnits) + 'টি প্রশ্ন' : ''} · সবচেয়ে সম্ভাব্য আগে</p>${L.data.answer && L.data.answer < s.cq.length ? `<p class="hint" style="margin-top:-4px;">${bn(s.cq.length)}টির মধ্যে যেকোনো ${bn(L.data.answer)}টির উত্তর দাও</p>` : ''}${s.cq.map(q => qBlock(q, ++n, false)).join('')}</div>` : ''}
+      ${showCq ? `<div class="card"><h2>✍️ সৃজনশীল (CQ)</h2><p class="hint" style="margin-top:-4px;">${bn(s.cq.length)}টা CQ${cqUnits !== s.cq.length ? ' — অংশ মিলিয়ে ' + bn(cqUnits) + 'টি প্রশ্ন' : ''} · সবচেয়ে সম্ভাব্য আগে</p>${L.data.answer && L.data.answer < s.cq.length ? `<p class="hint" style="margin-top:-4px;">${bn(s.cq.length)}টির মধ্যে যেকোনো ${bn(L.data.answer)}টির উত্তর দাও</p>` : ''}${s.cq.map(q => qBlock(q, ++n, false)).join('')}</div>` : ''}
       ${showMcq ? `<div class="card"><h2>🔘 MCQ</h2><p class="hint" style="margin-top:-4px;">${bn(s.mcq.length)}টা MCQ · সবচেয়ে সম্ভাব্য আগে</p>${s.mcq.map(q => qBlock(q, ++n, false)).join('')}</div>` : ''}
       <div class="center"><a class="link-back" onclick="go('leakView', { key:'${esc(L.key)}' })">← সেটের তালিকা</a></div>${creditFooter()}`;
     renderAllMath(app);
@@ -16152,7 +16152,7 @@ window.doSmartSearch = async function(){
       const img = q.image ? `<div><img src="${driveImg(q.image)}"></div>` : '';
       if(q.kind === 'mcq') return `<div class="lk-q"><div style="white-space:pre-wrap;"><b>${i}.</b> ${esc(q.text)}</div>${img}<div style="margin:4px 0 0 16px;">${(q.options || []).map((o, j) => `<div style="white-space:pre-wrap;margin:2px 0;">${L4[j]}) ${esc(o)}</div>`).join('')}</div></div>`;
       const head = `<div style="border:1.5px dashed #444;padding:4px 8px;margin-bottom:4px;font-weight:700;">প্রশ্ন ${bn(i)}${q.board ? ' ▶ ' + esc(q.board) : ''}</div>`;
-      if(q.parts) return `<div class="lk-q">${head}${q.parts.stem ? `<div style="white-space:pre-wrap;">${esc(q.parts.stem)}</div>` : ''}<div style="display:flex;justify-content:space-between;gap:12px;margin:4px 0;"><div style="white-space:pre-wrap;"><b>গ.</b> ${esc(q.parts.g)}</div><b>${esc(q.parts.gm)}</b></div><div style="display:flex;justify-content:space-between;gap:12px;margin:4px 0;"><div style="white-space:pre-wrap;"><b>ঘ.</b> ${esc(q.parts.gh)}</div><b>${esc(q.parts.ghm)}</b></div>${img}</div>`;
+      if(q.parts) return `<div class="lk-q">${head}${q.parts.stem ? `<div style="white-space:pre-wrap;">${esc(q.parts.stem)}</div>` : ''}${q.parts.k ? `<div style="display:flex;justify-content:space-between;gap:12px;margin:4px 0;"><div style="white-space:pre-wrap;"><b>ক.</b> ${esc(q.parts.k)}</div><b>${esc(q.parts.km || '১')}</b></div>` : ''}${q.parts.kh ? `<div style="display:flex;justify-content:space-between;gap:12px;margin:4px 0;"><div style="white-space:pre-wrap;"><b>খ.</b> ${esc(q.parts.kh)}</div><b>${esc(q.parts.khm || '২')}</b></div>` : ''}<div style="display:flex;justify-content:space-between;gap:12px;margin:4px 0;"><div style="white-space:pre-wrap;"><b>গ.</b> ${esc(q.parts.g)}</div><b>${esc(q.parts.gm)}</b></div><div style="display:flex;justify-content:space-between;gap:12px;margin:4px 0;"><div style="white-space:pre-wrap;"><b>ঘ.</b> ${esc(q.parts.gh)}</div><b>${esc(q.parts.ghm)}</b></div>${img}</div>`;
       return `<div class="lk-q">${head}<span style="white-space:pre-wrap;">${esc(q.text)}</span>${img}</div>`;
     };
     const bodyHtml = list.map(s => {
@@ -18270,7 +18270,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
       const sjs = [...new Set(Object.keys(QB.counts).concat(Object.keys(QB.pend)))].sort((a, b) => ((QB.counts[b] || 0) + (QB.pend[b] || 0)) - ((QB.counts[a] || 0) + (QB.pend[a] || 0))), tot = sjs.reduce((a, k) => a + (QB.counts[k] || 0), 0);
       app.innerHTML = `${header('প্রশ্নব্যাংক')}
         <div class="card"><h2>🗃️ প্রশ্নব্যাংক</h2><p class="hint">অ্যাপে অনুমোদিত মোট <b>${bnN(tot)}</b>টা প্রশ্ন। বিষয়ে ঢুকলে <b>MCQ</b> আর <b>CQ</b> আলাদা ট্যাবে, অধ্যায়, সাল ও গুরুত্ব অনুযায়ী দেখতে, যোগ করতে বা মুছতে পারবে।</p></div>
-        ${qbFeedCard()}${qbExamCard()}${qbPgCard()}${qbFlagCard()}
+        ${qbShortCard()}${qbFeedCard()}${qbExamCard()}${qbPgCard()}${qbFlagCard()}
         <div class="card"><h3>📁 বিষয় অনুযায়ী</h3>${sjs.map(sj => `<button class="btn btn-outline btn-block" style="margin:6px 0;display:flex;justify-content:space-between;gap:8px;" onclick="qbOpen('${escapeHtml(sj)}')"><span>${qbSj(sj)}</span><span><b>${bnN(QB.counts[sj] || 0)}</b>${QB.pend[sj] ? ` <span style="color:#C98A12;font-size:12px;">· ⏳ ${bnN(QB.pend[sj])} রিভিউ বাকি</span>` : ''}</span></button>`).join('') || '<div class="empty-state">এখনো কোনো প্রশ্ন নেই।</div>'}</div>
         <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেলে ফিরে যাও</a></div>${creditFooter()}`;
       return;
@@ -18314,6 +18314,104 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
         ${bar}${rows}${list.length > QB.limit ? `<button class="btn btn-outline btn-block" onclick="qbMore()">আরও দেখাও (${bnN(list.length - QB.limit)}টা বাকি)</button>` : ''}</div>
       <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেলে ফিরে যাও</a></div>${creditFooter()}`;
   }
+
+  // ---- [v45] শিক্ষক: জ্ঞানমূলক / অনুধাবনমূলক ভান্ডার — ক্লাস ফাইলের 📚 PDF থেকে AI আলাদা করে; Exam Leak-এর ক/খ এখান থেকেই আসে ----
+  const SBK = { subject:'', chapter:'', kind:'', q:'', hidden:false, offset:0, d:null, busy:false, log:'', editId:'' };
+  function qbShortCard(){
+    return `<div class="card"><h3>📚 জ্ঞানমূলক / অনুধাবনমূলক ভান্ডার</h3><p class="hint">ক্লাস ফাইলে 📚 দেওয়া PDF থেকে AI প্রতিটা প্রশ্ন ও উত্তর আলাদা করে এখানে রাখে। Exam Leak পুরো CQ-এর <b>ক ও খ</b> অংশ এখান থেকেই নেয় (উত্তরমালায় ক/খ-র উত্তরও থাকে)।</p>
+      <button type="button" class="btn btn-primary btn-block" onclick="SBK_open()">📚 ভান্ডার খোলো</button></div>`;
+  }
+  window.SBK_open = function(){ SBK.offset = 0; renderShortBank(); };
+  const sbSleep = ms => new Promise(r => setTimeout(r, ms));
+  const sbLog = html => { const el = document.getElementById('sbLog'); if(el) el.innerHTML = html; SBK.log = html; };
+  window.renderShortBank = async function(){
+    trkInjectCss();
+    if(!SBK.d) app.innerHTML = `${header('জ্ঞান/অনুধাবন ভান্ডার')}<div class="card center">লোড হচ্ছে...</div>`;
+    const r = await trkTeacherPost('leakTShortList', { subject:SBK.subject, chapter:SBK.chapter, kind:SBK.kind, q:SBK.q, hidden:SBK.hidden ? '1' : '', offset:SBK.offset, limit:40 });
+    if(!r || r.status !== 'success'){
+      app.innerHTML = `${header('জ্ঞান/অনুধাবন ভান্ডার')}<div class="card center"><p class="hint" style="color:var(--red);">লোড করা যায়নি — নতুন Code.gs ডিপ্লয় করেছো তো?</p></div><div class="center"><a class="link-back" onclick="qbOpen('')">← প্রশ্নব্যাংক</a></div>`;
+      return;
+    }
+    SBK.d = r; sbDraw();
+  };
+  function sbItem(x){
+    const kindTxt = x.kind === 'onu' ? '💡 অনুধাবনমূলক' : '📘 জ্ঞানমূলক';
+    const tag = `<span class="q-tag">${kindTxt}</span>${x.board ? ` <span class="trk-chip">🏷️ ${escapeHtml(x.board)}</span>` : ''}${x.hidden ? ' <span class="trk-chip" style="color:#C98A12;">🙈 লুকানো</span>' : ''}`;
+    const where = x.chapter ? `${escapeHtml(x.chapter)}${x.topic ? ' › ' + escapeHtml(x.topic) : ''}` : `<span style="color:#C98A12;">⚠️ ট্যাগ হয়নি${x.header ? ' (ফাইলে: ' + escapeHtml(x.header) + ')' : ''}</span>`;
+    const edit = SBK.editId === x.id ? `<div style="margin-top:8px;padding:8px;border:1px dashed rgba(128,128,128,.5);border-radius:8px;">
+        <label class="field-label" style="font-size:12px;">প্রশ্ন</label><textarea id="sbq_${x.id}" rows="3">${escapeHtml(x.q)}</textarea>
+        <label class="field-label" style="font-size:12px;">উত্তর</label><textarea id="sba_${x.id}" rows="5">${escapeHtml(x.a)}</textarea>
+        <div class="row"><div style="flex:1"><label class="field-label" style="font-size:12px;">বোর্ড/সাল ট্যাগ</label><input type="text" id="sbb_${x.id}" value="${escapeHtml(x.board)}"></div>
+          <div style="flex:1"><label class="field-label" style="font-size:12px;">ধরন</label><select id="sbk_${x.id}"><option value="jan" ${x.kind === 'jan' ? 'selected' : ''}>জ্ঞানমূলক</option><option value="onu" ${x.kind === 'onu' ? 'selected' : ''}>অনুধাবনমূলক</option></select></div></div>
+        <div style="display:flex;gap:6px;margin-top:6px;"><button type="button" class="btn btn-primary" style="padding:6px 12px;font-size:12.5px;" onclick="sbSave('${x.id}')">💾 সেভ</button><button type="button" class="btn btn-outline" style="padding:6px 12px;font-size:12.5px;" onclick="sbEdit('')">বাতিল</button></div></div>` : '';
+    return `<div style="margin:10px 0;padding-bottom:8px;border-bottom:1px dashed rgba(128,128,128,.3);font-size:13.5px;">${tag}<br><span class="meta">${where}</span>
+      <div style="white-space:pre-wrap;margin-top:4px;"><b>প্র:</b> ${escapeHtml(x.q)}</div><div style="white-space:pre-wrap;margin-top:2px;opacity:.9;"><b>উ:</b> ${escapeHtml(x.a || '— উত্তর নেই')}</div>
+      <div style="display:flex;gap:6px;margin-top:6px;"><button type="button" class="info-btn" onclick="sbEdit('${x.id}')">✏️ এডিট</button><button type="button" class="info-btn" onclick="sbHide('${x.id}', ${x.hidden ? 'false' : 'true'})">${x.hidden ? '👁️ আবার দেখাও' : '🙈 লুকাও'}</button></div>${edit}</div>`;
+  }
+  function sbDraw(){
+    const d = SBK.d, st = d.stats, subs = [...new Set(d.facets.map(f => f.subject).filter(Boolean))];
+    const chs = d.facets.filter(f => (!SBK.subject || f.subject === SBK.subject)).sort((a, b) => (b.jan + b.onu) - (a.jan + a.onu));
+    const chips = chs.map(f => { const key = f.chapter || '__none'; return `<button type="button" class="info-btn" style="${SBK.chapter === key ? 'font-weight:800;border-color:#2E9E5B;' : ''}" onclick="sbF('chapter', '${escapeHtml(key).replace(/'/g, '&#39;')}')">${f.chapter ? '📂 ' + escapeHtml(f.chapter) : '⚠️ ট্যাগ হয়নি'} (${bnN(f.jan + f.onu)})</button>`; }).join(' ');
+    app.innerHTML = `${header('জ্ঞান/অনুধাবন ভান্ডার')}
+      <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><h2 style="margin:0;">📚 জ্ঞানমূলক / অনুধাবনমূলক</h2><a class="link-back" onclick="qbOpen('')">← প্রশ্নব্যাংক</a></div>
+        <p class="hint" style="margin-top:8px;">মোট <b>${bnN(st.total)}</b>টা — 📘 জ্ঞানমূলক <b>${bnN(st.jan)}</b> · 💡 অনুধাবনমূলক <b>${bnN(st.onu)}</b> · ট্যাগ বাকি <b>${bnN(st.untagged)}</b> · লুকানো ${bnN(st.hidden)}<br>ক্লাস ফাইল (📚): <b>${bnN(d.files.total)}</b>টা, তার মধ্যে পড়া হয়েছে <b>${bnN(d.files.done)}</b>টা</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="btn btn-primary" style="padding:8px 14px;" onclick="sbScan(false)" ${SBK.busy ? 'disabled' : ''}>🔍 ক্লাস ফাইল থেকে প্রশ্ন তোলো</button><button type="button" class="btn btn-outline" style="padding:8px 14px;" onclick="sbTagOnly()" ${SBK.busy ? 'disabled' : ''}>🏷️ ট্যাগ বাকিগুলো AI ট্যাগ করুক</button><button type="button" class="btn btn-outline" style="padding:8px 14px;" onclick="sbScan(true)" ${SBK.busy ? 'disabled' : ''}>♻️ সব ফাইল আবার পড়ো</button></div>
+        <div id="sbLog" style="margin-top:8px;">${SBK.log}</div>
+        <div class="trk-note">ℹ️ নতুন ফাইল যোগ করলে বা কিছু বাদ গেলে আবার চাপো। আগের কোনো প্রশ্ন কখনো মোছা হয় না; একই প্রশ্ন দুবার যোগও হয় না। ভুল প্রশ্ন <b>🙈 লুকাও</b> — ছাত্র আর দেখবে না।</div></div>
+      <div class="card"><h3>🔎 ফিল্টার</h3>
+        <input type="text" placeholder="প্রশ্ন / উত্তর / বোর্ড খোঁজো" value="${escapeHtml(SBK.q)}" onchange="sbF('q', this.value)">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;"><select style="flex:1;min-width:120px;" onchange="sbF('subject', this.value)"><option value="">সব বিষয়</option>${subs.map(s => `<option value="${escapeHtml(s)}" ${SBK.subject === s ? 'selected' : ''}>${escapeHtml(qbSj(s))}</option>`).join('')}</select>
+          <select style="flex:1;min-width:120px;" onchange="sbF('kind', this.value)"><option value="">জ্ঞান + অনুধাবন</option><option value="jan" ${SBK.kind === 'jan' ? 'selected' : ''}>শুধু জ্ঞানমূলক</option><option value="onu" ${SBK.kind === 'onu' ? 'selected' : ''}>শুধু অনুধাবনমূলক</option></select></div>
+        <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-top:6px;"><input type="checkbox" style="width:auto;" ${SBK.hidden ? 'checked' : ''} onchange="sbF('hidden', this.checked)"> 🙈 লুকানোগুলোও দেখাও</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"><button type="button" class="info-btn" style="${!SBK.chapter ? 'font-weight:800;border-color:#2E9E5B;' : ''}" onclick="sbF('chapter', '')">📂 সব অধ্যায়</button>${chips}</div></div>
+      <div class="card"><p class="hint">${bnN(d.matched)}টা মিলেছে${d.matched > d.items.length + SBK.offset ? ' — ' + bnN(SBK.offset + 1) + ' থেকে ' + bnN(SBK.offset + d.items.length) + ' দেখানো হচ্ছে' : ''}</p>
+        ${d.items.length ? d.items.map(sbItem).join('') : '<div class="empty-state">কিছু নেই — ওপরের বাটনে চাপো।</div>'}
+        <div style="display:flex;gap:8px;margin-top:8px;">${SBK.offset > 0 ? `<button class="btn btn-outline btn-block" onclick="sbPage(-1)">← আগের</button>` : ''}${SBK.offset + d.items.length < d.matched ? `<button class="btn btn-outline btn-block" onclick="sbPage(1)">পরের →</button>` : ''}</div></div>
+      <div class="center"><a class="link-back" onclick="qbOpen('')">← প্রশ্নব্যাংকে ফিরে যাও</a></div>${creditFooter()}`;
+    if(typeof renderAllMath === 'function') renderAllMath(app);
+  }
+  window.sbF = function(k, v){ SBK[k] = v; if(k === 'subject') SBK.chapter = ''; SBK.offset = 0; SBK.editId = ''; renderShortBank(); };
+  window.sbPage = function(dir){ SBK.offset = Math.max(0, SBK.offset + dir * 40); SBK.editId = ''; renderShortBank(); };
+  window.sbEdit = function(id){ SBK.editId = id; sbDraw(); };
+  window.sbHide = async function(id, hide){
+    const r = await trkTeacherPost('leakTShortEdit', { ops:JSON.stringify([{ t:hide ? 'hide' : 'unhide', id }]) });
+    if(r && r.status === 'success'){ toast(hide ? '🙈 লুকানো হয়েছে' : '👁️ আবার দেখানো হবে'); renderShortBank(); } else toast('হয়নি — আবার চেষ্টা করো');
+  };
+  window.sbSave = async function(id){
+    const g = n => (document.getElementById(n + '_' + id) || {}).value;
+    const r = await trkTeacherPost('leakTShortEdit', { ops:JSON.stringify([{ t:'set', id, q:g('sbq'), a:g('sba'), board:g('sbb'), kind:g('sbk') }]) });
+    if(r && r.status === 'success'){ toast('সেভ হয়েছে ✅'); SBK.editId = ''; renderShortBank(); } else toast('সেভ হয়নি — আবার চেষ্টা করো');
+  };
+  async function sbTagLoop(){
+    let total = 0, stuck = 0, left = null;
+    while(true){
+      sbLog(`<p class="hint">🏷️ AI ট্যাগ করছে... এ পর্যন্ত ${bnN(total)}টা${left !== null ? ' · বাকি ' + bnN(left) + 'টা' : ''} — পেজ বন্ধ কোরো না</p>`);
+      const r = await trkTeacherPost('leakTagRun', { src:'sb' });
+      if(!r || r.status !== 'success'){ if(r && r.message === 'busy_try_again'){ await sbSleep(4000); if(++stuck > 5) break; continue; } sbLog(`<p class="hint" style="color:var(--red);">❌ ট্যাগ করা যায়নি (ইন্টারনেট/AI) — আবার চেষ্টা করো</p>`); return total; }
+      total += r.tagged || 0; left = r.remaining;
+      if(!r.remaining) break; if(!r.tagged){ if(++stuck >= 2){ sbLog(`<p class="hint" style="color:#9B6A15;">⚠️ AI এখন সাড়া দিচ্ছে না — ${bnN(total)}টা ট্যাগ হয়েছে, বাকিগুলো পরে আবার চাপো।</p>`); return total; } } else stuck = 0;
+    }
+    return total;
+  }
+  window.sbTagOnly = async function(){
+    if(SBK.busy) return; SBK.busy = true; const n = await sbTagLoop(); SBK.busy = false;
+    await renderShortBank(); sbLog(`<p class="hint" style="color:var(--green);">✅ ট্যাগ শেষ — ${bnN(n)}টা ট্যাগ হয়েছে।</p>`);
+  };
+  window.sbScan = async function(force){
+    if(SBK.busy) return;
+    if(force && !confirm('সব ক্লাস ফাইল (📚) আবার পড়া হবে। আগের কোনো প্রশ্ন মুছবে না, একই প্রশ্ন দুবার যোগও হবে না। এগোবে?')) return;
+    SBK.busy = true; let win = 0, add = 0, mg = 0, stuck = 0, left = null, first = true, bad = [], aiDown = false;
+    while(true){
+      sbLog(`<p class="hint">⏳ ফাইল পড়া হচ্ছে... পড়া অংশ ${bnN(win)}টা · পাওয়া প্রশ্ন ${bnN(add)}টা${left !== null ? ' · বাকি ফাইল ' + bnN(left) + 'টা' : ''} — পেজ বন্ধ কোরো না</p>`);
+      const r = await trkTeacherPost('leakTShortScan', { force:(force && first) ? '1' : '' }); first = false;
+      if(!r || r.status !== 'success'){ if(r && r.message === 'busy_try_again'){ await sbSleep(4000); if(++stuck > 5) break; continue; } sbLog(`<p class="hint" style="color:var(--red);">❌ পড়া যায়নি — আবার চেষ্টা করো</p>`); SBK.busy = false; return; }
+      win += r.scanned; add += r.added; mg += r.merged || 0; left = r.remaining; (r.failed || []).forEach(x => { if(bad.indexOf(x) === -1) bad.push(x); });
+      if(r.aiDown){ aiDown = true; break; }
+      if(!r.remaining) break; if(!r.scanned && ++stuck >= 2) break;
+    }
+    const tagged = await sbTagLoop(); SBK.busy = false; await renderShortBank();
+    sbLog(`<p class="hint" style="color:${aiDown ? '#9B6A15' : 'var(--green)'};">${aiDown ? '⚠️ AI এখন সাড়া দিচ্ছে না — ' : '✅ শেষ — '}নতুন ${bnN(add)}টা প্রশ্ন পাওয়া গেছে${mg ? ', ' + bnN(mg) + 'টা আগের প্রশ্নের সাথে মিলে গেছে (বোর্ড/সাল ট্যাগ জোড়া হয়েছে)' : ''}, ${bnN(tagged)}টা ট্যাগ হয়েছে।${aiDown ? ' বাকি পরে আবার চাপো।' : ''}</p>${bad.length ? `<p class="hint" style="color:#C98A12;">⚠️ এই ফাইলগুলো পড়া যায়নি (বড় বা AI পারেনি): ${bad.map(escapeHtml).join(', ')}</p>` : ''}`);
+  };
 
   // ---- [v6] ছবি ↔ AI-র লেখা না মিললে: ছাত্র/শিক্ষকের মার্ক করা প্রশ্ন ঠিক করা ----
   const QF = { items:[] };
