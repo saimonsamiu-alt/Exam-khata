@@ -13807,7 +13807,7 @@ window.doSmartSearch = async function(){
         <select id="cvStud" onchange="revCovLoad()"><option value="">— বাছো —</option>${studs.map(s => `<option value="${s.slug}">${escapeHtml(s.name)}</option>`).join('')}</select>
         <label class="field-label">বিষয়</label>
         <select id="cvSubj" onchange="revCovLoad()">${sOpts('chemistry')}</select>
-        <p class="hint" style="margin-top:8px;">🤖 ছাত্র কোনো MCQ exam বা CQ দিলে ওই প্রশ্নের টপিক নিজে থেকে এখানে টিক হয়ে যায় (প্রশ্নে AI-ট্যাগ থাকলে)। ভুল টিক হলে তুলে দিতে পারো। <a class="link-back" onclick="revCovSync()">পুরনো exam থেকে টিক আনো</a></p>
+        <p class="hint" style="margin-top:8px;">🤖 ছাত্র কোনো MCQ exam বা CQ দিলে ওই প্রশ্নের টপিক নিজে থেকে এখানে টিক হয়ে যায় (প্রশ্নে AI-ট্যাগ থাকলে)। ভুল টিক হলে তুলে দিতে পারো। <a class="link-back" onclick="revCovSync()">পুরনো exam থেকে টিক আনো</a> · <a class="link-back" onclick="revCovFiles()">📎 অ্যাসাইন করা PDF থেকে টিক আনো</a></p>
         <div id="cvBody"></div></div>
       <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
   }
@@ -13816,6 +13816,15 @@ window.doSmartSearch = async function(){
     const slug = val('cvStud'); if(!slug){ toast('আগে ছাত্র বাছো'); return; }
     const res = await postToScriptRaw('revisionCoveredSync', { slug });
     toast(res && res.status === 'success' ? (res.added ? res.added + 'টা টিক যোগ হয়েছে ✅' : 'নতুন কিছু পাওয়া যায়নি') : 'হয়নি, আবার চেষ্টা করো');
+    revCovLoad();
+  };
+  window.revCovFiles = async function(){
+    const slug = val('cvStud'); if(!slug){ toast('আগে ছাত্র বাছো'); return; }
+    const res = await postToScriptRaw('revisionCoverFromFiles', { slug });
+    if(res && res.status === 'success'){
+      toast(res.added ? res.added + 'টা টিক যোগ হয়েছে ✅' : 'নতুন কিছু পাওয়া যায়নি');
+      alert(`এই ছাত্রের নামে অ্যাসাইন করা PDF: ${res.files}টা\nনাম মিলে যাওয়া টপিক: ${res.matched}টা (নতুন টিক ${res.added}টা)\n\n` + ((res.sample || []).join('\n') || 'কোনো টপিক নাম মেলেনি — হাতে টিক দিতে হবে।') + (res.matched > 12 ? '\n...' : ''));
+    } else toast('হয়নি — Apps Script নতুন version Deploy করা আছে তো?');
     revCovLoad();
   };
   window.revCovLoad = async function(){
@@ -31226,14 +31235,14 @@ window.PagePicker = PagePicker;
     const rows = r.items.map((x, i) => `<div class="exam-item"><div style="font-weight:700;">${esc(x.name)} <span class="meta">${esc(x.date)}</span></div>
         <div>${RS[x.reason] || esc(x.reason)}</div><div class="meta">${esc([sjLabel(x.subject), x.chapter, x.topic].filter(Boolean).join(' › '))}</div>
         <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">
-          ${x.reason === 'notTaught' ? `<button class="info-btn" onclick="trDone(${i},1)">✅ পড়ানো হয়েছে — রিভিশনে খুলে দাও</button>` : ''}
+          ${x.reason === 'notTaught' ? `<button class="info-btn" onclick="trDone(${i},1)">✅ পড়ানো হয়েছে — রিভিশনে খুলে দাও</button><button class="info-btn" onclick="trDone(${i},-1)">🚫 পড়ানো হয়নি — টিক তুলে নাও</button>` : ''}
           <button class="info-btn" onclick="trDone(${i},0)">✔️ দেখেছি / সম্পন্ন</button></div></div>`).join('') || `<div class="empty-state">নতুন কোনো রিকোয়েস্ট নেই।</div>`;
     app.innerHTML = `${header('টপিক রিকোয়েস্ট')}<div class="card"><h2>🔔 ভুলে গেছি / পড়ানো হয়নি</h2><p class="hint">ছাত্র রিভিশনে বাটন চাপলে এখানে আসে (ইমেইলও যায়)।</p>${rows}<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('topicReqT')">🔄 নতুন করো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
   }
   window.trDone = async function(i, cover){
     const x = (window.__trItems || [])[i]; if(!x) return;
-    const r = await tcall('revisionTopicReqDone', { id:x.id, cover:cover ? '1' : '0' });
-    if(r && r.status === 'success'){ toast(cover ? '✅ রিভিশনে খুলে দেওয়া হয়েছে' : '✅ সম্পন্ন'); trRender(); } else toast('হয়নি, আবার চেষ্টা করো');
+    const r = await tcall('revisionTopicReqDone', { id:x.id, cover:cover === 1 ? '1' : '0', unmark:cover === -1 ? '1' : '0' });
+    if(r && r.status === 'success'){ toast(cover === 1 ? '✅ রিভিশনে খুলে দেওয়া হয়েছে' : (cover === -1 ? '🚫 টিক তুলে নেওয়া হয়েছে' : '✅ সম্পন্ন')); trRender(); } else toast('হয়নি, আবার চেষ্টা করো');
   };
   function injectMnT(){
     const t = document.querySelector('#app button[data-revt]');
