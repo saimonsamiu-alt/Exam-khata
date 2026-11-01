@@ -15878,6 +15878,7 @@ window.doSmartSearch = async function(){
     const e = r.entry || { subject:'', paper:r.papers[0], examType:'half', examNote:'', important:[], text:'', imageUrl:'', chapters:[] }, editing = !!r.entry;
     if(!L.mode) L.mode = (e.text && !e.imageUrl) ? 'txt' : 'img';   // ডিফল্ট শুধু প্রথমবার; ছাত্র টগল করলে সেটাই থাকে
     L.cur = e;
+    if(L.fmtFor !== (e.key || 'new')){ L.fmt = (e.marks && e.marks.fmt) ? e.marks.fmt.map(x => Object.assign({}, x)) : []; L.fmtTxt = ''; L.fmtFor = e.key || 'new'; }   // [v47] কলেজের নিয়ম
     app.innerHTML = `${header(editing ? 'সেটআপ বদলাও' : 'নতুন বিষয়')}
       <div class="card" style="padding:20px;"><h2>${editing ? '✏️ ' + esc(subjLabel(e.subject)) : '🎯 Exam Leak সেটআপ'}</h2>
         <p class="hint">${editing ? 'যেটা বদলাতে চাও শুধু সেটা বদলাও। সিলেবাস নতুন না দিলে আগেরটাই থাকবে।' : 'এগুলো একবার দিলেই হবে — পরে আর জিজ্ঞেস করা হবে না।'}</p>
@@ -15892,17 +15893,25 @@ window.doSmartSearch = async function(){
           <div style="flex:1"><label class="field-label" style="font-size:12px;">🔘 MCQ নম্বর</label><input type="number" id="lkMM" min="0" max="300" value="${e.marks ? e.marks.m : (r.types[e.examType] || {}).mcq}" oninput="lkCalcShow()"></div>
           <div style="flex:1"><label class="field-label" style="font-size:12px;">🧪 ব্যবহারিক নম্বর</label><input type="number" id="lkMP" min="0" max="300" value="${e.marks ? (e.marks.p || 0) : ((r.types[e.examType] || {}).practical || 0)}" oninput="lkCalcShow()"></div></div>
         <div id="lkCalc" class="hint" style="margin:4px 0 8px;"></div>
+        <details style="margin:6px 0 10px;" ${(L.fmt && L.fmt.length) || L.fmtTxt ? 'open' : ''}><summary style="cursor:pointer;font-weight:700;font-size:14px;">🏫 আমার কলেজের নিয়ম আলাদা (ঐচ্ছিক) ${(L.fmt && L.fmt.length) ? '<span style="color:var(--green);font-weight:600;">✅ দেওয়া আছে</span>' : ''}</summary>
+          <p class="hint" style="margin-top:6px;">কোন ধরনের কয়টা প্রশ্ন, কত নম্বর — যেভাবে তোমাদের কলেজ দেয় সেভাবেই লেখো (বাংলা/ইংরেজি দুটোই চলবে)। AI বুঝে নেবে, আর সেট ঠিক সেই কাঠামোতেই বানানো হবে।</p>
+          <textarea id="lkFmtTxt" rows="4" placeholder="যেমন: জ্ঞানমূলক ৪টির মধ্যে ৪টি (৪ নম্বর), অনুধাবনমূলক ৪টির মধ্যে ৪টি (৮ নম্বর), সংক্ষিপ্ত গাণিতিক ৪টির মধ্যে ৪টি (৮ নম্বর)">${esc(L.fmtTxt || '')}</textarea>
+          <button type="button" class="btn btn-outline btn-block" id="lkFmtBtn" style="margin-top:6px;" onclick="lkFmtParse()">🧠 AI বুঝে নিক</button><div id="lkFmtBox"></div></details>
         <label class="field-label">📋 সিলেবাস ${editing && (e.text || e.imageUrl) ? `<span style="color:var(--green);">(✅ সেভ আছে — ${e.chapters.length}টা অধ্যায়)</span>` : ''}</label>
         <div style="display:flex;gap:8px;margin-bottom:8px;"><button class="btn ${L.mode === 'img' ? 'btn-primary' : 'btn-outline'}" style="flex:1" onclick="lkMode('img')">🖼️ ছবি দিই</button><button class="btn ${L.mode === 'txt' ? 'btn-primary' : 'btn-outline'}" style="flex:1" onclick="lkMode('txt')">⌨️ লিখে দিই</button></div>
         ${L.mode === 'img' ? `<input type="file" accept="image/*" multiple onchange="lkPick(this)"><div id="lkPages"></div>` : `<textarea id="lkSyl" rows="5" placeholder="যেমন: ভেক্টর, গতিবিদ্যা, নিউটনীয় বলবিদ্যা...">${esc(e.text)}</textarea>`}
         <button class="btn btn-primary btn-block" id="lkSave" onclick="lkSave()">💾 সেভ করো</button><div id="lkSt" style="margin-top:10px;"></div></div>
       <div class="center"><a class="link-back" onclick="go('${editing || L.entries.length ? 'leakHome' : 'studentDashboard'}')">← ফিরে যাও</a></div>${creditFooter()}`;
-    lkPagesDraw(); lkCalcShow();
+    lkPagesDraw(); lkFmtDraw(); lkCalcShow();
   }
   window.lkTypeChg = function(){ const t = L.types[val('lkType')]; if(t){ document.getElementById('lkMW').value = t.written; document.getElementById('lkMM').value = t.mcq; document.getElementById('lkMP').value = t.practical || 0; } lkCalcShow(); };
-  window.lkCalcShow = function(){ const c = lkCalc(val('lkMW'), val('lkMM'), val('lkMP')), el = document.getElementById('lkCalc'); if(el) el.innerHTML = `প্রতি সেটে <b>${bn(c.cq)}টা CQ</b> (গ ও ঘ অংশ (ভান্ডারে মিললে ক ও খ-ও)${c.cq > c.answer ? '; ' + bn(c.answer) + 'টা লিখতে হবে' : ''}) + <b>${bn(c.mcq)}টা MCQ</b>${Number(val('lkMP')) ? ' · ব্যবহারিক ' + bn(val('lkMP')) + ' নম্বর (সেটে নেই)' : ''} · মোট <b>${bn(c.sets)}টা সেট</b>`; };
+  window.lkCalcShow = function(){ const el = document.getElementById('lkCalc');
+    if(L.fmt && L.fmt.length){ const w = L.fmt.filter(s => s.k !== 'mcq').reduce((a, s) => a + s.ans * s.each, 0), m = L.fmt.filter(s => s.k === 'mcq').reduce((a, s) => a + s.ans * s.each, 0), c0 = lkCalc(w, m, 0);
+      if(el) el.innerHTML = `🏫 <b>কলেজের নিয়ম অনুযায়ী</b>: ${L.fmt.map(s => esc(s.label) + ' ' + bn(s.n) + 'টা').join(' + ')} · মোট <b>${bn(w + m)}</b> নম্বর · <b>${bn(c0.sets)}টা সেট</b> <span class="meta">(ওপরের নম্বরের ঘর এখন ধরা হবে না)</span>`; return; }
+    const c = lkCalc(val('lkMW'), val('lkMM'), val('lkMP')); if(el) el.innerHTML = `প্রতি সেটে <b>${bn(c.cq)}টা CQ</b> (গ ও ঘ অংশ (ভান্ডারে মিললে ক ও খ-ও)${c.cq > c.answer ? '; ' + bn(c.answer) + 'টা লিখতে হবে' : ''}) + <b>${bn(c.mcq)}টা MCQ</b>${Number(val('lkMP')) ? ' · ব্যবহারিক ' + bn(val('lkMP')) + ' নম্বর (সেটে নেই)' : ''} · মোট <b>${bn(c.sets)}টা সেট</b>`; };
   window.lkMode = function(m){ L.mode = m; lsKeep(); };
   function lsKeep(){   // মোড বদলালে লেখা হারিয়ে না যায়
+    L.fmtTxt = val('lkFmtTxt');
     const v = { c:val('lkCollege'), n:val('lkNote'), w:val('lkMW'), m:val('lkMM'), pr:val('lkMP'), t:val('lkType'), s:val('lkSubj'), p:val('lkPaper') };
     lsRender().then(() => { const set = (id, x) => { const el = document.getElementById(id); if(el && x !== '') el.value = x; }; set('lkCollege', v.c); set('lkNote', v.n); set('lkType', v.t); set('lkMW', v.w); set('lkMM', v.m); set('lkMP', v.pr); lkCalcShow(); if(!L.editKey){ set('lkSubj', v.s); set('lkPaper', v.p); } });
   }
@@ -15913,13 +15922,44 @@ window.doSmartSearch = async function(){
       <button class="info-btn" onclick="lkPgOp(${i},-1)">▲</button><button class="info-btn" onclick="lkPgOp(${i},1)">▼</button><button class="info-btn" style="color:var(--red)" onclick="lkPgOp(${i},0)">✕</button></div>`).join('');
   }
   window.lkPgOp = function(i, d){ if(d === 0){ URL.revokeObjectURL(L.pages[i].url); L.pages.splice(i, 1); } else { const j = i + d; if(j < 0 || j >= L.pages.length) return; [L.pages[i], L.pages[j]] = [L.pages[j], L.pages[i]]; } lkPagesDraw(); };
+  // ---- [v47] কলেজের নিয়ম (ভাগ): ছাত্র লেখে → AI ভাগে ভাঙে → ছাত্র মিলিয়ে ঠিক করে ----
+  const FMT_KS = { jan:'জ্ঞানমূলক', onu:'অনুধাবনমূলক', math:'সংক্ষিপ্ত গাণিতিক', cq:'সৃজনশীল (CQ)', mcq:'MCQ' };
+  function lkFmtDraw(){
+    const el = document.getElementById('lkFmtBox'); if(!el) return; const f = L.fmt || [];
+    if(!f.length){ el.innerHTML = ''; return; }
+    const tot = f.reduce((a, s) => a + s.ans * s.each, 0), num = (i, k, v, w, st) => `<input type="number" min="${k === 'each' ? 0.5 : 1}" max="${k === 'each' ? 100 : 40}" step="${k === 'each' ? 0.5 : 1}" value="${v}" style="width:${w}px;" onchange="lkFmtSet(${i},'${k}',this.value)">`;
+    el.innerHTML = `<p class="hint" style="margin:8px 0 4px;">✅ AI যা বুঝেছে — ভুল থাকলে ঠিক করে নাও:</p>` + f.map((s, i) => `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0;padding:8px;border:1px solid var(--rule);border-radius:8px;">
+        <select onchange="lkFmtSet(${i},'k',this.value)" style="flex:2;min-width:130px;">${Object.keys(FMT_KS).map(k => `<option value="${k}" ${s.k === k ? 'selected' : ''}>${FMT_KS[k]}</option>`).join('')}</select>
+        <label style="font-size:11.5px;">কয়টা<br>${num(i, 'n', s.n, 56)}</label><label style="font-size:11.5px;">লিখতে হবে<br>${num(i, 'ans', s.ans, 56)}</label><label style="font-size:11.5px;">প্রতিটির নম্বর<br>${num(i, 'each', s.each, 64)}</label>
+        <button type="button" class="info-btn" style="color:var(--red)" onclick="lkFmtDel(${i})">✕</button></div>`).join('')
+      + `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><button type="button" class="info-btn" onclick="lkFmtAdd()">➕ ভাগ যোগ</button><button type="button" class="info-btn" onclick="lkFmtClear()">🗑️ নিয়ম বাদ দাও</button><span class="hint">মোট <b>${bn(tot)}</b> নম্বর</span></div>
+         <p class="hint" style="margin-top:6px;">জ্ঞানমূলক/অনুধাবনমূলক আসবে প্রশ্নভান্ডার থেকে, গাণিতিক আসবে বোর্ডের CQ-র সংখ্যাভিত্তিক অংশ থেকে; কম পড়লে AI শিক্ষকের ধাঁচে বানাবে। নিচে "সেভ করো" চাপলে নিয়মটা সেভ হবে।</p>`;
+  }
+  window.lkFmtSet = function(i, k, v){
+    const s = (L.fmt || [])[i]; if(!s) return;
+    if(k === 'k'){ s.k = v; s.label = FMT_KS[v]; } else { let x = Number(v); if(!(x > 0)) x = 1; s[k] = x; }
+    if(s.ans > s.n) s.ans = s.n;
+    lkFmtDraw(); lkCalcShow();
+  };
+  window.lkFmtDel = function(i){ L.fmt.splice(i, 1); lkFmtDraw(); lkCalcShow(); };
+  window.lkFmtAdd = function(){ (L.fmt = L.fmt || []).push({ k:'jan', label:FMT_KS.jan, n:4, ans:4, each:1 }); lkFmtDraw(); lkCalcShow(); };
+  window.lkFmtClear = function(){ if(!confirm('কলেজের নিয়ম বাদ দিয়ে সাধারণ নিয়মে ফিরবে। ঠিক আছে?')) return; L.fmt = []; lkFmtDraw(); lkCalcShow(); };
+  window.lkFmtParse = async function(){
+    const t = val('lkFmtTxt').trim(); L.fmtTxt = t;
+    if(t.length < 6){ toast('কলেজের নিয়মটা লেখো'); return; }
+    const b = document.getElementById('lkFmtBtn'); if(b){ b.disabled = true; b.textContent = '⏳ বুঝছি...'; }
+    const r = await postToScriptRaw('leakFmtParse', { text:t });
+    if(b){ b.disabled = false; b.textContent = '🧠 AI বুঝে নিক'; }
+    if(r && r.status === 'success' && r.secs && r.secs.length){ L.fmt = r.secs; lkFmtDraw(); lkCalcShow(); toast('বুঝে নিয়েছি — মিলিয়ে দেখো ✅'); }
+    else toast(r && r.message === 'not_understood' ? 'বুঝতে পারিনি — কয়টা প্রশ্ন, কত নম্বর, আরেকটু পরিষ্কার করে লেখো' : (r && r.message === 'busy_try_again' ? 'এখন ব্যস্ত, একটু পরে আবার চাপো' : 'হয়নি — ইন্টারনেট চেক করে আবার চেষ্টা করো'));
+  };
   window.lkSave = async function(){
     const stud = needStud(); if(!stud) return;
     const college = val('lkCollege').trim(), subject = L.editKey ? L.cur.subject : val('lkSubj'), paper = L.editKey ? L.cur.paper : val('lkPaper');
     if(!college){ toast('কলেজের নাম লেখো'); return; }
     if(!subject){ toast('বিষয় বাছো'); return; }
     const b = document.getElementById('lkSave'), st = document.getElementById('lkSt'); b.disabled = true;
-    const p = { slug:stud.slug, college, subject, paper, examType:val('lkType'), examNote:val('lkNote'), markW:val('lkMW'), markM:val('lkMM'), markP:val('lkMP') };
+    const p = { slug:stud.slug, college, subject, paper, examType:val('lkType'), examNote:val('lkNote'), markW:val('lkMW'), markM:val('lkMM'), markP:val('lkMP'), fmt:JSON.stringify(L.fmt || []) };
     if(L.mode === 'img' && L.pages.length){
       st.innerHTML = `<p class="hint">ছবি প্রস্তুত হচ্ছে...</p>`;
       try{ const img = await stitch(L.pages.map(x => x.file), 1300, 0.78); p.base64 = img.base64; p.mimeType = img.mimeType; }
@@ -15930,7 +15970,7 @@ window.doSmartSearch = async function(){
     const r = await postToScriptRaw('leakProfileSave', p);
     b.disabled = false;
     if(r && r.status === 'success'){
-      L.pages.forEach(x => URL.revokeObjectURL(x.url)); L.pages = []; L.key = r.key;
+      L.pages.forEach(x => URL.revokeObjectURL(x.url)); L.pages = []; L.key = r.key; L.fmtFor = null; L.data = null;
       if(r.syllabusGiven || !L.editKey){ L.after = { key:r.key, chapters:r.chapters, master:r.master, more:r.more || [], topics:r.topics || {}, topicMap:r.topicMap || {}, topicsOk:r.topicsOk !== false, parseOk:r.parseOk, given:r.syllabusGiven }; L.editKey = r.key; lsChapters(); }
       else { toast('সেভ হয়েছে ✅'); go('leakAsk', { key:r.key }); }
     } else st.innerHTML = `<p class="hint" style="color:var(--red);">❌ ${r && r.message === 'busy_try_again' ? 'এখন ব্যস্ত, একটু পরে আবার চাপো' : 'সেভ হয়নি, ইন্টারনেট চেক করে আবার চেষ্টা করো'}</p>`;
@@ -16015,12 +16055,16 @@ window.doSmartSearch = async function(){
     const cqUnits = list => list.reduce((a, q) => a + (q.parts ? 2 + (q.parts.k ? 1 : 0) + (q.parts.kh ? 1 : 0) : 1), 0);
     const setRow = (s, part) => { const arr = part === 'cq' ? s.cq : s.mcq; if(!arr.length) return '';
       return `<div style="display:flex;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--rule);"><div style="flex:1;min-width:0;font-weight:700;font-size:13.5px;">${part === 'cq' ? '✍️ CQ সেট ' : '🔘 MCQ সেট '}${s.no} <span class="meta" style="font-weight:400;">(${bn(arr.length)}টা${part === 'cq' && cqUnits(arr) !== arr.length ? ' · অংশ মিলিয়ে ' + bn(cqUnits(arr)) + 'টি প্রশ্ন' : ''})</span></div><button class="btn btn-gold" style="padding:8px 12px;" onclick="lkOpenSet(${s.no}, '${part}')">📖 পড়ো</button><button class="btn btn-outline" style="padding:8px 12px;" onclick="lkPrint(${s.no}, false, '${part}')">📄 PDF</button></div>`; };
+    const fmtOn = !!(d.marks && d.marks.fmt && d.marks.fmt.length);   // [v47]
+    const secOn = s => (s.secs || []).filter(o => o.items && o.items.length);
+    const secSum = s => secOn(s).map(o => esc(o.label) + ' ' + bn(o.items.length) + 'টা').join(' · ');
+    const secRow = s => secOn(s).length ? `<div style="display:flex;align-items:center;gap:6px;margin-top:6px;"><div style="flex:1;font-weight:700;font-size:13.5px;">📝 ${secOn(s).map(o => esc(o.label)).join(' · ')}</div><button class="btn btn-gold" style="padding:8px 12px;" onclick="lkOpenSet(${s.no}, 'all')">📖 দেখো</button><button class="btn btn-outline" style="padding:8px 12px;" onclick="lkPrint(${s.no}, false, 'all')">📄 PDF</button></div>` : '';
     const sets = d.sets.map(s => `<div class="exam-item" style="border-left:5px solid ${s.prob >= 90 ? '#2E9E5B' : (s.prob >= 80 ? '#D9A21B' : '#6B7A99')};">
         <div class="row-top"><div><div style="font-weight:800;font-size:16px;">সেট ${s.no}</div>
           <div style="font-size:13.5px;margin-top:2px;">শিক্ষকের মতে এই সেট আসার সম্ভাবনা <b style="color:var(--green);font-size:17px;">${s.prob}%</b></div>
-          <div class="meta">CQ ${s.cq.length}টা · MCQ ${s.mcq.length}টা</div>
+          <div class="meta">${(s.cq.length || s.mcq.length) ? 'CQ ' + s.cq.length + 'টা · MCQ ' + s.mcq.length + 'টা' : ''}${(s.cq.length || s.mcq.length) && secOn(s).length ? ' · ' : ''}${secSum(s)}</div>
           <div style="margin-top:4px;">${s.chapters.slice(0, 4).map(c => `<span class="q-tag" style="margin-right:4px;">${esc(c.replace(/^.*?অধ্যায়-?\d*[:：]?\s*/, '') || c)}</span>`).join('')}</div></div></div>
-        ${setRow(s, 'cq')}${setRow(s, 'mcq')}
+        ${secRow(s)}${setRow(s, 'cq')}${setRow(s, 'mcq')}
         <button class="btn btn-outline btn-block" style="margin-top:6px;" onclick="lkRev(${s.no})">🔁 রিভিশনে নাও</button></div>`).join('');
     const pk = d.picks || { exam:{ cq:[], mcq:[] }, you:{ cq:[], mcq:[] }, youData:0 };
     const pickCard = (which, icon, title, color) => { const P = pk[which], n = P.cq.length + P.mcq.length; if(!n) return '';
@@ -16043,8 +16087,8 @@ window.doSmartSearch = async function(){
         <label class="field-label">ফোকাস</label>
         <div style="display:flex;gap:6px;">${chip('balanced', '⚖️ ব্যালান্স')}${chip('weak', '💪 দুর্বল টপিক')}${chip('strong', '🏆 শক্তিশালী টপিক')}</div>
         <p class="hint" style="margin-top:6px;">${L.focus === 'weak' ? 'তোমার দুর্বল অধ্যায়ের প্রশ্ন আগে আসবে।' : L.focus === 'strong' ? 'তোমার শক্ত অধ্যায়ের প্রশ্ন আগে আসবে (আত্মবিশ্বাস বাড়াতে)।' : 'গুরুত্ব অনুযায়ী সাজানো — সবচেয়ে সম্ভাব্য প্রশ্ন আগে।'}</p>
-        <details><summary style="cursor:pointer;font-size:13px;">⚙️ ${d.marks ? 'লিখিত ' + bn(d.marks.w) + ' + MCQ ' + bn(d.marks.m) + (d.marks.p ? ' + ব্যবহারিক ' + bn(d.marks.p) : '') + ' নম্বর → ' : ''}প্রশ্নের সংখ্যা (প্রতি সেটে)</summary>
-          <div class="row" style="margin-top:6px;"><div style="flex:1"><label class="field-label">CQ</label><input type="number" id="lkCq" min="0" max="12" value="${cfg.cq}"></div><div style="flex:1"><label class="field-label">MCQ</label><input type="number" id="lkMcq" min="0" max="40" value="${cfg.mcq}"></div><div style="flex:1"><label class="field-label">সেট</label><input type="number" id="lkSets" min="2" max="8" value="${cfg.n || 3}"></div></div></details>
+        <details><summary style="cursor:pointer;font-size:13px;">⚙️ ${fmtOn ? '🏫 কলেজের নিয়ম অনুযায়ী — শুধু সেটের সংখ্যা বদলানো যায় → ' : ''}${d.marks ? 'লিখিত ' + bn(d.marks.w) + ' + MCQ ' + bn(d.marks.m) + (d.marks.p ? ' + ব্যবহারিক ' + bn(d.marks.p) : '') + ' নম্বর → ' : ''}প্রশ্নের সংখ্যা (প্রতি সেটে)</summary>
+          <div class="row" style="margin-top:6px;"><div style="flex:1" ${fmtOn ? 'hidden' : ''}><label class="field-label">CQ</label><input type="number" id="lkCq" min="0" max="12" value="${cfg.cq}"></div><div style="flex:1" ${fmtOn ? 'hidden' : ''}><label class="field-label">MCQ</label><input type="number" id="lkMcq" min="0" max="40" value="${cfg.mcq}"></div><div style="flex:1"><label class="field-label">সেট</label><input type="number" id="lkSets" min="2" max="8" value="${cfg.n || 3}"></div></div></details>
         <button class="btn btn-primary btn-block" id="lkGen" style="margin-top:10px;" onclick="lkGen()">${d.sets.length ? '🔄 নতুন করে সেট বানাও' : '🎯 সেট বানাও'}</button><div id="lkGenSt" style="margin-top:8px;"></div></div>
       ${pickCards}
       ${d.sets.length ? `<div class="card"><h2>🎯 সম্ভাব্য প্রশ্নসেট</h2>${d.note ? `<p class="hint" style="color:#9B6A15;">${esc(d.note)}</p>` : ''}${sets}
@@ -16100,6 +16144,10 @@ window.doSmartSearch = async function(){
     return `<div class="exam-item"><div class="meta">${tags}</div>${meta}${cqHtml(q, i)}${img}
       ${withAns ? `<div style="margin-top:6px;"><b>উত্তর:</b>${ans}</div>` : `<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:13px;">✅ মডেল উত্তর দেখো</summary>${ans}</details>`}</div>`;
   }
+  // [v47] জ্ঞানমূলক / অনুধাবনমূলক / গাণিতিক ভাগের প্রশ্ন
+  const secItem = (it, i, o) => `<div class="exam-item"><div class="meta">${it.gen ? '<span class="q-tag">🤖 AI-র বানানো</span> ' : ''}${it.board ? `<span class="q-tag">🏷️ ${esc(it.board)}</span> ` : ''}${it.chapter ? esc(it.chapter.replace(/^.*?অধ্যায়-?\d*[:：]?\s*/, '') || it.chapter) : ''}${it.p ? ' · ' + bn(it.p) + '% সম্ভাবনা' : ''}</div>
+    <div style="white-space:pre-wrap;margin-top:4px;"><b>${bn(i)}.</b> ${esc(it.text)} <b style="float:right;">${bn(o.each)}</b></div>
+    <details style="margin-top:6px;"><summary style="cursor:pointer;font-size:13px;">✅ উত্তর দেখো</summary><div style="white-space:pre-wrap;margin-top:6px;">${esc(it.answer || '— উত্তর নেই')}</div></details></div>`;
   async function lsetRender(){
     const stud = needStud(); if(!stud) return;
     if(!L.data || L.data.key !== L.key){ loading('সেট'); const r = await postToScriptRaw('leakGet', { slug:stud.slug, key:L.key }); if(!r || r.status !== 'success'){ failCard('সেট', 'lsetRender()', "go('leakView')"); return; } L.data = r; }
@@ -16108,6 +16156,7 @@ window.doSmartSearch = async function(){
     if(!s){ go('leakView', { key:L.key }); return; }
     let n = 0;
     const part = state.part || 'all', showCq = part !== 'mcq' && s.cq.length, showMcq = part !== 'cq' && s.mcq.length, pTag = part === 'cq' ? ' — CQ' : (part === 'mcq' ? ' — MCQ' : '');
+    const secHtml = (!P && part === 'all') ? (s.secs || []).filter(o => o.items && o.items.length).map(o => `<div class="card"><h2>📝 ${esc(o.label)}</h2><p class="hint" style="margin-top:-4px;">${bn(o.n)}টির মধ্যে ${o.ans < o.n ? 'যেকোনো ' + bn(o.ans) + 'টির উত্তর দাও' : 'সবগুলোর উত্তর দাও'} · প্রতিটি ${bn(o.each)} নম্বর (মোট ${bn(o.ans * o.each)}) · সবচেয়ে সম্ভাব্য আগে</p>${o.items.map(it => secItem(it, ++n, o)).join('')}</div>`).join('') : '';
     const cqUnits = s.cq.reduce((a, q) => a + (q.parts ? 2 + (q.parts.k ? 1 : 0) + (q.parts.kh ? 1 : 0) : 1), 0), sw = P ? '' : `<div class="center" style="margin-top:8px;">${part !== 'cq' && s.cq.length ? `<a class="link-back" onclick="lkOpenSet(${s.no}, 'cq')">✍️ CQ সেট ${s.no}</a>` : ''}${part !== 'mcq' && s.mcq.length ? ` &nbsp; <a class="link-back" onclick="lkOpenSet(${s.no}, 'mcq')">🔘 MCQ সেট ${s.no}</a>` : ''}</div>`;
     const pf = P ? `lkPrintPick('${pickKey}', ` : `lkPrint(${s.no}, `, rf = P ? `lkRevPick('${pickKey}')` : `lkRev(${s.no})`;
     app.innerHTML = `${header(P ? s.title : 'সেট ' + s.no)}
@@ -16115,7 +16164,7 @@ window.doSmartSearch = async function(){
         <h2 style="margin:4px 0;">${(P ? s.title : 'সেট ' + s.no) + pTag}</h2>${P ? '' : `<div style="font-size:15px;">শিক্ষকের মতে আসার সম্ভাবনা <b style="color:var(--green);font-size:20px;">${s.prob}%</b></div>`}
         <div class="row" style="margin-top:10px;"><button class="btn btn-outline btn-block" onclick="${pf}false, '${part}')">📄 PDF (প্রশ্ন)</button><button class="btn btn-outline btn-block" onclick="${pf}true, '${part}')">📄 PDF (উত্তরসহ)</button></div>${sw}
         <button class="btn btn-gold btn-block" style="margin-top:6px;" onclick="${rf}">🔁 ${P ? 'এগুলো' : 'এই সেট'} রিভিশনে নাও</button></div>
-      ${showCq ? `<div class="card"><h2>✍️ সৃজনশীল (CQ)</h2><p class="hint" style="margin-top:-4px;">${bn(s.cq.length)}টা CQ${cqUnits !== s.cq.length ? ' — অংশ মিলিয়ে ' + bn(cqUnits) + 'টি প্রশ্ন' : ''} · সবচেয়ে সম্ভাব্য আগে</p>${L.data.answer && L.data.answer < s.cq.length ? `<p class="hint" style="margin-top:-4px;">${bn(s.cq.length)}টির মধ্যে যেকোনো ${bn(L.data.answer)}টির উত্তর দাও</p>` : ''}${s.cq.map(q => qBlock(q, ++n, false)).join('')}</div>` : ''}
+      ${secHtml}${showCq ? `<div class="card"><h2>✍️ সৃজনশীল (CQ)</h2><p class="hint" style="margin-top:-4px;">${bn(s.cq.length)}টা CQ${cqUnits !== s.cq.length ? ' — অংশ মিলিয়ে ' + bn(cqUnits) + 'টি প্রশ্ন' : ''} · সবচেয়ে সম্ভাব্য আগে</p>${L.data.answer && L.data.answer < s.cq.length ? `<p class="hint" style="margin-top:-4px;">${bn(s.cq.length)}টির মধ্যে যেকোনো ${bn(L.data.answer)}টির উত্তর দাও</p>` : ''}${s.cq.map(q => qBlock(q, ++n, false)).join('')}</div>` : ''}
       ${showMcq ? `<div class="card"><h2>🔘 MCQ</h2><p class="hint" style="margin-top:-4px;">${bn(s.mcq.length)}টা MCQ · সবচেয়ে সম্ভাব্য আগে</p>${s.mcq.map(q => qBlock(q, ++n, false)).join('')}</div>` : ''}
       <div class="center"><a class="link-back" onclick="go('leakView', { key:'${esc(L.key)}' })">← সেটের তালিকা</a></div>${creditFooter()}`;
     renderAllMath(app);
@@ -16126,8 +16175,8 @@ window.doSmartSearch = async function(){
   // =====================================================================================
   const partOf = (s, part) => {
     const base = s.title || ('সেট ' + s.no + ' — শিক্ষকের মতে আসার সম্ভাবনা ' + s.prob + '%');
-    if(part === 'cq') return Object.assign({}, s, { mcq:[], title:base + ' · CQ' });
-    if(part === 'mcq') return Object.assign({}, s, { cq:[], title:base + ' · MCQ' });
+    if(part === 'cq') return Object.assign({}, s, { mcq:[], secs:[], title:base + ' · CQ' });
+    if(part === 'mcq') return Object.assign({}, s, { cq:[], secs:[], title:base + ' · MCQ' });
     return s;
   };
   window.lkPrintPick = function(which, withAns, part){
@@ -16157,11 +16206,14 @@ window.doSmartSearch = async function(){
     };
     const bodyHtml = list.map(s => {
       let n = 0;
-      const ansHtml = withAns ? `<h3 style="margin-top:16px;">উত্তরমালা</h3>${s.mcq.length ? `<div>MCQ: ${s.mcq.map((q, j) => `${s.cq.length + j + 1}-${L4[q.correct] || '?'}`).join(', ')}</div>` : ''}${s.cq.map((q, j) => `<div class="lk-q"><b>${j + 1}.</b> <span style="white-space:pre-wrap;">${esc(q.modelAnswerText || '—')}</span>${q.modelAnswerImageUrl ? `<div><img src="${driveImg(q.modelAnswerImageUrl)}"></div>` : ''}</div>`).join('')}` : '';
+      const secsOn = (s.secs || []).filter(o => o.items && o.items.length), secN = secsOn.reduce((a, o) => a + o.items.length, 0);   // [v47]
+      const secsHtml = secsOn.map(o => `<h3>${esc(o.label)} <span style="font-weight:400;font-size:12.5px;">(${bn(o.n)}টির মধ্যে ${o.ans < o.n ? 'যেকোনো ' + bn(o.ans) + 'টি' : 'সবগুলো'} · প্রতিটি ${bn(o.each)} নম্বর)</span></h3>` + o.items.map(it => `<div class="lk-q"><div style="display:flex;justify-content:space-between;gap:12px;"><div style="white-space:pre-wrap;"><b>${bn(++n)}.</b> ${esc(it.text)}</div><b>${bn(o.each)}</b></div></div>`).join('')).join('');
+      let sm = 0; const secAns = secsOn.map(o => o.items.map(it => `<div class="lk-q"><b>${bn(++sm)}.</b> <span style="white-space:pre-wrap;">${esc(it.answer || '—')}</span></div>`).join('')).join('');
+      const ansHtml = withAns ? `<h3 style="margin-top:16px;">উত্তরমালা</h3>${secAns}${s.mcq.length ? `<div>MCQ: ${s.mcq.map((q, j) => `${secN ? bn(secN + s.cq.length + j + 1) : s.cq.length + j + 1}-${L4[q.correct] || '?'}`).join(', ')}</div>` : ''}${s.cq.map((q, j) => `<div class="lk-q"><b>${secN ? bn(secN + j + 1) : j + 1}.</b> <span style="white-space:pre-wrap;">${esc(q.modelAnswerText || '—')}</span>${q.modelAnswerImageUrl ? `<div><img src="${driveImg(q.modelAnswerImageUrl)}"></div>` : ''}</div>`).join('')}` : '';
       return `<div class="lk-set"><div style="text-align:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px;"><div style="font-size:17px;font-weight:800;">${esc(d.college)}</div>
         <div>${esc(NOTES_SUBJECTS[d.subject] ? NOTES_SUBJECTS[d.subject].label : d.subject)} · ${esc(d.paper)} · ${esc(d.examLabel || '')}</div>
         <div style="font-weight:700;">${s.title ? esc(s.title) : 'সেট ' + s.no + ' — শিক্ষকের মতে আসার সম্ভাবনা ' + s.prob + '%'}</div></div>
-        ${s.cq.length ? `<h3>সৃজনশীল প্রশ্ন${d.answer && d.answer < s.cq.length ? ' (' + bn(s.cq.length) + 'টির মধ্যে যেকোনো ' + bn(d.answer) + 'টির উত্তর দাও)' : ''}</h3>${s.cq.map(q => q2(q, ++n)).join('')}` : ''}${s.mcq.length ? `<h3>বহুনির্বাচনি প্রশ্ন</h3>${s.mcq.map(q => q2(q, ++n)).join('')}` : ''}${ansHtml}</div>`;
+        ${secsHtml}${s.cq.length ? `<h3>সৃজনশীল প্রশ্ন${d.answer && d.answer < s.cq.length ? ' (' + bn(s.cq.length) + 'টির মধ্যে যেকোনো ' + bn(d.answer) + 'টির উত্তর দাও)' : ''}</h3>${s.cq.map(q => q2(q, ++n)).join('')}` : ''}${s.mcq.length ? `<h3>বহুনির্বাচনি প্রশ্ন</h3>${s.mcq.map(q => q2(q, ++n)).join('')}` : ''}${ansHtml}</div>`;
     }).join('');
     if(w){
       const title = (list.length === 1 && list[0].title) ? list[0].title : 'Exam Leak';
