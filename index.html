@@ -9426,7 +9426,7 @@ function syncLogoutFab(){
 // (Small edits to existing functions are marked with "// [NEW]" comments.)
 
 // POST that returns the server's JSON even on errors (postToScript() hides the error message)
-const SLOW_AI_ACTIONS = ['revisionGradeCq','revisionAssignAnswer','planSetCq','appealWrittenMarks'];
+const SLOW_AI_ACTIONS = ['revisionGradeCq','revisionAssignAnswer','planSetCq','appealWrittenMarks','revisionExamRoutineParse'];
 async function postToScriptRaw(action, params){
   const ctl = (SLOW_AI_ACTIONS.indexOf(action) !== -1 && window.AbortController) ? new AbortController() : null;
   const tm = ctl ? setTimeout(() => ctl.abort(), 100000) : null;   // ১০০ সেকেন্ডে সাড়া না এলে থামিয়ে ছাত্রকে জানানো হয়
@@ -12052,10 +12052,14 @@ window.doSmartSearch = async function(){
   document.addEventListener('visibilitychange', () => { if(document.hidden){ try{ revSaveSess(); }catch(e){} } });
   window.addEventListener('pagehide', () => { try{ revSaveSess(); }catch(e){} });
   // [NEW] সাপ্তাহিক রিভিশন: ছাত্রের সপ্তাহের প্রথম দিনই সাপ্তাহিক দিন (১২০ মিনিট বাধ্যতামূলক); বাকি ৬ দিন নিজের ইচ্ছামতো সময়
-  const WK_DAYS = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'], WK_SEC = 7200;
+  const WK_DAYS = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'], WK_FULL = 7200, WK_EXAM_SEC = 600;
   const wkStart = () => { const v = localStorage.getItem('rev_week_start'); return (v === null || v === '') ? -1 : Number(v); };
   const wkIsToday = () => wkStart() >= 0 && new Date().getDay() === wkStart();
   const wkDaysTo = () => (wkStart() - new Date().getDay() + 7) % 7;
+  // [v44] স্কুল/কলেজ পরীক্ষা চলতে থাকলে সাপ্তাহিক রিভিশন ১০ মিনিট (নইলে ১২০) — সার্ভার থেকে আজকের পতাকা revSetup-এ আসে
+  const wkExam = () => localStorage.getItem('rev_exam_' + todayStr()) === '1';
+  const wkSecNow = () => wkExam() ? WK_EXAM_SEC : WK_FULL;
+  const wkMinBn = () => String(wkSecNow() / 60).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
 
   window.revOpen = function(){ window.__rev = { phase: localStorage.getItem('rev_greet_' + todayStr()) ? 'setup' : 'greet' }; go('revision'); };
 
@@ -12098,9 +12102,10 @@ window.doSmartSearch = async function(){
     if(!r0.wkLoaded){   // [NEW] সাপ্তাহিক রিভিশনের দিন সার্ভার থেকে (অন্য ডিভাইসেও একই থাকে)
       const st0 = getLoggedStudent();
       if(st0){
-        const w = await postToScriptRaw('revisionWeeklyGet', { slug: st0.slug });
+        const w = await postToScriptRaw('revisionWeeklyGet', { slug: st0.slug, today: todayStr() });
         if(R() !== r0) return;
         if(w && w.status === 'success' && w.startDow >= 0) localStorage.setItem('rev_week_start', String(w.startDow));
+        if(w && w.status === 'success') localStorage.setItem('rev_exam_' + todayStr(), w.examNow ? '1' : '0');   // [v44]
       }
       r0.wkLoaded = true;
     }
@@ -12115,24 +12120,25 @@ window.doSmartSearch = async function(){
     el.innerHTML = rows ? `<div style="margin:10px 0;padding:10px 12px;background:#F5F9FE;border-radius:10px;"><b style="font-size:13px;">📈 রিভিশন চক্র</b>${rows}<div class="meta" style="margin-top:4px;">🔴দুর্বল (৩ দিনে ফেরে) 🟡মাঝারি (১০) 🟢সহজ (৩০) ⚪নতুন (১৪)</div></div>` : '';
   }
   function revSetupDraw(allowed){
-    const wkTodayF = wkIsToday(), wkDoneMin = Math.floor(doneSec() / 60), wkMust = wkTodayF && doneSec() < WK_SEC;
+    const wkTodayF = wkIsToday(), wkDoneMin = Math.floor(doneSec() / 60), wkMust = wkTodayF && doneSec() < wkSecNow();
     const goal = wkTodayF ? 120 : Number(localStorage.getItem('rev_goal') || 10);
     const done = Math.floor(doneSec() / 60);
     const wkS = wkStart(), wkEdit = !!(R() && R().wkEdit);
     let wkCard = '';
     if(wkS < 0 || wkEdit){
       wkCard = `<div style="border:1.5px solid var(--gold);border-radius:12px;padding:12px;margin:0 0 12px 0;background:#FFFBF0;"><b>📅 সাপ্তাহিক রিভিশন</b>
-        <p class="hint" style="margin:6px 0;">সপ্তাহে একদিন <b>১২০ মিনিটের</b> বড় রিভিশন। তোমার সপ্তাহের <b>প্রথম দিন</b> কোনটা? ওই দিনটাই সাপ্তাহিক রিভিশনের দিন হবে — একবারই বলতে হবে। বাকি ৬ দিন নিজের ইচ্ছামতো সময় (যেমন ১০ বা ২০ মিনিট) রিভিশন দেবে।</p>
+        <p class="hint" style="margin:6px 0;">সপ্তাহে একদিন <b>১২০ মিনিটের</b> বড় রিভিশন (স্কুল/কলেজের পরীক্ষার সময় কমপক্ষে ১০ মিনিট)। তোমার সপ্তাহের <b>প্রথম দিন</b> কোনটা? ওই দিনটাই সাপ্তাহিক রিভিশনের দিন হবে — একবারই বলতে হবে। বাকি ৬ দিন নিজের ইচ্ছামতো সময় (যেমন ১০ বা ২০ মিনিট) রিভিশন দেবে।</p>
         <select id="wkDow">${WK_DAYS.map((d, i) => `<option value="${i}" ${i === (wkS >= 0 ? wkS : 6) ? 'selected' : ''}>${d}</option>`).join('')}</select>
         <button class="btn btn-gold btn-block" onclick="revWkSave()">💾 সেভ করো</button></div>`;
     } else if(wkTodayF){
       wkCard = `<div style="border:1.5px solid ${wkMust ? '#E58B82' : '#BFE3CC'};border-radius:12px;padding:12px;margin:0 0 12px 0;background:${wkMust ? '#FFF5F4' : '#F1FAF4'};"><b>📅 আজ সাপ্তাহিক রিভিশনের দিন</b>
-        <div class="meta" style="margin-top:4px;">${wkMust ? `আজ ১২০ মিনিট রিভিশন করতেই হবে — করেছো <b>${wkDoneMin}</b> মিনিট, বাকি <b>${Math.ceil((WK_SEC - doneSec()) / 60)}</b> মিনিট। একবারে না পারলে বিরতি দিয়ে আবার এসে চালিয়ে যেতে পারবে।` : '✅ আজকের ১২০ মিনিট পূর্ণ হয়েছে। চাইলে আরও রিভিশন করতে পারো।'}</div>
+        <div class="meta" style="margin-top:4px;">${wkMust ? `আজ ${wkMinBn()} মিনিট রিভিশন করতেই হবে${wkExam() ? ' (পরীক্ষা চলছে বলে কম)' : ''} — করেছো <b>${wkDoneMin}</b> মিনিট, বাকি <b>${Math.ceil((wkSecNow() - doneSec()) / 60)}</b> মিনিট। একবারে না পারলে বিরতি দিয়ে আবার এসে চালিয়ে যেতে পারবে।` : `✅ আজকের ${wkMinBn()} মিনিট পূর্ণ হয়েছে। চাইলে আরও রিভিশন করতে পারো।`}</div>
         <a class="link-back" onclick="revWkChange()">দিন বদলাও</a></div>`;
     } else {
       const dt = wkDaysTo();
-      wkCard = `<div class="meta" style="margin:0 0 10px 0;">📅 সাপ্তাহিক রিভিশন: <b>${WK_DAYS[wkS]}</b> (${dt === 1 ? 'কাল' : dt + ' দিন পর'}) · ১২০ মিনিট · <a class="link-back" onclick="revWkChange()">দিন বদলাও</a></div>`;
+      wkCard = `<div class="meta" style="margin:0 0 10px 0;">📅 সাপ্তাহিক রিভিশন: <b>${WK_DAYS[wkS]}</b> (${dt === 1 ? 'কাল' : dt + ' দিন পর'}) · ${wkMinBn()} মিনিট${wkExam() ? ' (পরীক্ষা চলছে)' : ''} · <a class="link-back" onclick="revWkChange()">দিন বদলাও</a></div>`;
     }
+    wkCard += `<div class="meta" style="margin:0 0 10px 0;">📝 স্কুল/কলেজের পরীক্ষার রুটিন${wkExam() ? ' <b>(এখন পরীক্ষা চলছে)</b>' : ''}: <a class="link-back" onclick="go('examRoutine')">দাও / বদলাও</a></div>`;
     // [NEW] আগের বারের পছন্দ মনে রাখা — একবার ঠিক করলেই হবে
     let pr = null; try{ pr = JSON.parse(localStorage.getItem('rev_prefs_v1') || 'null'); }catch(e){}
     const sel = (pr && pr.subs ? pr.subs : []).filter(k => allowed.indexOf(k) !== -1 && NOTES_SUBJECTS[k]);
@@ -12163,8 +12169,9 @@ window.doSmartSearch = async function(){
         <label class="field-label">প্রতিদিনের লক্ষ্য (মিনিট)</label>
         <input type="number" id="revGoal" min="5" value="${goal}">
         </details>
-        ${wkMust ? `<button class="btn btn-primary btn-block" onclick="revWkStart()">▶️ সাপ্তাহিক রিভিশন শুরু করো (বাকি ${Math.ceil((WK_SEC - doneSec()) / 60)} মিনিট)</button>` : `<button class="btn btn-primary btn-block" onclick="revStart()">▶️ শুরু করো</button>`}
+        ${wkMust ? `<button class="btn btn-primary btn-block" onclick="revWkStart()">▶️ সাপ্তাহিক রিভিশন শুরু করো (বাকি ${Math.ceil((wkSecNow() - doneSec()) / 60)} মিনিট)</button>` : `<button class="btn btn-primary btn-block" onclick="revStart()">▶️ শুরু করো</button>`}
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('revFlow')">🗺️ আমার রিভিশন ফ্লো — দেখো, বদলাও, AI-র সাথে সাজাও</button>
+        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('revSets')">🗂️ শিক্ষকের সেট</button>
       </div>
       <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>
       ${creditFooter()}`;
@@ -12182,8 +12189,8 @@ window.doSmartSearch = async function(){
   window.revWkChange = function(){ if(R()){ R().wkEdit = true; revRender(); } };
   window.revWkStart = async function(){
     const stud = getLoggedStudent(); if(!stud){ go('studentAuth'); return; }
-    const left = Math.max(0, WK_SEC - doneSec());
-    if(left < 30){ toast('আজকের ১২০ মিনিট পূর্ণ ✅'); revRender(); return; }
+    const left = Math.max(0, wkSecNow() - doneSec());
+    if(left < 30){ toast('আজকের ' + wkMinBn() + ' মিনিট পূর্ণ ✅'); revRender(); return; }
     const subs = (R() && R().allowed && R().allowed.length) ? R().allowed.slice() : Object.keys(NOTES_SUBJECTS);
     const mcqSec = Math.min(Math.round(left * 0.2), Math.max(0, left - CQ_MIN_SEC));
     window.__rev = { phase:'loading', weekly:true, allowed:subs, wkLoaded:true, slug:stud.slug, segs:[{ subs, sec:left, mcqSec }], si:0, tog:0, used:{}, stats:{ m:0, mc:0, cq:[] } };
@@ -12329,14 +12336,14 @@ window.doSmartSearch = async function(){
     m.sAll = m.sAll || {};
     if(m.cur){
       const dt = Math.max(10, Math.min(600, (Date.now() - m.cur.at) / 1000));
-      m.all += dt; if(m.cur.t) m.t += dt;
+      m.all += dt; if(m.cur.t) m.t += dt; if(m.cur.f) m.f = (m.f || 0) + dt;
       if(m.cur.sj) m.sAll[m.cur.sj] = (m.sAll[m.cur.sj] || 0) + dt;
       if(m.cur.ck){ m.chAll[m.cur.ck] = (m.chAll[m.cur.ck] || 0) + dt; if(m.cur.t) m.chT[m.cur.ck] = (m.chT[m.cur.ck] || 0) + dt; }
       m.cur = null;
     }
     return m;
   }
-  function revMixMark(r, it){ if(r.mx) r.mx.cur = { t:!!it.teacher, ck:it.chk || '', at:Date.now(), sj:it.subject || (it.chk ? String(it.chk).split('|')[0] : ((it.amb && it.amb[0]) || '')) }; }
+  function revMixMark(r, it){ if(r.mx) r.mx.cur = { t:!!it.teacher, f:!!it.focus, ck:it.chk || '', at:Date.now(), sj:it.subject || (it.chk ? String(it.chk).split('|')[0] : ((it.amb && it.amb[0]) || '')) }; }
 
   function revPick(){
     const r = R(); if(r.over) return null;
@@ -12375,11 +12382,19 @@ window.doSmartSearch = async function(){
       else if(topC !== null) preferT = true;
       else preferT = aAv ? false : null;
     }
+    const FOC = P.focus || null; let preferF = null, hasF = false, hasN = false;   // [v43] শিক্ষকের ফোকাস অধ্যায়: মোট সময়ের x%
+    if(FOC){
+      const allF = ['mcqWeak','mcqEasy','cqWeak','cqEasy','gen'].reduce((acc, k) => acc.concat((P[k] || []).filter(ok)), []);
+      hasF = allF.some(i => i.focus); hasN = allF.some(i => !i.focus);
+      preferF = (mx.all ? (mx.f || 0) / mx.all : 0) < FOC.pct / 100;
+    }
     const get = k => {
-      let l = rawGet(k); if(!MIX) return l;
+      let l = rawGet(k);
+      if(FOC){ if(preferF && hasF) l = l.filter(i => i.focus); else if(!preferF && hasN) l = l.filter(i => !i.focus); }
+      if(!MIX) return l;
       if(SETM) l = l.filter(i => { const c = chOf(i), pc = c ? SETM[c] : undefined; if(pc === undefined) return true; return i.inSet ? (pc >= 100 || roll < pc) : (pc < 100 && roll >= pc); });
-      if(preferT === true && tAv) return l.filter(i => i.teacher && (!i.chk || topC === null || i.chk === topC));
-      if(preferT === false && aAv) return l.filter(i => !i.teacher);
+      if(!FOC && preferT === true && tAv) return l.filter(i => i.teacher && (!i.chk || topC === null || i.chk === topC));
+      if(!FOC && preferT === false && aAv) return l.filter(i => !i.teacher);
       return l;
     };
     r.tog ^= 1;                                   // দুর্বল ↔ সহজ পালাক্রমে
@@ -12390,7 +12405,7 @@ window.doSmartSearch = async function(){
       : cq
       ? (weak ? ['cqWeak','gen','cqEasy','mcqWeak','mcqEasy'] : ['cqEasy','cqWeak','gen','mcqEasy','mcqWeak'])
       : (weak ? ['mcqWeak','mcqEasy'] : ['mcqEasy','mcqWeak']);
-    for(const gf of (MIX ? [get, rawGet] : [get])) for(const k of order){ const l = gf(k); if(l.length){
+    for(const gf of ((MIX || FOC) ? [get, rawGet] : [get])) for(const k of order){ const l = gf(k); if(l.length){
       let it = l[0];
       if(!r.started){                              // দিনের প্রথম প্রশ্ন: সেরা ৫টার মধ্যে র‍্যান্ডম, গতবারেরটা বাদ
         const last = localStorage.getItem('rev_first_last');
@@ -12583,7 +12598,7 @@ window.doSmartSearch = async function(){
         <p class="hint">আজ মোট রিভিশন: <b>${Math.floor(doneSec() / 60)}</b> মিনিট (লক্ষ্য ${localStorage.getItem('rev_goal') || 10})</p>
         <div class="meta">MCQ: <b>${s.mc}/${s.m}</b> সঠিক ${avg !== null ? `· CQ গড়: <b>${avg}%</b> (${s.cq.length}টা)` : ''}</div>
         ${s.m + s.cq.length === 0 ? `<p class="hint" style="margin-top:10px;">এই বিষয়ে এখনো রিভিশন করার মতো কিছু জমেনি — আগে MCQ/Written/HW দাও।</p>` : ''}
-        ${R().weekly ? `<div style="margin-top:10px;padding:10px 12px;border-radius:10px;background:${doneSec() >= WK_SEC ? '#F1FAF4' : '#FEF8EC'};">📅 সাপ্তাহিক রিভিশন: আজ <b>${Math.floor(doneSec() / 60)}</b>/১২০ মিনিট ${doneSec() >= WK_SEC ? '✅ পূর্ণ!' : '— বাকি ' + Math.ceil((WK_SEC - doneSec()) / 60) + ' মিনিট (এখন রিভিশন করার মতো প্রশ্ন শেষ হয়ে থাকলে পরে আবার চেষ্টা করো)'}</div>` : ''}
+        ${R().weekly ? `<div style="margin-top:10px;padding:10px 12px;border-radius:10px;background:${doneSec() >= wkSecNow() ? '#F1FAF4' : '#FEF8EC'};">📅 সাপ্তাহিক রিভিশন: আজ <b>${Math.floor(doneSec() / 60)}</b>/${wkMinBn()} মিনিট ${doneSec() >= wkSecNow() ? '✅ পূর্ণ!' : '— বাকি ' + Math.ceil((wkSecNow() - doneSec()) / 60) + ' মিনিট (এখন রিভিশন করার মতো প্রশ্ন শেষ হয়ে থাকলে পরে আবার চেষ্টা করো)'}</div>` : ''}
         <button class="btn btn-primary btn-block" style="margin-top:12px;" onclick="revOpen()">🔁 আবার রিভিশন</button>
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('studentDashboard')">ড্যাশবোর্ডে যাও</button></div>${creditFooter()}`;
   }
@@ -15659,7 +15674,7 @@ window.doSmartSearch = async function(){
   const big = (ic, label, sub, on, cls) => `<button class="btn ${cls || 'btn-outline'} btn-block" style="text-align:left;padding:14px 16px;margin-bottom:8px;" onclick="${on}"><span style="font-size:20px;margin-right:8px;">${ic}</span><b>${label}</b><div class="hint" style="margin:2px 0 0 30px;">${sub}</div></button>`;
   const page = (title, inner) => { app.innerHTML = `${header(title)}<div class="card">${inner}</div><div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>${creditFooter()}`; };
   function shRender(){ page('স্টাডি',
-    big('🔁','রিভিশন','',"go('revSets')",'btn-gold') +
+    big('🔁','রিভিশন','',"revOpen()",'btn-gold') +
     big('📚','HW','শিক্ষকের HW ও নিজের HW',"hwHubOpen()") +
     big('🎯','প্র্যাকটিস','বিষয়ভিত্তিক প্র্যাকটিস',"go('battleWorldMap')") +
     big('📊','মাস্টারি','চ্যাপ্টার অনুযায়ী প্রোগ্রেস',"openMyMastery()") +
@@ -17446,12 +17461,95 @@ window.impBkSave = async function(){
 </script>
 
 <script>
+// ===== [v44] স্কুল/কলেজ পরীক্ষার রুটিন — ছাত্র নিজে বা শিক্ষক (ছবি / লেখা) → তারিখ বের হয় → পরীক্ষা চললে সাপ্তাহিক রিভিশন ১০ মিনিট =====
+(function(){
+  const __re = render;
+  render = function(){ if(state.screen === 'examRoutine'){ syncLogoutFab(); exrRender(); return; } __re(); };
+  const esc = s => escapeHtml(String(s == null ? '' : s));
+  const bn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  const bnD = d => { if(!d) return ''; const x = new Date(d + 'T12:00:00'); return isNaN(x.getTime()) ? d : x.toLocaleDateString('bn-BD', { day:'numeric', month:'short', year:'numeric' }); };
+  function who(){
+    const tch = getLoggedTeacher();
+    if(tch && state.slug) return { slug:state.slug, name:state.name || state.slug, teacher:true };
+    const st = getLoggedStudent(); if(st) return { slug:st.slug, name:st.name || '', teacher:false };
+    return null;
+  }
+  const back = w => w.teacher ? "go('teacherTracker')" : 'revOpen()';
+  async function exrRender(){
+    const w = who(); if(!w){ go('studentAuth'); return; }
+    app.innerHTML = `${header('পরীক্ষার রুটিন')}<div class="card center">লোড হচ্ছে...</div>`;
+    const r = await postToScriptRaw('revisionExamRoutineGet', { slug:w.slug, today:todayStr() });
+    if(state.screen !== 'examRoutine') return;
+    if(!r || r.status !== 'success'){
+      app.innerHTML = `${header('পরীক্ষার রুটিন')}<div class="card center"><p class="hint" style="color:var(--red);">লোড করা যায়নি। ইন্টারনেট দেখে আবার চেষ্টা করো (নতুন Code.gs ডিপ্লয় করেছো তো?)।</p><button class="btn btn-primary" onclick="go('examRoutine', ${w.teacher ? `{slug:'${esc(w.slug)}', name:'${esc(w.name).replace(/'/g, '')}'}` : '{}'})">আবার চেষ্টা</button></div><div class="center"><a class="link-back" onclick="${back(w)}">← ফিরে যাও</a></div>`;
+      return;
+    }
+    window.__exr = { w, text:r.text || '' };
+    const status = r.has
+      ? `<div class="meta" style="margin:0 0 8px 0;">সেভ করা আছে: <b>${bn(r.dates.length)}</b> দিন · ${esc(bnD(r.examFrom))} – ${esc(bnD(r.examTo))}${r.by === 'teacher' ? ' · শিক্ষক দিয়েছেন' : ''}<br>${r.examNow ? '📝 <b>এখন পরীক্ষা চলছে</b> — সাপ্তাহিক রিভিশন সর্বনিম্ন <b>১০</b> মিনিট।' : 'আজ পরীক্ষার সময় নয় — সাপ্তাহিক রিভিশন ১২০ মিনিট।'}</div>`
+      : `<div class="meta" style="margin:0 0 8px 0;">এখনো কোনো রুটিন দেওয়া নেই। রুটিন দিলে পরীক্ষার সময় সাপ্তাহিক রিভিশন নিজে থেকে ১০ মিনিটে নামবে।</div>`;
+    app.innerHTML = `${header('পরীক্ষার রুটিন')}
+      <div class="card">
+        <h2>📝 স্কুল/কলেজ পরীক্ষার রুটিন${w.teacher ? ' — ' + esc(w.name) : ''}</h2>
+        <p class="hint">এটা স্কুল/কলেজের নিজের পরীক্ষার রুটিন (এই অ্যাপের পরীক্ষা নয়)। রুটিনের <b>ছবি</b> দাও অথবা <b>লিখে</b> দাও — তারিখগুলো বের করে দেখাবো, ঠিক থাকলে সেভ করো। প্রথম থেকে শেষ পরীক্ষার দিনের মধ্যে সাপ্তাহিক রিভিশন ১০ মিনিট।</p>
+        ${status}
+        <label class="field-label">রুটিনের ছবি (ঐচ্ছিক)</label>
+        <input type="file" id="exrFile" accept="image/*">
+        <label class="field-label">অথবা লিখে দাও (যেমন: ৫ নভেম্বর বাংলা, ৮ নভেম্বর ইংরেজি ...)</label>
+        <textarea id="exrText" rows="5" placeholder="পরীক্ষার রুটিন এখানে লেখো">${esc(r.text || '')}</textarea>
+        <button class="btn btn-gold btn-block" style="margin-top:10px;" onclick="exrParse()">🔍 তারিখ বের করো</button>
+        <div id="exrMsg" class="meta" style="margin-top:6px;"></div>
+        <label class="field-label">পরীক্ষার তারিখ (প্রতি লাইনে একটা, YYYY-MM-DD — দরকারে নিজে ঠিক করো)</label>
+        <textarea id="exrDates" rows="6" placeholder="2026-11-05">${esc((r.dates || []).join('\n'))}</textarea>
+        <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="exrSave()">💾 সেভ করো</button>
+        ${r.has ? `<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="exrClear()">🗑️ রুটিন মুছে দাও</button>` : ''}
+      </div>
+      <div class="center"><a class="link-back" onclick="${back(w)}">← ফিরে যাও</a></div>${creditFooter()}`;
+  }
+  const dEl = id => document.getElementById(id);
+  window.exrParse = async function(){
+    const X = window.__exr; if(!X) return;
+    const text = (dEl('exrText') || {}).value || '', f = dEl('exrFile') && dEl('exrFile').files[0];
+    if(!text.trim() && !f){ toast('ছবি দাও অথবা রুটিন লেখো'); return; }
+    const msg = dEl('exrMsg'); msg.textContent = '⏳ তারিখ খোঁজা হচ্ছে... পেজ বন্ধ কোরো না';
+    const params = { slug:X.w.slug, text, today:todayStr() };
+    if(f){ try{ const c = await compressImageFile(f, 1600, 0.85); params.imageBase64 = c.base64; params.imageMimeType = c.mimeType; }catch(e){ msg.textContent = '❌ ছবি পড়া যায়নি'; return; } }
+    const r = await postToScriptRaw('revisionExamRoutineParse', params);
+    if(!dEl('exrMsg')) return;
+    if(r && r.status === 'success'){ dEl('exrDates').value = r.dates.join('\n'); msg.innerHTML = `✅ ${bn(r.dates.length)}টা তারিখ পাওয়া গেছে — নিচে মিলিয়ে দেখো, তারপর সেভ করো।`; }
+    else msg.innerHTML = `<span style="color:var(--red);">❌ ${r && r.message === 'ai_unavailable' ? 'AI এখন পারছে না, পরে চেষ্টা করো (অথবা নিচে তারিখ নিজে লেখো)' : 'কোনো তারিখ বোঝা যায়নি — আরও পরিষ্কার ছবি/লেখা দাও, অথবা নিচে তারিখ নিজে লেখো'}</span>`;
+  };
+  function readDates(){
+    const t = ((dEl('exrDates') || {}).value || '').replace(/[০-৯]/g, c => '০১২৩৪৫৬৭৮৯'.indexOf(c));
+    return (t.match(/\d{4}-\d{1,2}-\d{1,2}/g) || []).map(s => { const p = s.split('-'); return p[0] + '-' + ('0' + p[1]).slice(-2) + '-' + ('0' + p[2]).slice(-2); });
+  }
+  async function saveNow(dates){
+    const X = window.__exr; if(!X) return;
+    const r = await postToScriptRaw('revisionExamRoutineSet', { slug:X.w.slug, text:(dEl('exrText') || {}).value || '', dates:JSON.stringify(dates), today:todayStr() });
+    if(!r || r.status !== 'success'){ toast('সেভ হয়নি, আবার চেষ্টা করো'); return; }
+    if(!X.w.teacher) localStorage.setItem('rev_exam_' + todayStr(), r.examNow ? '1' : '0');
+    toast(r.cleared ? 'রুটিন মুছে গেছে ✅' : 'সেভ হয়েছে ✅'); exrRender();
+  }
+  window.exrSave = function(){ const d = readDates(); if(!d.length){ toast('অন্তত একটা তারিখ দাও (YYYY-MM-DD)'); return; } saveNow(d); };
+  window.exrClear = function(){ if(confirm('পরীক্ষার রুটিন মুছে ফেলবে?')) saveNow([]); };
+})();
+
 // ===== [NEW] শিক্ষকের ছাত্র-ট্র্যাকার: কে কী জমা দিল (CQ / HW / রিভিশন) + টানা বাদ পড়ার সতর্কতা + Vorkuta শেয়ার =====
 (function(){
   function bnDate(d){ if(!d) return ''; const x = new Date(d + 'T12:00:00'); return isNaN(x.getTime()) ? d : x.toLocaleDateString('bn-BD', { day:'numeric', month:'short' }); }
   function missedDays(s){ return s.silentDays === null ? null : Math.max(0, s.silentDays - 1); }   // আজকের দিন বাদে, পুরো কতদিন কিছু জমা পড়েনি
   function lastTxt(s){ if(s.silentDays === null) return 'এখনো কিছু জমা দেয়নি'; if(s.silentDays === 0) return 'শেষ জমা: আজ'; if(s.silentDays === 1) return 'শেষ জমা: গতকাল'; return 'শেষ জমা: ' + s.silentDays + ' দিন আগে (' + bnDate(s.last) + ')'; }
   function isLate(s, alertDays){ const m = missedDays(s); return m !== null && m >= alertDays; }
+
+  const TRK_WKD = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'];
+  function trkWkLine(s, today){   // [v44] ছাত্র কোন দিনকে সাপ্তাহিক রিভিশনের দিন বেছেছে + আজকের লক্ষ্য (পরীক্ষা চললে ১০, নইলে ১২০)
+    const has = typeof s.wkDow === 'number' && s.wkDow >= 0, req = s.examNow ? 10 : 120, done = Number(s.revMinToday) || 0;
+    const dow = new Date((today || todayStr()) + 'T12:00:00').getDay();
+    let t = `📅 সাপ্তাহিক রিভিশনের দিন: <b>${has ? TRK_WKD[s.wkDow] : 'এখনো বাছেনি'}</b>`;
+    if(has && s.wkDow === dow) t += ` · <b>আজই সেই দিন</b> — ${done >= req ? '✅ পূর্ণ' : '⏳ ' + bnN(done) + '/' + bnN(req) + ' মিনিট'}`;
+    t += s.examNow ? ` · 📝 পরীক্ষা চলছে (${bnDate(s.examFrom)} – ${bnDate(s.examTo)}) → সর্বনিম্ন <b>১০</b> মিনিট` : ` · লক্ষ্য <b>১২০</b> মিনিট`;
+    return `<div class="meta" style="margin-top:4px;${s.examNow ? 'color:#7B5A10;' : ''}">${t}</div>`;
+  }
 
   window.trkLoadAlert = async function(){
     const box = document.getElementById('trkAlertBox'); if(!box) return;
@@ -17509,7 +17607,9 @@ window.impBkSave = async function(){
         </div>
         <div class="meta" style="margin-top:8px;">⏱️ রিভিশন সময়: আজ <b>${bnN(s.revMinToday || 0)}</b> মিনিট · গত ৭ দিনে <b>${bnN(s.revMin7 || 0)}</b> মিনিট · টপিক: আজ <b>${bnN(s.revTopicsToday || 0)}</b>, ৭ দিনে <b>${bnN(s.revTopics7 || 0)}</b>টা</div>
         <div class="meta" style="margin-top:4px;">গত ৭ দিনে: ✍️ CQ <b>${s.cq7}</b> · 📚 HW <b>${s.hw7}</b> · 🔁 রিভিশন <b>${s.rev7}</b></div>
+        ${trkWkLine(s, r.today)}
         <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('teacherTrackerStudent',{slug:'${escapeHtml(s.slug)}', name:'${escapeHtml(s.name).replace(/'/g, '')}', kind:'all'})">📂 কী কী জমা দিয়েছে দেখো</button>
+        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('examRoutine',{slug:'${escapeHtml(s.slug)}', name:'${escapeHtml(s.name).replace(/'/g, '')}'})">📝 পরীক্ষার রুটিন ${s.examHas ? '(আছে)' : '(নেই)'}</button>
       </div>`;
     }).join('');
     app.innerHTML = `
@@ -31496,6 +31596,57 @@ window.PagePicker = PagePicker;
   new MutationObserver(() => { scanInline(); studentBanner(); }).observe(document.body, { childList:true, subtree:true });
   scanInline(); studentBanner();
 
+})();
+
+// ===== 🎯 রিভিশন ফোকাস (শিক্ষক) — v43 =====
+(function(){
+  const esc = s => escapeHtml(String(s == null ? '' : s));
+  const bn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  const sjL = s => (typeof NOTES_SUBJECTS !== 'undefined' && NOTES_SUBJECTS[s]) ? (NOTES_SUBJECTS[s].icon + ' ' + NOTES_SUBJECTS[s].label) : s;
+  const tc = (a, p) => postToScriptRaw(a, Object.assign({ tkey:TEACHER_PASSWORD }, p || {}));
+  const __f0 = render;
+  render = function(){ if(state.screen === 'revFocus'){ syncLogoutFab(); fcRender(); return; } __f0(); };
+  async function fcRender(){
+    app.innerHTML = `${header('রিভিশন ফোকাস')}<div class="card center">লোড হচ্ছে...</div>`;
+    if(!window.__fcStuds) window.__fcStuds = (await listStudentsRemote()) || [];
+    const scope = window.__fcScope || '';
+    const r = await tc('revisionFocusGet', { scope });
+    if(!r || r.status !== 'success'){ app.innerHTML = `${header('রিভিশন ফোকাস')}<div class="card"><p class="hint" style="color:var(--red);">❌ লোড হয়নি — Apps Script নতুন version Deploy করা আছে তো?</p></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>`; return; }
+    const cur = r.focus, on = cur && (!cur.end || cur.end >= r.today), picked = {}; ((cur && cur.keys) || []).forEach(k => { picked[k] = true; });
+    const bySj = {}; r.chapters.forEach(c => { (bySj[c.subject] = bySj[c.subject] || []).push(c); }); window.__fcCh = r.chapters;
+    const list = Object.keys(bySj).map(s => `<div style="margin-top:10px;"><b>${esc(sjL(s))}</b>${bySj[s].sort((a, b) => a.chapter.localeCompare(b.chapter, 'bn')).map(c => { const i = r.chapters.indexOf(c);
+      return `<label class="bubble-opt" style="display:flex;gap:8px;align-items:center;margin:4px 0;"><input type="checkbox" class="fcC" data-i="${i}" ${picked[c.key] ? 'checked' : ''} style="width:auto;margin:0;"><span>${esc(c.chapter)} <span class="meta">(${bn(c.n)}টা প্রশ্ন)</span></span></label>`; }).join('')}</div>`).join('') || '<div class="empty-state">প্রশ্নব্যাংকে এখনো অধ্যায়-ট্যাগ করা প্রশ্ন নেই।</div>';
+    const status = on ? `<div class="card" style="border-left:5px solid #1e8449;"><b>✅ এখন চালু:</b> ${bn(cur.keys.length)}টা অধ্যায় · মোট রিভিশন সময়ের <b>${bn(cur.pct)}%</b> · ${cur.end ? 'শেষ ' + esc(cur.end) : 'যতদিন না বদলাও'} <button class="btn btn-outline" style="margin-left:8px;padding:4px 10px;" onclick="fcClear()">⏹ বন্ধ করো</button></div>` : '';
+    app.innerHTML = `${header('রিভিশন ফোকাস')}${status}
+      <div class="card"><h2>🎯 রিভিশন ফোকাস</h2>
+        <label class="field-label">কার জন্য</label>
+        <select onchange="window.__fcScope = this.value; go('revFocus')"><option value="">সব ছাত্র</option>${window.__fcStuds.map(s => `<option value="${s.slug}" ${scope === s.slug ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
+        <label class="field-label">অধ্যায় বাছো (একাধিক বিষয় থেকে)</label>${list}
+        <label class="field-label" style="margin-top:12px;">মোট রিভিশন সময়ের <b id="fcPv">${cur ? cur.pct : 50}%</b> এই অধ্যায়গুলো থেকে</label>
+        <input type="range" id="fcP" min="5" max="100" step="5" value="${cur ? cur.pct : 50}" oninput="document.getElementById('fcPv').textContent = this.value + '%'">
+        <label class="field-label">কতদিন</label>
+        <select id="fcD"><option value="7">৭ দিন</option><option value="14">১৪ দিন</option><option value="30">৩০ দিন</option><option value="">যতদিন না বদলাই</option></select>
+        <button class="btn btn-gold btn-block" style="margin-top:12px;" onclick="fcSave()">💾 সেভ</button></div>
+      <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+  }
+  window.fcSave = async function(){
+    const keys = Array.from(document.querySelectorAll('.fcC:checked')).map(el => (window.__fcCh[Number(el.dataset.i)] || {}).key).filter(Boolean);
+    if(!keys.length){ toast('অন্তত একটা অধ্যায় বাছো'); return; }
+    const r = await tc('revisionFocusSet', { scope:window.__fcScope || '', chapters:JSON.stringify(keys), pct:document.getElementById('fcP').value, days:document.getElementById('fcD').value });
+    if(r && r.status === 'success'){ toast('✅ সেভ হয়েছে'); go('revFocus'); } else toast('সেভ হয়নি — Apps Script নতুন version Deploy করা আছে তো?');
+  };
+  window.fcClear = async function(){
+    const r = await tc('revisionFocusSet', { scope:window.__fcScope || '', chapters:'[]', pct:0, days:'' });
+    if(r && r.status === 'success'){ toast('ফোকাস বন্ধ হয়েছে'); go('revFocus'); } else toast('হয়নি');
+  };
+  function inject(){
+    const t = document.querySelector('#app button[data-revt]');
+    if(t && t.parentElement && !t.parentElement.querySelector('[data-fcb]')){
+      const b = document.createElement('button'); b.className = 'btn btn-outline btn-block'; b.setAttribute('data-fcb', '1');
+      b.textContent = '🎯 রিভিশন ফোকাস (অধ্যায় + %)'; b.onclick = () => go('revFocus'); t.parentElement.appendChild(b);
+    }
+  }
+  new MutationObserver(inject).observe(document.body, { childList:true, subtree:true }); inject();
 })();
 </script>
 
