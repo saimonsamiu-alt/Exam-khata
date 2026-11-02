@@ -18,9 +18,45 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <!-- KaTeX for Math & Science LaTeX equations -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" media="print" onload="this.media='all'">
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/mhchem.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" onload="if(typeof renderAllMath==='function')renderAllMath();"></script>
+<script>
+// [FIX v30] KaTeX CDN ধীর/ব্লক থাকলে আগে পুরো পেজ সাদা থেকে যেত (defer স্ক্রিপ্ট DOMContentLoaded আটকে রাখত)।
+// এখন পেজ লোড হওয়ার পরে আলাদাভাবে লোড হয় — CDN না এলেও অ্যাপ চলবে, শুধু গণিতের সূত্র সাধারণ লেখা থাকবে।
+(function(){
+  var base='https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/';
+  var files=['katex.min.js','contrib/mhchem.min.js','contrib/auto-render.min.js'];
+  function start(){
+    files.forEach(function(f,i){
+      var sc=document.createElement('script'); sc.src=base+f; sc.async=false;
+      if(i===files.length-1) sc.onload=function(){ try{ if(typeof renderAllMath==='function') renderAllMath(); }catch(e){} };
+      document.head.appendChild(sc);
+    });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();
+</script>
+<script>
+// [FIX v30] Watchdog: ৮ সেকেন্ডেও অ্যাপে কিছু না এলে "রিসেট করে চালু করো" বাটন দেখায় (লগইন/ডাটা মোছে না)।
+(function(){
+  function healthy(){
+    var a=document.getElementById('app');
+    return !!(a && a.innerHTML.trim().length>0 && (a.innerText||'').indexOf('লোড হচ্ছে')<0);
+  }
+  window.__appRecover = function(){
+    try{ localStorage.removeItem('app_nav_v1'); }catch(e){}
+    var jobs=[];
+    try{ if(navigator.serviceWorker && navigator.serviceWorker.getRegistrations) jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){ return Promise.all(rs.map(function(r){ return r.unregister(); })); })); }catch(e){}
+    try{ if(window.caches && caches.keys) jobs.push(caches.keys().then(function(ks){ return Promise.all(ks.map(function(k){ return caches.delete(k); })); })); }catch(e){}
+    Promise.all(jobs).catch(function(){}).then(function(){ location.replace(location.pathname + '?r=' + Date.now()); });
+  };
+  setTimeout(function(){
+    if(healthy() || document.getElementById('__recover')) return;
+    var d=document.createElement('div'); d.id='__recover';
+    d.setAttribute('style','position:fixed;inset:0;z-index:2147483647;background:#F5F7FB;display:flex;align-items:center;justify-content:center;padding:24px;font-family:sans-serif;');
+    d.innerHTML='<div style="max-width:340px;text-align:center;color:#1F2A44;"><div style="font-size:40px">⚠️</div><h3 style="margin:8px 0">অ্যাপ লোড হতে সমস্যা হচ্ছে</h3><p style="font-size:14px;line-height:1.6;color:#5B6472">নিচের বাটনে চাপো — তোমার লগইন ও ডাটা মুছবে না, শুধু অ্যাপ নতুন করে চালু হবে।</p><button onclick="__appRecover()" style="margin-top:10px;padding:12px 22px;border:0;border-radius:10px;background:#D9A441;color:#1F2A44;font-size:16px;font-weight:700">🔄 রিসেট করে চালু করো</button></div>';
+    (document.body||document.documentElement).appendChild(d);
+  }, 8000);
+})();
+</script>
 <style>
   :root{
     --paper:#F5F7FB; --paper-edge:#E3E8F1; --rule:#E3E8F1; --margin-red:#BF3A2C;
@@ -3842,7 +3878,12 @@ let state = __resumeExam
     try{ state = Object.assign({}, __navPending.data, { screen: __navPending.screen }); render(); }catch(e){ console.error('nav restore', e); fallback(); return; }
     setTimeout(() => { const a = document.getElementById('app'); if(a && !a.innerHTML.trim()) fallback(); }, 2500);   // ফাঁকা পেজ হলে ড্যাশবোর্ডে
   }
-  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', restore); else setTimeout(restore, 0);
+  // [FIX v30] আগে শুধু DOMContentLoaded-এর জন্য বসে থাকত — CDN আটকালে সাদা স্ক্রিন। এখন পার্সিং শেষ হলেই (সব ইনলাইন স্ক্রিপ্ট চলার পর) চালায়।
+  if(document.readyState !== 'loading') setTimeout(restore, 0);
+  else {
+    document.addEventListener('readystatechange', function h(){ if(document.readyState !== 'loading'){ document.removeEventListener('readystatechange', h); restore(); } });
+    document.addEventListener('DOMContentLoaded', restore);
+  }
 })();
 // ===== [NEW] ভুল খাতা + দুর্বল টপিক (এই ফোনে সেভ থাকে) =====
 const MB_KEY = s => 'mistakes_v1_' + s;
@@ -9978,6 +10019,7 @@ window.markWdPaid = async function(id, idx){
 function render(){
   syncLogoutFab();
   const s = state.screen;
+  if(s==='navPending'){ try{ app.innerHTML = '<div style="padding:70px 20px;text-align:center;color:#5B6472;font-size:15px;">⏳ লোড হচ্ছে…</div>'; }catch(e){} return; }
   if(s==='landing') renderLanding();
   else if(s==='studentAuth') renderStudentAuth();
   else if(s==='studentDashboard') renderStudentDashboard();
