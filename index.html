@@ -12571,11 +12571,13 @@ window.doSmartSearch = async function(){
   };
 
   function revCq(it, q){
+    window.__revPages = [];
     app.innerHTML = `${header('রিভিশন')}${bar(it)}
       <div class="card">${it.cqp ? revFmtPart(it.cqp) : revFmt(q.text || '')}
         ${q.imageUrl ? `<img src="${driveImg(q.imageUrl)}" style="max-width:100%;border-radius:8px;margin-bottom:10px;">` : ''}
-        <p class="hint">খাতায় সমাধান করে ছবি তুলে জমা দাও — AI মডেল উত্তরের সাথে মিলিয়ে দেখবে।</p>
-        <input type="file" id="revFile" accept="image/*" style="margin-bottom:10px;">
+        <p class="hint">খাতায় সমাধান করে ছবি তুলে জমা দাও — AI মডেল উত্তরের সাথে মিলিয়ে দেখবে। উত্তর একাধিক পাতায় থাকলে <b>সব পাতার ছবি</b> দাও (একসাথে বাছতে পারো, অথবা একটা একটা করে যোগ করো)।</p>
+        <input type="file" id="revFile" accept="image/*" multiple onchange="revAddPages(this)" style="margin-bottom:6px;">
+        <div id="revPages" style="margin:0 0 10px;"></div>
         <button class="btn btn-primary btn-block" id="revSend" onclick="revSubmitCq()">📤 জমা দাও</button>
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="revExplain()">💡 পারছি না — উদাহরণ দিয়ে বুঝিয়ে দাও</button>
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="revAskTeacher()">👨‍🏫 স্যারকে জানাও</button>
@@ -12614,17 +12616,73 @@ window.doSmartSearch = async function(){
     } else { if(box) box.innerHTML = ''; toast('জানানো যায়নি, আবার চেষ্টা করো'); }
   };
 
+  // ===== [v31] একাধিক পাতার ছবি: সব পাতা বাছা যায়, আগে-পরে ক্রমে জুড়ে একটা লম্বা ছবি বানিয়ে AI-কে পাঠানো হয় (সার্ভার বদলাতে হয় না) =====
+  window.__revPages = [];
+  const REV_MAX_PAGES = 8;
+  function revPagesDraw(){
+    const box = document.getElementById('revPages'); if(!box) return;
+    const ps = window.__revPages || [];
+    if(!ps.length){ box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="hint" style="margin:0 0 6px;"><b>${ps.length}</b>টা পাতা বাছা হয়েছে — আরও থাকলে উপরের বাটন দিয়ে যোগ করো</div><div style="display:flex;gap:10px;flex-wrap:wrap;">` +
+      ps.map((f, i) => `<div style="position:relative;width:74px;"><img src="${f.__u || (f.__u = URL.createObjectURL(f))}" alt="পাতা ${i + 1}" style="width:74px;height:98px;object-fit:cover;border-radius:6px;border:1px solid var(--paper-edge);"><div style="font-size:11px;text-align:center;">পাতা ${i + 1}</div><button type="button" onclick="revDelPage(${i})" aria-label="সরাও" style="position:absolute;top:-7px;right:-7px;width:24px;height:24px;border-radius:50%;border:0;background:#BF3A2C;color:#fff;font-size:13px;line-height:1;padding:0;">✕</button></div>`).join('') + '</div>';
+  }
+  window.revAddPages = function(inp){
+    const fs = Array.from((inp && inp.files) || []);
+    fs.forEach(f => { if(f && (!f.type || /^image\//.test(f.type))) window.__revPages.push(f); });
+    if(window.__revPages.length > REV_MAX_PAGES){ window.__revPages = window.__revPages.slice(0, REV_MAX_PAGES); toast('সর্বোচ্চ ' + REV_MAX_PAGES + 'টা পাতা দেওয়া যায়'); }
+    try{ inp.value = ''; }catch(e){}
+    revPagesDraw();
+  };
+  window.revDelPage = function(i){
+    const f = (window.__revPages || [])[i]; if(f && f.__u){ try{ URL.revokeObjectURL(f.__u); }catch(e){} }
+    window.__revPages.splice(i, 1); revPagesDraw();
+  };
+  async function revStitch(files){
+    const W = 1000, GAP = 10, MAXH = 8000;
+    const comp = []; for(const f of files) comp.push(await compressImageFile(f, W, 0.8));
+    if(comp.length === 1) return comp[0];
+    const imgs = await Promise.all(comp.map(c => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = 'data:' + c.mimeType + ';base64,' + c.base64; })));
+    const sizes = imgs.map(im => { const w = Math.min(W, im.width); return { w:w, h:Math.round(im.height * (w / im.width)) }; });
+    const maxW = Math.max.apply(null, sizes.map(z => z.w));
+    const totalH = sizes.reduce((a, z) => a + z.h + GAP, 0) - GAP;
+    const k = totalH > MAXH ? MAXH / totalH : 1;
+    const cv = document.createElement('canvas'); cv.width = Math.round(maxW * k); cv.height = Math.round(totalH * k);
+    const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+    let y = 0;
+    imgs.forEach((im, i) => {
+      const dw = Math.round(sizes[i].w * k), dh = Math.round(sizes[i].h * k);
+      cx.drawImage(im, 0, y, dw, dh); y += dh;
+      if(i < imgs.length - 1){ const g = Math.max(2, Math.round(GAP * k)); cx.fillStyle = '#9aa3b2'; cx.fillRect(0, y, cv.width, g); y += g; }
+    });
+    return { base64: cv.toDataURL('image/jpeg', 0.78).split(',')[1], mimeType: 'image/jpeg' };
+  }
+  // AI-র লেখায় LaTeX-এর \r \t \f \b কন্ট্রোল ক্যারেক্টার হয়ে গেলে (যেমন "HCl\rightarrow" → "HClightarrow") ফিরিয়ে আনে, **বোল্ড** দেখায়
+  function revFixTex(t){
+    let x = String(t == null ? '' : t)
+      .replace(/\r(ightarrow|ightleftharpoons|ightharpoons|ho\b)/g, '\\r$1')
+      .replace(/\t(imes|heta|ext\{|frac|au\b|an\b|ilde|riangle|herefore|o\b)/g, '\\t$1')
+      .replace(/\f(rac|orall)/g, '\\f$1')
+      .replace(/\x08(eta|ar\{|oldsymbol|ullet|ecause|inom|egin)/g, '\\b$1')
+      .replace(/\x07(lpha|pprox|ngle)/g, '\\a$1');
+    if(x.indexOf('$') < 0) x = x.replace(/\\(?:long)?rightarrow(?![a-zA-Z])/g, '→').replace(/\\times(?![a-zA-Z])/g, '×');
+    return x;
+  }
+  const revMd = h => String(h).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+
   window.revSubmitCq = async function(){
-    const r = R(), it = r.cur, f = (document.getElementById('revFile') || {}).files[0];
-    if(!f){ toast('আগে ছবি বাছো'); return; }
+    const r = R(), it = r.cur;
+    const files = (window.__revPages || []).slice();
+    const inp = document.getElementById('revFile');
+    if(!files.length && inp && inp.files && inp.files.length) Array.from(inp.files).forEach(f => files.push(f));
+    if(!files.length){ toast('আগে ছবি বাছো'); return; }
     const out = document.getElementById('revRes'), btn = document.getElementById('revSend');
-    btn.disabled = true; out.innerHTML = `<p class="hint">চেক হচ্ছে...</p>`;
-    const c = await revWait(compressImageFile(f, 1200, 0.75));
+    btn.disabled = true; out.innerHTML = `<p class="hint">${files.length > 1 ? files.length + 'টা পাতা জুড়ে ' : ''}চেক হচ্ছে...</p>`;
+    let c; try{ c = await revWait(revStitch(files)); }catch(e){ btn.disabled = false; out.innerHTML = `<p class="hint" style="color:var(--red);">ছবি পড়া যায়নি — আবার বাছো (ছবি JPG/PNG হলে ভালো)।</p>`; return; }
     const res = await revWait(postToScriptRaw('revisionGradeCq', { slug:r.slug, date:todayStr(), itemKey:(it.baseKey || it.key), tk:(it.subject||'') + '|' + (it.topic||''), question:JSON.stringify(it.q), base64:c.base64, mimeType:c.mimeType }));
     if(!res || res.status !== 'success'){ btn.disabled = false; out.innerHTML = `<p class="hint" style="color:var(--red);">${gradeErrMsg(res)}</p>`; return; }
     r.stats.cq.push(res.percent);
-    out.innerHTML = `<div class="review-ans ${res.percent >= 90 ? 'right' : 'wrong'}">🤖 ${res.percent}% — ${escapeHtml(res.feedback)}</div>
-      ${res.modelAnswerText ? `<div class="meta" style="white-space:pre-wrap;margin-top:8px;"><b>মডেল উত্তর:</b> ${escapeHtml(res.modelAnswerText)}</div>` : ''}
+    out.innerHTML = `<div class="review-ans ${res.percent >= 90 ? 'right' : 'wrong'}">🤖 ${res.percent}% — ${revMd(escapeHtml(revFixTex(res.feedback)))}</div>
+      ${res.modelAnswerText ? `<div class="meta" style="white-space:pre-wrap;margin-top:8px;"><b>মডেল উত্তর:</b> ${revMd(escapeHtml(revFixTex(res.modelAnswerText)))}</div>` : ''}
       ${res.modelAnswerImageUrl ? `<img src="${driveImg(res.modelAnswerImageUrl)}" style="max-width:100%;border-radius:8px;margin-top:8px;">` : ''}
       <div id="revAct"></div>`;
     it.submitted = true; revActions(res.percent >= 90);
