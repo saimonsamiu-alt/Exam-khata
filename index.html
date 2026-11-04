@@ -12060,7 +12060,7 @@ window.doSmartSearch = async function(){
     const r = R(); if(!r || r.phase !== 'item' || !r.slug) return;
     try{
       if(!r.__poolSaved){ localStorage.setItem(REV_POOL_KEY(), JSON.stringify(r.pool || {})); r.__poolSaved = true; }
-      const o = {}; ['phase', 'slug', 'segs', 'si', 'tog', 'used', 'stats', 'cur', 'started', 'seen', 'follow', 'mx', 'weekly', 'allowed', 'wkLoaded', 'remaining', 'over'].forEach(k => { if(r[k] !== undefined) o[k] = r[k]; });
+      const o = {}; ['phase', 'slug', 'segs', 'si', 'tog', 'used', 'stats', 'cur', 'started', 'seen', 'follow', 'mx', 'weekly', 'catchup', 'allowed', 'wkLoaded', 'remaining', 'over'].forEach(k => { if(r[k] !== undefined) o[k] = r[k]; });
       localStorage.setItem(REV_SESS_KEY(), JSON.stringify({ o: o, at: Date.now() }));
     }catch(e){}
   }
@@ -12102,6 +12102,62 @@ window.doSmartSearch = async function(){
   const wkExam = () => localStorage.getItem('rev_exam_' + todayStr()) === '1';
   const wkSecNow = () => wkExam() ? WK_EXAM_SEC : WK_FULL;
   const wkMinBn = () => String(wkSecNow() / 60).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+
+  // ===== [v32] সাপ্তাহিক বাকি মিনিট: সাপ্তাহিক দিনে ১২০ (পরীক্ষায় ১০) মিনিট না হলে বাকিটা পরের দিনগুলোতে ভাগ হয় — অথবা ১ দিনে শেষ করা যায় =====
+  // নিয়ম: সাপ্তাহিক দিনের পরের প্রতিদিন, নিজের দৈনিক লক্ষ্যের (rev_goal) ওপরে যত মিনিট করবে সেটা বাকির সাথে মেটে। পরের সাপ্তাহিক দিন এলে নতুন করে শুরু।
+  const wkBn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  const wkDs = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const wkDoneOn = ds => Number(localStorage.getItem('rev_done_' + ds) || 0);
+  const wkBaseSec = () => Math.max(5, Number(localStorage.getItem('rev_goal') || 10)) * 60;
+  const WK_MARATHON = '🏃 ০ থেকে ১ মিনিটও ভালো — এটা ম্যারাথন, স্প্রিন্ট না। যতটুকু পারো, শুরু করাটাই জয়।';
+  function wkDebt(){
+    try{
+      const ws = wkStart(); if(ws < 0 || wkIsToday()) return null;
+      if(!localStorage.getItem('rev_wk_since')) localStorage.setItem('rev_wk_since', todayStr());   // নতুন ব্যবস্থা চালুর আগের সপ্তাহের বাকি ধরা হয় না
+      const since = (new Date().getDay() - ws + 7) % 7;               // শেষ সাপ্তাহিক দিন কত দিন আগে (১–৬)
+      const wd = new Date(); wd.setDate(wd.getDate() - since);
+      const wds = wkDs(wd);
+      if(wds < localStorage.getItem('rev_wk_since')) return null;
+      const target = localStorage.getItem('rev_exam_' + wds) === '1' ? WK_EXAM_SEC : WK_FULL;
+      const base = wkBaseSec();
+      let paidBefore = 0;
+      for(let k = since - 1; k >= 1; k--){ const x = new Date(); x.setDate(x.getDate() - k); paidBefore += Math.max(0, wkDoneOn(wkDs(x)) - base); }
+      const leftEx = Math.max(0, target - wkDoneOn(wds) - paidBefore);   // আজকের আগে পর্যন্ত বাকি
+      const todayExtra = Math.max(0, doneSec() - base);
+      const leftNow = Math.max(0, leftEx - todayExtra);
+      const days = Math.max(1, wkDaysTo());
+      const perDay = Math.ceil(leftEx / days / 60) * 60;
+      return { target, weekDone: wkDoneOn(wds), base, leftEx, leftNow, days, perDay, todayGoalSec: base + perDay, todayTotalSec: base + leftEx };
+    }catch(e){ return null; }
+  }
+  function wkDebtCard(d){
+    if(!d || d.leftEx < 60) return '';
+    const m = x => wkBn(Math.ceil(x / 60));
+    if(d.leftNow < 60) return `<div style="border:1.5px solid #BFE3CC;border-radius:12px;padding:12px;margin:0 0 12px 0;background:#F1FAF4;"><b>🎉 সাপ্তাহিক বাকি মিনিট আজ পূর্ণ!</b><div class="meta" style="margin-top:4px;">দারুণ — গত সাপ্তাহিক দিনের বাকি সবটা মিটে গেছে। ম্যারাথনে এগিয়ে থাকো 🏃</div></div>`;
+    const goalMin = m(d.todayGoalSec), totalMin = m(d.todayTotalSec);
+    const needToday = Math.max(0, d.todayGoalSec - doneSec()), needAll = Math.max(0, d.todayTotalSec - doneSec());
+    return `<div style="border:1.5px solid #E5B94F;border-radius:12px;padding:12px;margin:0 0 12px 0;background:#FFFBF0;"><b>📅 সাপ্তাহিক রিভিশনের বাকি: ${m(d.leftNow)} মিনিট</b>
+      <div class="meta" style="margin:4px 0 8px;">গত সাপ্তাহিক দিনে ${m(d.weekDone)}/${m(d.target)} মিনিট হয়েছিল। বাকিটা ${wkBn(d.days)} দিনে ভাগ হলে রোজ <b>${wkBn(Math.ceil(d.base / 60))} + ${m(d.perDay)}</b> মিনিট লাগে — অথবা ১ দিনে শেষ করতে পারো।</div>
+      <div class="meta" style="margin:0 0 8px;color:#7A5B12;">${WK_MARATHON}</div>
+      <button class="btn btn-primary btn-block" onclick="revCatchStart('spread')">📆 ভাগ করে: আজ ${goalMin} মিনিট শুরু করো${needToday < 60 ? ' (আজকেরটা হয়ে গেছে ✅)' : ''}</button>
+      <button class="btn btn-gold btn-block" style="margin-top:8px;" onclick="revCatchStart('one')">⚡ ১ দিনে শেষ করো: আজ মোট ${totalMin} মিনিট${needAll < 60 ? ' (হয়ে গেছে ✅)' : ''}</button></div>`;
+  }
+  function wkSummaryNote(){
+    try{
+      const r = R() || {};
+      if(r.weekly && !r.catchup && doneSec() < wkSecNow()){
+        const left = Math.ceil((wkSecNow() - doneSec()) / 60);
+        return `<div style="margin-top:10px;padding:10px 12px;border-radius:10px;background:#FFFBF0;line-height:1.55;">আজ ${wkBn(Math.floor(doneSec() / 60))}/${wkBn(wkSecNow() / 60)} মিনিট করেছো। বাকি <b>${wkBn(left)}</b> মিনিট পরের দিনগুলোতে ভাগ হয়ে যাবে (অথবা ১ দিনে শেষ করতে পারবে) — কিছুই হারাচ্ছে না।<br>${WK_MARATHON}</div>`;
+      }
+      const d = wkDebt();
+      if(d && d.leftEx >= 60){
+        return d.leftNow >= 60
+          ? `<div style="margin-top:10px;padding:10px 12px;border-radius:10px;background:#FFFBF0;line-height:1.55;">সাপ্তাহিক বাকি এখনো <b>${wkBn(Math.ceil(d.leftNow / 60))}</b> মিনিট। ${WK_MARATHON}</div>`
+          : `<div style="margin-top:10px;padding:10px 12px;border-radius:10px;background:#F1FAF4;line-height:1.55;">🎉 সাপ্তাহিক বাকি সব মিটে গেছে! ম্যারাথনে দারুণ এগোচ্ছো 🏃</div>`;
+      }
+    }catch(e){}
+    return '';
+  }
 
   window.revOpen = function(){ window.__rev = { phase: localStorage.getItem('rev_greet_' + todayStr()) ? 'setup' : 'greet' }; go('revision'); };
 
@@ -12174,12 +12230,13 @@ window.doSmartSearch = async function(){
         <button class="btn btn-gold btn-block" onclick="revWkSave()">💾 সেভ করো</button></div>`;
     } else if(wkTodayF){
       wkCard = `<div style="border:1.5px solid ${wkMust ? '#E58B82' : '#BFE3CC'};border-radius:12px;padding:12px;margin:0 0 12px 0;background:${wkMust ? '#FFF5F4' : '#F1FAF4'};"><b>📅 আজ সাপ্তাহিক রিভিশনের দিন</b>
-        <div class="meta" style="margin-top:4px;">${wkMust ? `আজ ${wkMinBn()} মিনিট রিভিশন করতেই হবে${wkExam() ? ' (পরীক্ষা চলছে বলে কম)' : ''} — করেছো <b>${wkDoneMin}</b> মিনিট, বাকি <b>${Math.ceil((wkSecNow() - doneSec()) / 60)}</b> মিনিট। একবারে না পারলে বিরতি দিয়ে আবার এসে চালিয়ে যেতে পারবে।` : `✅ আজকের ${wkMinBn()} মিনিট পূর্ণ হয়েছে। চাইলে আরও রিভিশন করতে পারো।`}</div>
+        <div class="meta" style="margin-top:4px;">${wkMust ? `আজ ${wkMinBn()} মিনিট রিভিশন করতেই হবে${wkExam() ? ' (পরীক্ষা চলছে বলে কম)' : ''} — করেছো <b>${wkDoneMin}</b> মিনিট, বাকি <b>${Math.ceil((wkSecNow() - doneSec()) / 60)}</b> মিনিট। একবারে না পারলে বিরতি দিয়ে আবার এসে চালিয়ে যেতে পারবে। আজ পুরোটা না হলেও চিন্তা নেই — বাকিটা পরের দিনগুলোতে ভাগ হয়ে যাবে (বা ১ দিনে শেষ করতে পারবে)।<br><span style="color:#7A5B12;">${WK_MARATHON}</span>` : `✅ আজকের ${wkMinBn()} মিনিট পূর্ণ হয়েছে। চাইলে আরও রিভিশন করতে পারো।`}</div>
         <a class="link-back" onclick="revWkChange()">দিন বদলাও</a></div>`;
     } else {
       const dt = wkDaysTo();
       wkCard = `<div class="meta" style="margin:0 0 10px 0;">📅 সাপ্তাহিক রিভিশন: <b>${WK_DAYS[wkS]}</b> (${dt === 1 ? 'কাল' : dt + ' দিন পর'}) · ${wkMinBn()} মিনিট${wkExam() ? ' (পরীক্ষা চলছে)' : ''} · <a class="link-back" onclick="revWkChange()">দিন বদলাও</a></div>`;
     }
+    wkCard += wkDebtCard(wkDebt());
     wkCard += `<div class="meta" style="margin:0 0 10px 0;">📝 স্কুল/কলেজের পরীক্ষার রুটিন${wkExam() ? ' <b>(এখন পরীক্ষা চলছে)</b>' : ''}: <a class="link-back" onclick="go('examRoutine')">দাও / বদলাও</a></div>`;
     // [NEW] আগের বারের পছন্দ মনে রাখা — একবার ঠিক করলেই হবে
     let pr = null; try{ pr = JSON.parse(localStorage.getItem('rev_prefs_v1') || 'null'); }catch(e){}
@@ -12225,7 +12282,7 @@ window.doSmartSearch = async function(){
     if(!(d >= 0 && d <= 6)) return;
     const res = await postToScriptRaw('revisionWeeklySet', { slug: st.slug, startDow: d });
     if(!res || res.status !== 'success'){ toast('সেভ হয়নি, আবার চেষ্টা করো'); return; }
-    localStorage.setItem('rev_week_start', String(d)); if(R()) R().wkEdit = false;
+    localStorage.setItem('rev_week_start', String(d)); localStorage.setItem('rev_wk_since', todayStr()); if(R()) R().wkEdit = false;
     toast('সেভ হয়েছে ✅ — সাপ্তাহিক রিভিশনের দিন: ' + WK_DAYS[d]); revRender();
   };
   window.revWkChange = function(){ if(R()){ R().wkEdit = true; revRender(); } };
@@ -12236,6 +12293,21 @@ window.doSmartSearch = async function(){
     const subs = (R() && R().allowed && R().allowed.length) ? R().allowed.slice() : Object.keys(NOTES_SUBJECTS);
     const mcqSec = Math.min(Math.round(left * 0.2), Math.max(0, left - CQ_MIN_SEC));
     window.__rev = { phase:'loading', weekly:true, allowed:subs, wkLoaded:true, slug:stud.slug, segs:[{ subs, sec:left, mcqSec }], si:0, tog:0, used:{}, stats:{ m:0, mc:0, cq:[] } };
+    revRender();
+    const res = await postToScriptRaw('revisionBuild', { slug:stud.slug, subjects:subs.join(','), weekly:'1' });
+    if(!res || res.status !== 'success'){ toast('লোড হয়নি, আবার চেষ্টা করো'); window.__rev = { phase:'setup' }; revRender(); return; }
+    R().pool = revExpandPool(res);
+    revBeginSeg();
+  };
+
+  window.revCatchStart = async function(mode){
+    const stud = getLoggedStudent(); if(!stud){ go('studentAuth'); return; }
+    const d = wkDebt(); if(!d || d.leftNow < 60){ toast('সাপ্তাহিক বাকি নেই 🎉'); revRender(); return; }
+    const left = Math.max(0, (mode === 'one' ? d.todayTotalSec : d.todayGoalSec) - doneSec());
+    if(left < 30){ toast('আজকের লক্ষ্য পূর্ণ ✅'); revRender(); return; }
+    const subs = (R() && R().allowed && R().allowed.length) ? R().allowed.slice() : Object.keys(NOTES_SUBJECTS);
+    const mcqSec = Math.min(Math.round(left * 0.2), Math.max(0, left - CQ_MIN_SEC));
+    window.__rev = { phase:'loading', weekly:true, catchup:true, allowed:subs, wkLoaded:true, slug:stud.slug, segs:[{ subs, sec:left, mcqSec }], si:0, tog:0, used:{}, stats:{ m:0, mc:0, cq:[] } };
     revRender();
     const res = await postToScriptRaw('revisionBuild', { slug:stud.slug, subjects:subs.join(','), weekly:'1' });
     if(!res || res.status !== 'success'){ toast('লোড হয়নি, আবার চেষ্টা করো'); window.__rev = { phase:'setup' }; revRender(); return; }
@@ -12698,7 +12770,8 @@ window.doSmartSearch = async function(){
         <p class="hint">আজ মোট রিভিশন: <b>${Math.floor(doneSec() / 60)}</b> মিনিট (লক্ষ্য ${localStorage.getItem('rev_goal') || 10})</p>
         <div class="meta">MCQ: <b>${s.mc}/${s.m}</b> সঠিক ${avg !== null ? `· CQ গড়: <b>${avg}%</b> (${s.cq.length}টা)` : ''}</div>
         ${s.m + s.cq.length === 0 ? `<p class="hint" style="margin-top:10px;">এই বিষয়ে এখনো রিভিশন করার মতো কিছু জমেনি — আগে MCQ/Written/HW দাও।</p>` : ''}
-        ${R().weekly ? `<div style="margin-top:10px;padding:10px 12px;border-radius:10px;background:${doneSec() >= wkSecNow() ? '#F1FAF4' : '#FEF8EC'};">📅 সাপ্তাহিক রিভিশন: আজ <b>${Math.floor(doneSec() / 60)}</b>/${wkMinBn()} মিনিট ${doneSec() >= wkSecNow() ? '✅ পূর্ণ!' : '— বাকি ' + Math.ceil((wkSecNow() - doneSec()) / 60) + ' মিনিট (এখন রিভিশন করার মতো প্রশ্ন শেষ হয়ে থাকলে পরে আবার চেষ্টা করো)'}</div>` : ''}
+        ${wkSummaryNote()}
+        ${(R().weekly && !R().catchup) ? `<div style="margin-top:10px;padding:10px 12px;border-radius:10px;background:${doneSec() >= wkSecNow() ? '#F1FAF4' : '#FEF8EC'};">📅 সাপ্তাহিক রিভিশন: আজ <b>${Math.floor(doneSec() / 60)}</b>/${wkMinBn()} মিনিট ${doneSec() >= wkSecNow() ? '✅ পূর্ণ!' : '— বাকি ' + Math.ceil((wkSecNow() - doneSec()) / 60) + ' মিনিট (এখন রিভিশন করার মতো প্রশ্ন শেষ হয়ে থাকলে পরে আবার চেষ্টা করো)'}</div>` : ''}
         <button class="btn btn-primary btn-block" style="margin-top:12px;" onclick="revOpen()">🔁 আবার রিভিশন</button>
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('studentDashboard')">ড্যাশবোর্ডে যাও</button></div>${creditFooter()}`;
   }
@@ -17954,7 +18027,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
   function editNote(e, mcq){   // শিক্ষক/AI মার্ক বদলালে "আগে কত ছিল"
     if(!e) return '';
     const f = v => mcq ? (v >= 50 ? '✅ সঠিক' : '❌ ভুল') : bnN(Math.round(Number(v) || 0)) + '%';
-    return `<div class="trk-note">${e.how === 'ai' ? '🔁 AI আবার চেক করেছে' : '✏️ শিক্ষক বদলেছেন'} · প্রথমে ${f(e.from)} → এখন ${f(e.to)}${e.n > 1 ? ' (' + bnN(e.n) + ' বার বদলানো)' : ''}</div>`;
+    return `<div class="trk-note">${e.how === 'ai' ? '🔁 AI আবার চেক করেছে' : (e.how === 'ai-s' ? '🔁 ছাত্রের অনুরোধে AI আবার চেক করেছে' : '✏️ শিক্ষক বদলেছেন')} · প্রথমে ${f(e.from)} → এখন ${f(e.to)}${e.n > 1 ? ' (' + bnN(e.n) + ' বার বদলানো)' : ''}</div>`;
   }
   function trkRerender(idx){
     const it = (window.__trkItems || [])[idx], el = document.getElementById('trkc_' + idx);
@@ -17988,9 +18061,10 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
   window.trkRecheck = async function(idx, j){
     const it = (window.__trkItems || [])[idx]; if(!it) return;
     const x = (j === undefined) ? it : (it.setItems && it.setItems[j]); if(!x || !x.fkey) return;
-    if(!confirm('AI খাতার ছবি দেখে আবার মার্ক ও মন্তব্য দেবে। আগের মার্ক বদলে যাবে (আগেরটা "প্রথমে ...%" হিসেবে দেখা যাবে)। চালাবে?')) return;
+    const note = prompt('AI খাতার ছবি দেখে আবার মার্ক ও মন্তব্য দেবে — মার্ক বাড়তেও পারে, কমতেও পারে (আগেরটা "প্রথমে ...%" হিসেবে থাকবে)।\n\nচাইলে AI-কে কারণ/নোট লিখো (ঐচ্ছিক) — যেমন: "এই ধাপটা ঠিক করেছে" বা "নম্বর বেশি দেওয়া হয়েছে"। না লিখলে ফাঁকা রেখে OK চাপো।', '');
+    if(note === null) return;
     toast('🤖 AI আবার চেক করছে... একটু সময় লাগবে');
-    const res = await trkTeacherPost('trkRecheck', { fkey: x.fkey });
+    const res = await trkTeacherPost('trkRecheck', { fkey: x.fkey, note: String(note).trim().slice(0, 500) });
     if(!res || res.status !== 'success'){
       const m = res && res.message;
       toast(m === 'no_image' ? 'খাতার ছবি পাওয়া যায়নি' : (m === 'irrelevant' ? 'AI ছবিটাকে এই প্রশ্নের উত্তর হিসেবে পড়তে পারেনি' : (m === 'ai_unavailable' ? 'AI এখন ব্যস্ত — একটু পরে চেষ্টা করো' : 'হয়নি — নতুন Code.gs ডিপ্লয় করেছো তো?')));
@@ -18002,7 +18076,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     if(j === undefined){ x.percent = res.percent; x.pct = res.percent; }
     else { x.score = res.percent; const n = it.setItems.length, avg = Math.round(it.setItems.reduce((a, y) => a + (Number(y.score) || 0), 0) / n); it.detail = n + 'টা প্রশ্ন, গড় ' + avg + '%'; }
     trkRerender(idx);
-    toast('✅ AI আবার চেক করেছে: ' + res.percent + '%' + (res.shareDelta ? ' · শেয়ার ' + (res.shareDelta > 0 ? '+' : '−') + Math.abs(res.shareDelta).toFixed(2) : ''));
+    toast('✅ AI আবার চেক করেছে: ' + (res.oldPercent !== undefined ? res.oldPercent + '% → ' : '') + res.percent + '%' + (res.shareDelta ? ' · শেয়ার ' + (res.shareDelta > 0 ? '+' : '−') + Math.abs(res.shareDelta).toFixed(2) : ''));
   };
   window.trkMkOpen = function(idx){
     const it = (window.__trkItems || [])[idx]; if(!it) return;
@@ -18111,6 +18185,9 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     const trkPic = (u, cap) => u ? `<div style="margin:8px 0 4px;"><div class="meta" style="margin-bottom:3px;">${cap}</div><img loading="lazy" src="${escapeHtml(driveImg(u))}" alt="${cap}" style="max-width:100%;max-height:460px;object-fit:contain;border-radius:10px;border:1px solid rgba(128,128,128,.35);background:#fff;"></div>` : '';
     const q = (it.qText || it.qUrl) ? `<details open><summary>❓ প্রশ্ন</summary><div class="trk-q">${escapeHtml(it.qText || '')}${trkPic(it.qUrl, '🖼 প্রশ্নের ছবি')}</div></details>` : '';
     const ans = trkPic(it.url, '📒 ছাত্রের খাতা');
+    let pair = ans;   // [v34] ভুল খাতা বামে, আগের সঠিক খাতা ডানে (সরু স্ক্রিনে নিচে নিচে)
+    const refb = (it.ref && it.ref.url && !(pctOf(it) >= 90)) ? trkPic(it.ref.url, '✅ এই টপিকে ছাত্র আগে সঠিক করেছিল (' + bnN(Math.round(it.ref.percent)) + '%) — তার নিজের খাতা, ভুল ধাপটা এখানে ঠিক আছে কি না মিলিয়ে দেখো') : '';
+    if(refb) pair = `<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;"><div style="flex:1 1 260px;min-width:0;">${ans}</div><div style="flex:1 1 260px;min-width:0;border:2px solid #BFE3CC;border-radius:12px;padding:0 8px 8px;background:rgba(241,250,244,.6);">${refb}</div></div>`;
     const ai = it.feedback ? `<details><summary>🤖 AI-র মন্তব্য দেখো</summary><div class="trk-ai">${escapeHtml(it.feedback)}</div></details>` : '';
     const rr = it.reviewReq ? `<div class="trk-note" style="color:#7B5A10;">🚩 ছাত্র রিভিউ চেয়েছে${it.reason ? ': ' + escapeHtml(it.reason) : ''}${it.resolved ? ' · ✅ নিষ্পত্তি হয়েছে' : ''}${it.tnote ? '<br>💬 শিক্ষকের উত্তর: ' + escapeHtml(it.tnote) : ''}</div>` : '';
     const nr = it.noReply ? `<div class="trk-note">ℹ️ এই দিনের রিভিশন নতুন সেভ-ব্যবস্থার আগের — শুধু সংখ্যা জমা আছে; প্রশ্ন, ছাত্রের উত্তর ও AI-র মন্তব্য তখন সেভ হতো না (এখন থেকে সব সেভ হয় ও এখানে দেখা যায়)।</div>` : '';
@@ -18118,7 +18195,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     return `<div class="trk-item k-${it.kind}" id="trkc_${idx}">
       <div class="trk-title">${k.ic} ${escapeHtml(it.title || '')}</div>
       <div class="trk-chips">${nm}${it.tag ? `<span class="trk-chip">${escapeHtml(it.tag)}</span>` : ''}<span>${dayLabel(it.date)}</span>${scoreChip(it)}${dup}${img}</div>
-      ${q}${ans}${ql}${ai}${editNote(it.edited, false)}${rr}${nr}${setBlock(it, idx)}${fbHtml(it, idx)}
+      ${q}${pair}${ql}${ai}${editNote(it.edited, false)}${rr}${nr}${setBlock(it, idx)}${fbHtml(it, idx)}
     </div>`;
   }
   function byDate(items, opts){
@@ -31554,6 +31631,25 @@ window.PagePicker = PagePicker;
       <select id="mntSel"><option value="">— ছাত্র বাছো —</option>${studs.map((s, i) => `<option value="${i}">${esc(s.name)} (${esc(s.slug)})</option>`).join('')}</select>
       <button class="btn btn-gold btn-block" onclick="mntOpen('cq')">📒 মাই নোট (CQ) খোলো</button><button class="btn btn-gold btn-block" style="margin-top:8px;" onclick="mntOpen('mcq')">📝 মাই MCQ নোট খোলো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
   }
+  // [v33] ছাত্র/শিক্ষক: ঐচ্ছিক নোটসহ AI আবার চেক — মার্ক বাড়তেও পারে, কমতেও পারে (ছাত্র প্রতি উত্তরে একবার)
+  window.mnRecheck = async function(el){
+    const fk = decodeURIComponent((el && el.getAttribute('data-fk')) || ''); if(!fk) return;
+    const T = !!state.mnT;
+    const note = prompt('AI-কে কিছু জানাতে চাইলে লেখো (ঐচ্ছিক)।\nযেমন: "এই ধাপটা আমি ঠিক করেছিলাম" বা "নম্বর বেশি দেওয়া হয়েছে"।\nAI খাতা দেখে নিজে ঠিক করবে — নম্বর বাড়তে বা কমতেও পারে' + (T ? '' : '। প্রতি উত্তরে একবারই করা যায়') + '।\n\nনা লিখলে ফাঁকা রেখে OK চাপো।', '');
+    if(note === null) return;
+    el.disabled = true; toast('🤖 AI আবার চেক করছে... একটু সময় লাগবে');
+    const args = { fkey:fk, note:String(note).trim().slice(0, 500) };
+    let r = null;
+    try{ r = T ? await tcall('trkRecheck', args) : await postToScriptRaw('revisionRecheckSelf', Object.assign({ slug:(getLoggedStudent() || {}).slug }, args)); }catch(e){ r = null; }
+    el.disabled = false;
+    if(!r || r.status !== 'success'){
+      const m = r && r.message;
+      toast(m === 'already_used' ? 'এই উত্তরে আগেই একবার আবার চেক করা হয়েছে' : (m === 'no_image' ? 'খাতার ছবি পাওয়া যায়নি' : (m === 'irrelevant' ? 'AI ছবিটাকে এই প্রশ্নের উত্তর হিসেবে পড়তে পারেনি' : (m === 'ai_unavailable' ? 'AI এখন ব্যস্ত — একটু পরে চেষ্টা করো' : 'হয়নি — নতুন Code.gs ডিপ্লয় করেছো তো?'))));
+      return;
+    }
+    toast('✅ ' + bn(r.oldPercent) + '% → ' + bn(r.percent) + '%');
+    try{ await mnLoad(true); mnRender(); }catch(e){}
+  };
   window.mntOpen = function(kind){
     const i = (document.getElementById('mntSel') || {}).value; if(i === '' || i == null){ toast('আগে ছাত্র বাছো'); return; }
     const s = window.__mntStuds[Number(i)]; if(!s) return;
@@ -31576,8 +31672,10 @@ window.PagePicker = PagePicker;
         ${it.explain ? `<details style="margin-top:8px;"><summary><b>💡 AI-র ব্যাখ্যা</b></summary><div style="white-space:pre-wrap;line-height:1.7;background:#F5F9FE;border-radius:10px;padding:10px;margin-top:6px;">${esc(it.explain)}</div></details>` : ''}`;
     }
     const one = a => `<div style="margin-top:8px;padding:10px;border-radius:10px;background:${a.percent >= 90 ? '#F1FAF4' : '#FEF8EC'};">
-        <div class="meta">${esc(a.date)} · 🤖 <b>${bn(a.percent)}%</b></div>${img(a.url)}
-        ${a.feedback ? `<div style="white-space:pre-wrap;margin-top:6px;font-size:13.5px;">🤖 ${esc(a.feedback)}</div>` : ''}</div>`;
+        <div class="meta">${esc(a.date)} · 🤖 <b>${bn(a.percent)}%</b></div>${(a.ref && a.ref.url && a.percent < 90) ? `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;"><div style="flex:1 1 220px;min-width:0;">${img(a.url)}</div><div style="flex:1 1 220px;min-width:0;border:2px solid #BFE3CC;border-radius:10px;padding:6px 8px 8px;margin-top:8px;background:rgba(241,250,244,.6);"><b>✅ এই টপিকে ${state.mnT ? 'ছাত্র' : 'তুমি'} আগে সঠিক করেছিলে (${bn(Math.round(a.ref.percent))}%)</b><div class="meta" style="margin-top:4px;">${state.mnT ? 'ছাত্রের' : 'তোমার'} নিজের খাতা — ভুল ধাপটা এখানে ঠিক করেছিলে কি না মিলিয়ে দেখো:</div>${img(a.ref.url)}</div></div>` : img(a.url)}
+        ${a.edited ? `<div class="meta" style="margin-top:4px;">🔁 ${a.edited.how === 'teacher' ? 'শিক্ষক মার্ক বদলেছেন' : (a.edited.how === 'ai-s' ? (state.mnT ? 'ছাত্রের অনুরোধে AI আবার চেক করেছে' : 'তোমার অনুরোধে AI আবার চেক করেছে') : 'AI আবার চেক করেছে')} · প্রথমে ${bn(Math.round(a.edited.from))}% → এখন ${bn(Math.round(a.edited.to))}%</div>` : ''}
+        ${a.feedback ? `<div style="white-space:pre-wrap;margin-top:6px;font-size:13.5px;">🤖 ${esc(a.feedback)}</div>` : ''}
+        ${(a.fkey && a.url && (state.mnT || !a.selfUsed)) ? `<button type="button" class="btn btn-outline" style="margin-top:8px;padding:6px 12px;font-size:12.5px;" data-fk="${encodeURIComponent(a.fkey)}" onclick="mnRecheck(this)">🔁 AI আবার চেক করুক${state.mnT ? '' : ' (একবার)'}</button>` : ''}</div>`;
     const others = att.map((a, i) => i === it.best ? '' : one(a)).join('');
     return `${head}<div class="q-text" style="white-space:pre-wrap;">${esc(it.text)}</div>${img(it.imageUrl)}
       <div style="margin-top:10px;font-weight:700;">🏆 তোমার সেরা উত্তর</div>${one(b)}
