@@ -5670,6 +5670,18 @@ function labelForCouponExamCode(examCode){
 const BN_WEEKDAYS = ['রবি','সোম','মঙ্গল','বুধ','বৃহ','শুক্র','শনি'];
 
 // ---- Mini calendar builder ----
+// [v49] ক্লাস-চক্র: প্রতিটা চক্রের (যেমন ১২ ক্লাস) নিজস্ব রঙ — শুরু থেকে শেষ (চলতি হলে আজ পর্যন্ত) প্রতিটা ঘরের ওপরে রঙিন দাগ। এক মাসে দুই চক্র মিশলে দুই রঙ।
+function cycBarFor(ds){
+  const today = todayStr(), c = (window.__calCycles || []).find(x => x.start && ds >= x.start && ds <= (x.end || today));
+  return c ? `<i title="চক্র ${c.n}" style="position:absolute;left:0;right:0;top:0;height:5px;border-radius:7px 7px 0 0;background:${c.color};"></i>` : '';
+}
+function cycLegendHtml(year, month){
+  const bnN = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  const ms = `${year}-${String(month + 1).padStart(2, '0')}-01`, me = `${year}-${String(month + 1).padStart(2, '0')}-31`;
+  const rows = (window.__calCycles || []).filter(c => c.start && c.start <= me && (c.end || '9999-12-31') >= ms).map(c =>
+    `<div style="font-size:12px;margin-top:4px;"><i style="display:inline-block;width:16px;height:5px;border-radius:2px;background:${c.color};vertical-align:2px;"></i> <b>চক্র ${bnN(c.n)}</b> · ${bnN(c.held)}/${bnN(c.size)} ক্লাস · ${c.start} → ${c.end || 'চলছে'}${c.chapters && c.chapters.length ? ' · 🎯 ' + c.chapters.map(escapeHtml).join(', ') + (c.pct != null ? ' (' + bnN(c.pct) + '%)' : '') : ''}</div>`).join('');
+  return rows ? `<div style="margin-top:8px;border-top:1px dashed var(--rule);padding-top:6px;">${rows}</div>` : '';
+}
 function buildMiniCalendar(year, month, records, onDayClickFn, navTargetScreen, navCtx, hwMap){
   window.__calNavCtx = navCtx; // stash instead of inlining (names/records could contain quotes)
   const recByDate = {};
@@ -5695,7 +5707,7 @@ function buildMiniCalendar(year, month, records, onDayClickFn, navTargetScreen, 
     const hw = hwMap && hwMap[dateStr];   // শিক্ষকের ক্যালেন্ডারে HW (গোলাপি) ও রিভিশন (বেগুনি) ফোঁটা; কিছু মিস হলে গাঢ় লাল দাগ
     const dotCss = c => `width:6px;height:6px;border-radius:50%;background:${c};border:1px solid #fff;`;
     const hwDot = hw ? `<span style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);display:flex;gap:2px;">${hw.hw ? `<i style="${dotCss('#EC4899')}"></i>` : ''}${hw.rev ? `<i style="${dotCss('#7C3AED')}"></i>` : ''}</span>` : '';
-    cells += `<div ${clickable} position:relative; background:${bg}; color:${color}; border:${border}; ${isToday?'outline:2px solid var(--margin-red);':''}${hw && hw.missed ? 'box-shadow:inset 0 0 0 2px #7F1D1D;' : ''} border-radius:7px; display:flex; align-items:center; justify-content:center; height:34px; font-size:13px; font-family:var(--font-mono);">${d}${hwDot}</div>`;
+    cells += `<div ${clickable} position:relative; background:${bg}; color:${color}; border:${border}; ${isToday?'outline:2px solid var(--margin-red);':''}${hw && hw.missed ? 'box-shadow:inset 0 0 0 2px #7F1D1D;' : ''} border-radius:7px; display:flex; align-items:center; justify-content:center; height:34px; font-size:13px; font-family:var(--font-mono);">${d}${hwDot}${cycBarFor(dateStr)}</div>`;
   }
 
   const prevM = month===0 ? 11 : month-1;
@@ -5719,6 +5731,7 @@ function buildMiniCalendar(year, month, records, onDayClickFn, navTargetScreen, 
       <div style="margin-top:12px; font-size:12px; color:var(--pencil); display:flex; gap:14px; flex-wrap:wrap;">
         <span>🟦 exam দিয়ে confirm</span><span>🟩 নিজে confirm করেছে</span><span>🟨 confirm করার অপেক্ষায়</span>${hwMap ? '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#EC4899;vertical-align:1px;"></i> HW</span><span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#7C3AED;vertical-align:1px;"></i> রিভিশন</span><span style="box-shadow:inset 0 0 0 2px #7F1D1D;border-radius:4px;padding:0 4px;">⚠️ মিস</span>' : ''}
       </div>
+      ${cycLegendHtml(year, month)}
     </div>
   `;
 }
@@ -5797,9 +5810,10 @@ async function renderAttendanceMark(slug, studentName, records){
   const approvedThisMonth = records.filter(r=> (r.status==='approved' || r.source==='exam') && monthKeyOf(r.date)===curMonthKey).length;
 
   // সবার জন্য দেওয়া HW + ছাত্রের নিজের HW — শিক্ষকের ক্যালেন্ডারেও দেখাও (planCalendar একই ডেটা দেয়)
-  let hwEv = [];
+  let hwEv = []; window.__calCycles = [];
   try{
     const pc = await postToScriptRaw('planCalendar', { slug, month:`${year}-${String(month+1).padStart(2,'0')}`, today:todayStr() });
+    window.__calCycles = (pc && pc.status === 'success' && pc.cycles) || [];
     if(pc && pc.status === 'success') hwEv = (pc.events || []).filter(e => e.type === 'hw' || e.type === 'rev').sort((a,b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
   }catch(err){}
   const hwMap = {};
@@ -5863,7 +5877,10 @@ window.loadAttendanceForStudent = async function(){
   window.__calYear = null; window.__calMonth = null;
   go('attendanceStudentView', { slug, name, records });
 }
-function renderAttendanceStudentView(slug, name, records){
+async function renderAttendanceStudentView(slug, name, records){
+  window.__calCycles = [];
+  try{ const _n = new Date(), _y = window.__calYear !== null ? window.__calYear : _n.getFullYear(), _m = window.__calMonth !== null ? window.__calMonth : _n.getMonth();
+    const pc = await postToScriptRaw('planCalendar', { slug, month:`${_y}-${String(_m + 1).padStart(2, '0')}`, today:todayStr() }); if(pc && pc.status === 'success') window.__calCycles = pc.cycles || []; }catch(err){}
   const now = new Date();
   const year = window.__calYear !== null ? window.__calYear : now.getFullYear();
   const month = window.__calMonth !== null ? window.__calMonth : now.getMonth();
@@ -12209,7 +12226,27 @@ window.doSmartSearch = async function(){
     }
     revSetupDraw(r0.allowed); revFillCov(r0.allowed);
   }
+  // [v49] স্যারের পোর্শন (একীভূত রিভিশন): অধ্যায় + মোট সময়ের %, চলতি ক্লাস-চক্র শেষ হলে নিজে থেকে বন্ধ — আলাদা "শিক্ষকের সেট" নেই
+  async function revFillPortion(){
+    const st = getLoggedStudent(); if(!st) return;
+    const res = await postToScriptRaw('revisionPortionGet', { slug:st.slug });
+    const el = document.getElementById('revPortion'); if(!el || !res || res.status !== 'success') return;
+    const f = res.focus, c = res.cycle;
+    if(!f || !f.chapters || !f.chapters.length){ el.innerHTML = ''; return; }
+    const bnN = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+    const col = (c && c.color) || '#7C3AED';
+    const names = f.chapters.map(x => escapeHtml(x.chapter)).join(' · ');
+    const until = f.mode === 'cycle' ? (c ? `চক্র ${bnN(c.n)} শেষ হওয়া পর্যন্ত (${bnN(c.held)}/${bnN(c.size)} ক্লাস হয়েছে)` : 'স্যার বদলানো পর্যন্ত') : (f.end ? 'শেষ ' + escapeHtml(f.end) : 'স্যার বদলানো পর্যন্ত');
+    el.innerHTML = `<div style="border:1.5px solid ${col};border-left:6px solid ${col};border-radius:12px;padding:12px;margin:0 0 12px 0;background:#FAFBFF;"><b>🎯 স্যারের পোর্শন</b> <span class="meta">· ${until}</span><div style="margin-top:4px;font-size:13.5px;line-height:1.5;">${names}</div><div class="meta" id="revPortionMin" style="margin-top:4px;"></div></div>`;
+    const paint = () => {
+      const inp = document.getElementById('revMin'), v = inp ? parseInt(inp.value, 10) : NaN;
+      const m = v > 0 ? v : Number(localStorage.getItem('rev_goal') || 10), x = Math.round(m * f.pct / 10) / 10;
+      const o = document.getElementById('revPortionMin'); if(o) o.innerHTML = `তোমার সময়ের <b>${bnN(f.pct)}%</b> এই অংশ থেকে — ${bnN(m)} মিনিটে ≈ <b>${bnN(x)}</b> মিনিট, বাকিটা অটো রিভিশন।`;
+    };
+    paint(); const inp = document.getElementById('revMin'); if(inp) inp.addEventListener('input', paint);
+  }
   async function revFillCov(allowed){
+    revFillPortion();
     const st = getLoggedStudent(); if(!st) return;
     const res = await getJson('revisionCoverage', { slug:st.slug });
     const el = document.getElementById('revCov'); if(!el || !res || res.status !== 'success') return;
@@ -12250,7 +12287,7 @@ window.doSmartSearch = async function(){
         <h2>🔁 আজকের রিভিশন</h2>
         <p class="hint">আজ করেছো: <b>${done}</b> মিনিট / লক্ষ্য <b>${goal}</b> মিনিট</p>
         ${wkCard}
-        <div id="revCov"></div>
+        <div id="revPortion"></div><div id="revCov"></div>
         ${revResumeBox()}
         ${prefNote}
         <details ${valid ? '' : 'open'} style="margin-bottom:12px;${wkMust ? 'display:none;' : ''}"><summary style="cursor:pointer;font-weight:600;font-size:13.5px;padding:6px 0;">${valid ? 'সেটিংস বদলাও' : 'সেটিংস ঠিক করো (একবারই লাগবে)'}</summary>
@@ -12270,7 +12307,6 @@ window.doSmartSearch = async function(){
         </details>
         ${wkMust ? `<button class="btn btn-primary btn-block" onclick="revWkStart()">▶️ সাপ্তাহিক রিভিশন শুরু করো (বাকি ${Math.ceil((wkSecNow() - doneSec()) / 60)} মিনিট)</button>` : `<button class="btn btn-primary btn-block" onclick="revStart()">▶️ শুরু করো</button>`}
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('revFlow')">🗺️ আমার রিভিশন ফ্লো — দেখো, বদলাও, AI-র সাথে সাজাও</button>
-        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('revSets')">🗂️ শিক্ষকের সেট</button>
       </div>
       <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>
       ${creditFooter()}`;
@@ -15345,7 +15381,7 @@ window.doSmartSearch = async function(){
     if(pend + sp > 0){ tg.textContent = `${pend + sp}টা বাকি`; tg.className = 'widget-tag tag-red'; } else { tg.textContent = '✅ সব ঠিক'; tg.className = 'widget-tag tag-green'; }
     bd.innerHTML = `<p class="hint" style="margin-bottom:10px;">শিক্ষকের HW আর তোমার নিজের HW এক জায়গায়। রিভিশন সেট ও সব কাজের ক্যালেন্ডারও এখানে।</p>
       ${pend ? `<button class="btn btn-primary btn-block" style="margin-bottom:8px;" onclick="hwRunOpen('')">▶️ HW শুরু করো (${pend}টা বাকি)</button>` : ''}<button class="btn btn-gold btn-block" onclick="hwHubOpen()">📚 HW ${pend ? `(${pend}টা বাকি)` : ''}</button>
-      <div class="row" style="margin-top:8px;"><button class="btn btn-outline btn-block" onclick="go('revSets')">🗂️ রিভিশন সেট ${sp ? `(${sp})` : ''}</button><button class="btn btn-outline btn-block" onclick="go('myCal')">📅 ক্যালেন্ডার</button></div>`;
+      <div class="row" style="margin-top:8px;"><button class="btn btn-outline btn-block" onclick="go('myCal')">📅 ক্যালেন্ডার</button></div>`;
   };
 
   // =====================================================================================
@@ -15522,7 +15558,7 @@ window.doSmartSearch = async function(){
     loading('আমার ক্যালেন্ডার');
     const r = await postToScriptRaw('planCalendar', { slug:stud.slug, month:`${C.y}-${String(C.m + 1).padStart(2, '0')}`, today:todayStr() });
     if(!r || r.status !== 'success'){ failCard('আমার ক্যালেন্ডার', 'mcRender()'); return; }
-    C.events = r.events; mcDraw();
+    C.events = r.events; window.__calCycles = r.cycles || []; mcDraw();
   }
   function mcDraw(){
     const first = new Date(C.y, C.m, 1).getDay(), dim = new Date(C.y, C.m + 1, 0).getDate(), today = todayStr(), by = {};
@@ -15533,12 +15569,12 @@ window.doSmartSearch = async function(){
       const types = uniq(ev.map(e => e.type)), missed = ev.some(e => e.status === 'missed');
       const cols = uniq(['class', 'hw', 'rev'].map(t => ev.filter(e => e.type === t)[0]).filter(Boolean).map(colorOf));
       const bg = !cols.length ? '#F5F9FE' : cols.length === 1 ? cols[0] : `linear-gradient(135deg,${cols.map((c, i) => `${c} ${Math.round(i * 100 / cols.length)}% ${Math.round((i + 1) * 100 / cols.length)}%`).join(',')})`;
-      cells += `<div onclick="mcPick('${ds}')" style="cursor:pointer;border:${ds === C.sel ? '2px solid var(--ink)' : '1px solid var(--rule)'};${ds === today ? 'outline:2px solid var(--margin-red);' : ''}${missed ? 'box-shadow:inset 0 0 0 2px #7F1D1D;' : ''}border-radius:8px;height:46px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:${cols.length ? 700 : 400};color:${cols.length && !(cols.length === 1 && cols[0] === YEL) ? '#fff' : 'var(--ink)'};background:${bg};"><span>${d}</span></div>`;
+      cells += `<div onclick="mcPick('${ds}')" style="cursor:pointer;border:${ds === C.sel ? '2px solid var(--ink)' : '1px solid var(--rule)'};${ds === today ? 'outline:2px solid var(--margin-red);' : ''}${missed ? 'box-shadow:inset 0 0 0 2px #7F1D1D;' : ''}border-radius:8px;height:46px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:${cols.length ? 700 : 400};color:${cols.length && !(cols.length === 1 && cols[0] === YEL) ? '#fff' : 'var(--ink)'};background:${bg};position:relative;"><span>${d}</span>${cycBarFor(ds)}</div>`;
     }
     const sel = by[C.sel] || [];
     const list = sel.map(e => {
       const st = { done:'✅ হয়েছে', todo:'⏳ বাকি', missed:'⚠️ মিস' }[e.status] || '';
-      const act = e.type === 'hw' ? `go('hwHub')` : e.type === 'rev' ? (e.id ? `srOpen('${e.id}')` : '') : (e.status === 'todo' ? `mcConfirm('${e.date}')` : '');
+      const act = e.type === 'hw' ? `go('hwHub')` : e.type === 'rev' ? (e.id ? `go('revision')` : '') : (e.status === 'todo' ? `mcConfirm('${e.date}')` : '');
       return `<div class="exam-item" style="border-left:5px solid ${colorOf(e)};"><div class="row-top"><div><div style="font-weight:700;">${TYPE_LABEL[e.type]}${e.subject ? ' · ' + esc(NOTES_SUBJECTS[e.subject] ? NOTES_SUBJECTS[e.subject].label : e.subject) : ''}</div>
         <div class="meta">${esc(e.title)} · ${st}</div></div>${act ? `<button class="info-btn" onclick="${act}">${e.type === 'class' ? '✅ নিশ্চিত করো' : 'খুলো'}</button>` : ''}</div></div>`;
     }).join('') || `<div class="empty-state">এই দিনে কিছু নেই।</div>`;
@@ -15547,7 +15583,7 @@ window.doSmartSearch = async function(){
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><a class="link-back" onclick="mcNav(-1)">‹</a><b style="font-family:var(--font-display);font-size:16px;">${BN_MONTHS[C.m]} ${C.y}</b><a class="link-back" onclick="mcNav(1)">›</a></div>
         <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px;">${BN_WEEKDAYS.map(w => `<div style="text-align:center;font-size:11px;color:var(--pencil);font-weight:600;">${w}</div>`).join('')}</div>
         <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">${cells}</div>
-        <div style="margin-top:12px;font-size:12px;color:var(--pencil);display:flex;gap:14px;flex-wrap:wrap;"><span>🟩 ক্লাস (নিজে confirm)</span><span>🟦 ক্লাস (exam দিয়ে)</span><span>🟨 confirm বাকি</span><span>🟪 রিভিশন</span><span><i style="display:inline-block;width:13px;height:13px;border-radius:3px;background:#EC4899;vertical-align:-2px;"></i> HW</span><span>একাধিক হলে মিশ্র রঙ</span><span style="box-shadow:inset 0 0 0 2px #7F1D1D;padding:0 6px;border-radius:4px;">⚠️ মিস</span></div></div>
+        <div style="margin-top:12px;font-size:12px;color:var(--pencil);display:flex;gap:14px;flex-wrap:wrap;"><span>🟩 ক্লাস (নিজে confirm)</span><span>🟦 ক্লাস (exam দিয়ে)</span><span>🟨 confirm বাকি</span><span>🟪 রিভিশন</span><span><i style="display:inline-block;width:13px;height:13px;border-radius:3px;background:#EC4899;vertical-align:-2px;"></i> HW</span><span>একাধিক হলে মিশ্র রঙ</span><span style="box-shadow:inset 0 0 0 2px #7F1D1D;padding:0 6px;border-radius:4px;">⚠️ মিস</span></div>${cycLegendHtml(C.y, C.m)}</div>
       <div class="card"><h3>${esc(C.sel)} — সেদিনের কাজ</h3>${list}</div>
       <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ড্যাশবোর্ডে ফিরে যাও</a></div>${creditFooter()}`;
   }
@@ -15606,7 +15642,7 @@ window.doSmartSearch = async function(){
     try{ if(window.fixDarkColors) fixDarkColors(); }catch(e){}
     const close = () => { if(ov.parentNode) ov.parentNode.removeChild(ov); };
     document.getElementById('planPopLater').onclick = close;
-    document.getElementById('planPopGo').onclick = () => { close(); if(first.type === 'set') srOpen(first.id); else go('hwHub'); };
+    document.getElementById('planPopGo').onclick = () => { close(); if(first.type === 'set') go('revision'); else go('hwHub'); };
   };
 
   // =====================================================================================
@@ -19165,7 +19201,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
 
   function nav(target){
     const m = { dashboard:() => go('studentDashboard'), study:() => go('studyHub'), exam:() => go('examHub'), reward:() => go('rewardHub'), calendar:() => go('myCal'), mistake:() => go('mistakeBook'), vorkuta:() => go('vorkuta'),
-      revision:() => go('revision'), revflow:() => go('revFlow'), revsets:() => go('revSets'), hw:() => hwHubOpen(), practice:() => go('battleWorldMap'), mastery:() => openMyMastery(), notes:() => go('notesGate'),
+      revision:() => go('revision'), revflow:() => go('revFlow'), revsets:() => go('revision'), hw:() => hwHubOpen(), practice:() => go('battleWorldMap'), mastery:() => openMyMastery(), notes:() => go('notesGate'),
       doubt:() => go('doubtEntry'), practicelist:() => go('practiceList'), written_exam:() => go('writtenEntry'), mcq_exam:() => go('studentEntry'), pastexams:() => go('pastExams'), coupon:() => openMyCoupons('couponBalance'), shop:() => go('shopList') }[target];
     if(m){ try{ m(); return true; }catch(e){} }
     return false;
@@ -31960,27 +31996,39 @@ window.PagePicker = PagePicker;
     const scope = window.__fcScope || '';
     const r = await tc('revisionFocusGet', { scope });
     if(!r || r.status !== 'success'){ app.innerHTML = `${header('রিভিশন ফোকাস')}<div class="card"><p class="hint" style="color:var(--red);">❌ লোড হয়নি — Apps Script নতুন version Deploy করা আছে তো?</p></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>`; return; }
-    const cur = r.focus, on = cur && (!cur.end || cur.end >= r.today), picked = {}; ((cur && cur.keys) || []).forEach(k => { picked[k] = true; });
+    const cur = r.focus, on = cur && cur.active !== false && (!cur.end || cur.end >= r.today), picked = {}; ((cur && cur.keys) || []).forEach(k => { picked[k] = true; });
     const bySj = {}; r.chapters.forEach(c => { (bySj[c.subject] = bySj[c.subject] || []).push(c); }); window.__fcCh = r.chapters;
     const list = Object.keys(bySj).map(s => `<div style="margin-top:10px;"><b>${esc(sjL(s))}</b>${bySj[s].sort((a, b) => a.chapter.localeCompare(b.chapter, 'bn')).map(c => { const i = r.chapters.indexOf(c);
       return `<label class="bubble-opt" style="display:flex;gap:8px;align-items:center;margin:4px 0;"><input type="checkbox" class="fcC" data-i="${i}" ${picked[c.key] ? 'checked' : ''} style="width:auto;margin:0;"><span>${esc(c.chapter)} <span class="meta">(${bn(c.n)}টা প্রশ্ন)</span></span></label>`; }).join('')}</div>`).join('') || '<div class="empty-state">প্রশ্নব্যাংকে এখনো অধ্যায়-ট্যাগ করা প্রশ্ন নেই।</div>';
-    const status = on ? `<div class="card" style="border-left:5px solid #1e8449;"><b>✅ এখন চালু:</b> ${bn(cur.keys.length)}টা অধ্যায় · মোট রিভিশন সময়ের <b>${bn(cur.pct)}%</b> · ${cur.end ? 'শেষ ' + esc(cur.end) : 'যতদিন না বদলাও'} <button class="btn btn-outline" style="margin-left:8px;padding:4px 10px;" onclick="fcClear()">⏹ বন্ধ করো</button></div>` : '';
+    const status = on ? `<div class="card" style="border-left:5px solid #1e8449;"><b>✅ এখন চালু:</b> ${bn(cur.keys.length)}টা অধ্যায় · মোট রিভিশন সময়ের <b>${bn(cur.pct)}%</b> · ${cur.mode === 'cycle' ? 'এই ক্লাস-চক্র শেষ না হওয়া পর্যন্ত' : (cur.end ? 'শেষ ' + esc(cur.end) : 'যতদিন না বদলাও')} <button class="btn btn-outline" style="margin-left:8px;padding:4px 10px;" onclick="fcClear()">⏹ বন্ধ করো</button></div>` : '';
     app.innerHTML = `${header('রিভিশন ফোকাস')}${status}
-      <div class="card"><h2>🎯 রিভিশন ফোকাস</h2>
+      <div class="card"><h2>🎯 রিভিশন পোর্শন</h2><p class="hint">অধ্যায় আর মোট সময়ের % বাছো — ছাত্র যত মিনিটই দিক, ওই %-টা এই অংশ থেকে আসবে, বাকিটা অটো। আলাদা "সেট" বানাতে হবে না।</p>
         <label class="field-label">কার জন্য</label>
         <select onchange="window.__fcScope = this.value; go('revFocus')"><option value="">সব ছাত্র</option>${window.__fcStuds.map(s => `<option value="${s.slug}" ${scope === s.slug ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
         <label class="field-label">অধ্যায় বাছো (একাধিক বিষয় থেকে)</label>${list}
         <label class="field-label" style="margin-top:12px;">মোট রিভিশন সময়ের <b id="fcPv">${cur ? cur.pct : 50}%</b> এই অধ্যায়গুলো থেকে</label>
-        <input type="range" id="fcP" min="5" max="100" step="5" value="${cur ? cur.pct : 50}" oninput="document.getElementById('fcPv').textContent = this.value + '%'">
+        <input type="range" id="fcP" min="5" max="100" step="5" value="${cur ? cur.pct : 50}" oninput="document.getElementById('fcPv').textContent = this.value + '%'; fcEx(this.value)">
+        <div class="meta" id="fcEx" style="margin-top:4px;"></div>
         <label class="field-label">কতদিন</label>
-        <select id="fcD"><option value="7">৭ দিন</option><option value="14">১৪ দিন</option><option value="30">৩০ দিন</option><option value="">যতদিন না বদলাই</option></select>
+        <select id="fcD"><option value="cycle" ${!cur || cur.mode === 'cycle' ? 'selected' : ''}>ক্লাস-চক্র শেষ না হওয়া পর্যন্ত (যেমন ১২ ক্লাস)</option><option value="7">৭ দিন</option><option value="14">১৪ দিন</option><option value="30">৩০ দিন</option><option value="">যতদিন না বদলাই</option></select>
+        ${cycBox(r, scope)}
         <button class="btn btn-gold btn-block" style="margin-top:12px;" onclick="fcSave()">💾 সেভ</button></div>
       <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+    const _fp = document.getElementById('fcP'); if(_fp && window.fcEx) window.fcEx(_fp.value);
+  }
+  const bnF = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  window.fcEx = function(v){ const el = document.getElementById('fcEx'); if(!el) return; const p = Number(v) || 0; el.textContent = `যেমন: ছাত্র ২০ মিনিট দিলে ${bnF(Math.round(20 * p / 10) / 10)} মিনিট এই অংশ থেকে, ${bnF(20 - Math.round(20 * p / 10) / 10)} মিনিট অটো।`; };
+  setTimeout(() => { const s = document.getElementById('fcP'); if(s) window.fcEx(s.value); }, 0);
+  function cycBox(r, scope){
+    if(!scope) return `<div class="meta" style="margin-top:6px;">ℹ️ "সব ছাত্র" বাছলে প্রত্যেকের নিজের ক্লাস-চক্র অনুযায়ী আলাদা আলাদা সময়ে শেষ হবে।</div>`;
+    if(r.noPlan || !r.cycle) return `<div class="meta" style="margin-top:6px;color:#B45309;">⚠️ এই ছাত্রের Class Plan (মাসে কত ক্লাস) সেট নেই, তাই চক্র গোনা যাচ্ছে না — "ক্লাস-চক্র" বাছলে স্যার বদলানো পর্যন্ত চলবে।</div>`;
+    const c = r.cycle.cur;
+    return `<div class="meta" style="margin-top:6px;border-left:5px solid ${c.color};padding-left:8px;">📅 চলতি চক্র ${bnF(c.n)}: ${bnF(c.held)}/${bnF(c.size)} ক্লাস হয়েছে${c.start ? ' · শুরু ' + esc(c.start) : ' · এখনো শুরু হয়নি'}। ${bnF(c.size)}টা ক্লাস পূর্ণ হলে পোর্শন নিজে থেকে শেষ, পরের ক্লাস থেকে নতুন চক্র (নতুন রঙ)।</div>`;
   }
   window.fcSave = async function(){
     const keys = Array.from(document.querySelectorAll('.fcC:checked')).map(el => (window.__fcCh[Number(el.dataset.i)] || {}).key).filter(Boolean);
     if(!keys.length){ toast('অন্তত একটা অধ্যায় বাছো'); return; }
-    const r = await tc('revisionFocusSet', { scope:window.__fcScope || '', chapters:JSON.stringify(keys), pct:document.getElementById('fcP').value, days:document.getElementById('fcD').value });
+    const r = await tc('revisionFocusSet', { scope:window.__fcScope || '', chapters:JSON.stringify(keys), pct:document.getElementById('fcP').value, mode:(document.getElementById('fcD').value === 'cycle' ? 'cycle' : ''), days:(document.getElementById('fcD').value === 'cycle' ? '' : document.getElementById('fcD').value) });
     if(r && r.status === 'success'){ toast('✅ সেভ হয়েছে'); go('revFocus'); } else toast('সেভ হয়নি — Apps Script নতুন version Deploy করা আছে তো?');
   };
   window.fcClear = async function(){
@@ -31991,7 +32039,7 @@ window.PagePicker = PagePicker;
     const t = document.querySelector('#app button[data-revt]');
     if(t && t.parentElement && !t.parentElement.querySelector('[data-fcb]')){
       const b = document.createElement('button'); b.className = 'btn btn-outline btn-block'; b.setAttribute('data-fcb', '1');
-      b.textContent = '🎯 রিভিশন ফোকাস (অধ্যায় + %)'; b.onclick = () => go('revFocus'); t.parentElement.appendChild(b);
+      b.textContent = '🎯 রিভিশন পোর্শন (অধ্যায় + % + ক্লাস-চক্র)'; b.onclick = () => go('revFocus'); t.parentElement.appendChild(b);
     }
   }
   new MutationObserver(inject).observe(document.body, { childList:true, subtree:true }); inject();
