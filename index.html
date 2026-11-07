@@ -31890,8 +31890,6 @@ window.PagePicker = PagePicker;
     window.__cqImgs = [];
     const opts = Object.keys(NOTES_SUBJECTS || {}).map(k => `<option value="${esc(k)}">${esc(sjLabel(k))}</option>`).join('');
     app.innerHTML = `${header('স্কুল/কলেজে পড়ানো')}<div class="card"><h2>🏫 স্কুল/কলেজে যা পড়ানো হলো</h2>
-      <div style="padding:8px 10px;border-radius:10px;background:#F6F1FC;font-size:13px;margin-bottom:8px;">ℹ️ এটা <b>স্যারের পড়ানো না</b> — তোমার স্কুল/কলেজের ক্লাসে যা পড়ানো হয়েছে সেটা। এটা আলাদা সেকশন; স্যারের "পড়ানো হয়েছে" টিকে কিছু বদলায় না।</div>
-      <p class="hint">স্কুল/কলেজের ক্লাসে যে প্রশ্ন-উত্তর পড়ানো হয়েছে লেখো বা খাতা/বোর্ডের ছবি দাও। AI স্যারের প্রশ্নব্যাংক আর সেটের সাথে মিলিয়ে দেখবে একই ধরনের প্রশ্ন আছে কি না — <b>মিলুক বা না মিলুক, স্যারের কাছে নোটিফিকেশন যাবে</b>।</p>
       <label class="field-label">কোথায় পড়ানো হয়েছে</label><select id="cqSrc"><option value="college">🏫 কলেজ</option><option value="school">🏫 স্কুল</option></select>
       <label class="field-label">বিষয়</label><select id="cqSj">${opts}</select>
       <label class="field-label">অধ্যায় (জানলে)</label><input id="cqCh" type="text" placeholder="যেমন: ভেক্টর" style="width:100%;">
@@ -31918,8 +31916,21 @@ window.PagePicker = PagePicker;
     const ps = window.__cqImgs;
     box.innerHTML = ps.length ? '<div style="display:flex;gap:10px;flex-wrap:wrap;">' + ps.map((f, i) => `<div style="position:relative;width:74px;"><img src="${f.__u || (f.__u = URL.createObjectURL(f))}" style="width:74px;height:98px;object-fit:cover;border-radius:6px;border:1px solid var(--paper-edge);"><button type="button" onclick="cqDel(${i})" aria-label="সরাও" style="position:absolute;top:-7px;right:-7px;width:24px;height:24px;border-radius:50%;border:0;background:#BF3A2C;color:#fff;font-size:13px;line-height:1;padding:0;">✕</button></div>`).join('') + '</div>' : '';
   }
-  window.cqAdd = function(inp){
-    Array.from((inp && inp.files) || []).forEach(f => { if(f && (!f.type || /^image\//.test(f.type)) && window.__cqImgs.length < 4) window.__cqImgs.push(f); });
+  // [v54] ছবি বাছার সাথে সাথেই পড়ে ছোট করে রাখা হয় — ফোনে পরে ফাইল পড়তে গিয়ে "ছবি পড়া যায়নি" হওয়া এড়াতে
+  async function cqCompress(f){
+    try{ return await compressImageFile(f, 1600, 0.82); }catch(e1){}
+    const bmp = await createImageBitmap(f);
+    let w = bmp.width, hh = bmp.height; if(w > 1600){ hh = Math.round(hh * 1600 / w); w = 1600; }
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = hh; cv.getContext('2d').drawImage(bmp, 0, 0, w, hh);
+    return { base64:cv.toDataURL('image/jpeg', 0.82).split(',')[1], mimeType:'image/jpeg' };
+  }
+  window.cqAdd = async function(inp){
+    const fs = Array.from((inp && inp.files) || []);
+    for(const f of fs){
+      if(!f || (f.type && !/^image\//.test(f.type)) || window.__cqImgs.length >= 4) continue;
+      try{ const c = await cqCompress(f); window.__cqImgs.push({ c, __u:'data:image/jpeg;base64,' + c.base64 }); cqPagesDraw(); }
+      catch(e){ toast('এই ছবিটা পড়া যায়নি — আবার তোলো বা অন্য ছবি বাছো'); }
+    }
     if(inp) inp.value = ''; cqPagesDraw();
   };
   window.cqDel = function(i){ window.__cqImgs.splice(i, 1); cqPagesDraw(); };
@@ -31945,7 +31956,7 @@ window.PagePicker = PagePicker;
     if(!q && !files.length){ toast('প্রশ্ন লেখো বা ছবি দাও'); return; }
     const btn = document.getElementById('cqSend'), out = document.getElementById('cqRes');
     btn.disabled = true; out.innerHTML = '<p class="hint">ছবি পড়া ও স্যারের ব্যাংকের সাথে মেলানো হচ্ছে... (১ মিনিটের মতো লাগতে পারে)</p>';
-    let imgs = []; try{ for(const f of files) imgs.push(await compressImageFile(f, 1400, 0.82)); }catch(e){ btn.disabled = false; out.innerHTML = '<p class="hint" style="color:var(--red);">ছবি পড়া যায়নি — আবার বাছো (JPG/PNG হলে ভালো)।</p>'; return; }
+    let imgs = []; try{ for(const f of files) imgs.push(f.c || await compressImageFile(f, 1400, 0.82)); }catch(e){ btn.disabled = false; out.innerHTML = '<p class="hint" style="color:var(--red);">ছবি পড়া যায়নি — আবার বাছো (JPG/PNG হলে ভালো)।</p>'; return; }
     const res = await postToScriptRaw('revisionCollegeSubmit', { slug:st.slug, date:todayStr(), src:g('cqSrc'), subject:g('cqSj'), chapter:g('cqCh'), text:q, answer:a, images:JSON.stringify(imgs) });
     btn.disabled = false;
     if(!res || res.status !== 'success'){ out.innerHTML = `<p class="hint" style="color:var(--red);">${res && res.message === 'daily_limit' ? 'আজকের সীমা (১০টা) শেষ — কাল আবার দিও।' : 'জমা হয়নি, আবার চেষ্টা করো (নেট বা সার্ভার ধীর হতে পারে)।'}</p>`; return; }
