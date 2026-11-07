@@ -31895,21 +31895,65 @@ window.PagePicker = PagePicker;
       <label class="field-label">অধ্যায় (জানলে)</label><input id="cqCh" type="text" placeholder="যেমন: ভেক্টর" style="width:100%;">
       <label class="field-label">প্রশ্ন (লিখে দিতে পারো)</label><textarea id="cqQ" rows="3" style="width:100%;"></textarea>
       <label class="field-label">উত্তর (থাকলে)</label><textarea id="cqA" rows="3" style="width:100%;"></textarea>
-      <label class="field-label">অথবা ছবি (সর্বোচ্চ ৪টা)</label>
+      <label class="field-label">অথবা ছবি (একসাথে অনেকগুলো দিতে পারো — সর্বোচ্চ ৩০টা)</label>
       <input type="file" id="cqFile" accept="image/*" multiple onchange="cqAdd(this)"><div id="cqPages" style="margin:8px 0;"></div>
       <button class="btn btn-primary btn-block" id="cqSend" onclick="cqSubmit()">📤 জমা দাও</button>
-      <div id="cqRes" style="margin-top:12px;"></div></div>
+      <div id="cqRes" style="margin-top:12px;"></div><div id="cqQBox"></div></div>
       <div class="card"><h2>আমার আগের আপলোড</h2><div id="cqHist"><p class="hint">লোড হচ্ছে...</p></div></div>
       <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
-    cqHist();
+    cqHist(); cqQDraw();
   }
-  async function cqHist(){
+  const LBL = ['ক', 'খ', 'গ', 'ঘ'];
+  const imgTag = u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${driveImg(u)}" style="width:100%;height:auto;display:block;border-radius:8px;margin:8px 0;border:1px solid var(--paper-edge);"></a>`;
+  const countBy = (list, f) => { const c = {}; list.forEach(x => { const k = f(x) || ''; c[k] = (c[k] || 0) + 1; }); return c; };
+  function chipsHtml(counts, cur, fn, total){
+    return '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px;">' + [['', 'সব (' + bn(total) + ')']].concat(Object.keys(counts).map(k => [k, sjLabel(k) + ' (' + bn(counts[k]) + ')'])).map(a => `<button type="button" class="info-btn" style="${cur === a[0] ? 'background:#1F2A44;color:#fff;' : ''}" onclick="${fn}('${esc(a[0])}')">${esc(a[1])}</button>`).join('') + '</div>';
+  }
+  function bankFull(b){
+    if(!b) return '<div class="meta">(প্রশ্নটা আর ব্যাংকে নেই)</div>';
+    const body = b.kind === 'mcq'
+      ? (b.options || []).map((o, j) => `<div class="meta" style="margin-top:3px;${j === b.correct ? 'color:#1F7A4D;font-weight:700;' : ''}">${LBL[j] || ''}. ${esc(o)}${j === b.correct ? ' ✅' : ''}</div>`).join('')
+      : `<div style="font-weight:700;font-size:13px;margin-top:8px;">✍️ স্যারের সমাধান</div><div style="white-space:pre-wrap;line-height:1.7;background:#F5F9FE;border-radius:10px;padding:10px;font-size:13.5px;margin-top:3px;">${esc(b.model || (b.modelImageUrl ? '' : 'মডেল উত্তর নেই'))}</div>${b.modelImageUrl ? imgTag(b.modelImageUrl) : ''}`;
+    return `<div style="white-space:pre-wrap;font-size:13.5px;">${esc(b.text)}</div>${b.imageUrl ? imgTag(b.imageUrl) : ''}${body}`;
+  }
+  function tansHtml(list, who){
+    return (list || []).map(a => `<div style="margin-top:8px;padding:10px 12px;border-radius:10px;background:#FEF8EC;border-left:5px solid #D9A441;"><b>👨‍🏫 স্যারের উত্তর</b>${a.text ? `<div style="white-space:pre-wrap;line-height:1.7;margin-top:4px;font-size:13.5px;">${esc(a.text)}</div>` : ''}${(a.imageUrls || []).map(u => imgTag(u)).join('')}${who === 't' ? `<a onclick="cqtAnsDel('${esc(a.aid)}')" style="color:#BF3A2C;cursor:pointer;font-size:13px;">✕ সরাও</a>` : ''}</div>`).join('');
+  }
+  function upCard(x){
+    const its = x.items || [], tl = x.tans || [];
+    const nm = its.reduce((n, it) => n + (it.matches || []).filter(m => m.status !== 'nomatch').length, 0);
+    const badge = nm ? `<span style="color:#1F7A4D;font-weight:700;">📌 ${bn(nm)}টা মিল</span>` : '<span style="color:#7A3DB8;font-weight:700;">🆕 ব্যাংকে মিল নেই</span>';
+    const th = (x.urls || []).map(u => `<img src="${driveImg(u)}" style="width:44px;height:58px;object-fit:cover;border-radius:5px;border:1px solid var(--paper-edge);margin-right:4px;">`).join('');
+    const itemsHtml = its.map((it, n) => `<div style="margin-top:10px;padding:10px 12px;border-radius:10px;background:#F6F1FC;border-left:5px solid #7A3DB8;">
+        <div style="font-size:12px;color:#7A3DB8;font-weight:700;">প্রশ্ন ${bn(n + 1)}</div>
+        <div style="white-space:pre-wrap;font-size:13.5px;margin-top:2px;">${esc(it.q)}</div>
+        ${it.a ? `<div style="margin-top:6px;font-weight:700;font-size:13px;">✍️ তোমার সমাধান</div><div style="white-space:pre-wrap;font-size:13.5px;line-height:1.7;">${esc(it.a)}</div>` : ''}
+        ${tansHtml(tl.filter(a => a.idx === it.idx))}
+        ${(it.matches || []).map(m => `<details style="margin-top:8px;"><summary style="cursor:pointer;font-weight:700;font-size:13px;">📌 ব্যাংকের মিল প্রশ্ন (${bn(m.score)}%)${m.status === 'nomatch' ? ' ❌' : ''}</summary><div style="margin-top:6px;">${bankFull(m.bank)}${m.mine ? mineHtml({ mine:m.mine }) : ''}${m.lid && m.status !== 'nomatch' ? `<a onclick="cqNoMatchLink('${esc(m.lid)}')" style="color:#BF3A2C;cursor:pointer;font-weight:700;display:block;margin-top:8px;">❌ এটা মিলছে না</a>` : ''}</div></details>`).join('')}
+      </div>`).join('') || `<div class="meta" style="white-space:pre-wrap;margin-top:8px;">${esc(x.text || '')}</div>`;
+    return `<details class="exam-item" style="margin-bottom:10px;"><summary style="cursor:pointer;list-style:none;">
+      <div class="meta">${esc(x.date)} · ${esc(sjLabel(x.subject))}${x.chapter ? ' › ' + esc(x.chapter) : ''}</div>
+      <div style="display:flex;margin:6px 0;">${th}</div>
+      <div style="font-size:13.5px;">${esc(String((its[0] && its[0].q) || x.text || '(ছবি)').slice(0, 110))}</div>
+      <div style="margin-top:4px;font-size:12.5px;">${badge}${tl.length ? ' · <span style="color:#9B6A15;font-weight:700;">👨‍🏫 স্যারের উত্তর আছে</span>' : ''} · <span class="meta">খুলে দেখো ▾</span></div></summary>
+      <div style="margin-top:8px;">${(x.urls || []).map(u => imgTag(u)).join('')}${itemsHtml}${tansHtml(tl.filter(a => a.idx < 0))}${nm ? `<button class="info-btn" style="margin-top:10px;" onclick="cqNoMatchUp('${esc(x.id)}')">❌ এগুলোর কোনোটাই মিলছে না</button>` : ''}</div></details>`;
+  }
+  window.__cqSj = '';
+  window.cqSjPick = function(k){ window.__cqSj = k; cqHist(true); };
+  async function cqHist(keep){
     const st = getLoggedStudent(), el = document.getElementById('cqHist'); if(!st || !el) return;
-    const r = await postToScriptRaw('revisionCollegeMine', { slug:st.slug });
-    if(!document.getElementById('cqHist')) return;
-    if(!r || r.status !== 'success'){ el.innerHTML = '<p class="hint">তালিকা আনা যায়নি।</p>'; return; }
-    window.__cqMine = r.items;
-    el.innerHTML = r.items.map((x, i) => { const mc = (x.items || []).reduce((n, it) => n + (it.matches || []).filter(m => m.status !== 'nomatch').length, 0); return `<div class="exam-item"><div class="meta">${esc(x.date)} · ${esc(sjLabel(x.subject))}${x.chapter ? ' › ' + esc(x.chapter) : ''}</div><div style="font-size:13.5px;">${esc(x.first || '(ছবি)')}</div>${mc ? `<button class="info-btn" style="margin-top:6px;" onclick="go('collegePrac')">📌 মিলে যাওয়া প্রশ্ন দেখো</button>` : ''}</div>`; }).join('') || '<p class="hint">এখনো কিছু আপলোড করোনি।</p>';
+    if(!keep || !window.__cqMine){
+      const r = await postToScriptRaw('revisionCollegeMine', { slug:st.slug });
+      if(!document.getElementById('cqHist')) return;
+      if(!r || r.status !== 'success'){ el.innerHTML = '<p class="hint">তালিকা আনা যায়নি।</p>'; return; }
+      window.__cqMine = r.items;
+    }
+    const all = window.__cqMine, sjF = window.__cqSj || '', list = all.filter(x => !sjF || (x.subject || '') === sjF);
+    const groups = {}, order = [];
+    list.forEach(x => { const k = (sjF ? '' : sjLabel(x.subject) + ' › ') + (x.chapter || 'অধ্যায় জানা নেই'); if(!groups[k]){ groups[k] = []; order.push(k); } groups[k].push(x); });
+    const body = order.map(k => `<div style="font-weight:800;margin:14px 2px 6px;">📖 ${esc(k)} <span class="meta">(${bn(groups[k].length)})</span></div>` + groups[k].map(upCard).join('')).join('');
+    el.innerHTML = (all.length ? chipsHtml(countBy(all, x => x.subject), sjF, 'cqSjPick', all.length) : '') + (body || '<p class="hint">এখনো কিছু আপলোড করোনি।</p>');
+    renderAllMath(el);
   }
   function cqPagesDraw(){
     const box = document.getElementById('cqPages'); if(!box) return;
@@ -31927,7 +31971,7 @@ window.PagePicker = PagePicker;
   window.cqAdd = async function(inp){
     const fs = Array.from((inp && inp.files) || []);
     for(const f of fs){
-      if(!f || (f.type && !/^image\//.test(f.type)) || window.__cqImgs.length >= 4) continue;
+      if(!f || (f.type && !/^image\//.test(f.type)) || window.__cqImgs.length >= 30) continue;
       try{ const c = await cqCompress(f); window.__cqImgs.push({ c, __u:'data:image/jpeg;base64,' + c.base64 }); cqPagesDraw(); }
       catch(e){ toast('এই ছবিটা পড়া যায়নি — আবার তোলো বা অন্য ছবি বাছো'); }
     }
@@ -31949,37 +31993,111 @@ window.PagePicker = PagePicker;
   }
   window.cqNoMatchLink = function(lid){ cqNoMatchCall({ lid }, '❌ স্যারকে জানানো হয়েছে — মিলছে না'); };
   window.cqNoMatchUp = function(id){ cqNoMatchCall({ cqaId:id }, '❌ স্যারকে জানানো হয়েছে — মিলছে না'); };
-  window.cqSubmit = async function(){
+  // [v55] ব্যাকগ্রাউন্ড কিউ — অনেক ছবি একসাথে: প্রতিটা আলাদা জব, একসাথে ২টা করে AI প্রসেস করে; ছাত্র ততক্ষণে আরও ছবি দিতে বা অন্য পাতায় যেতে পারে
+  const Q = window.__cqQ = window.__cqQ || { jobs:[], running:0, done:0, matched:0, sid:0, busy:false };
+  window.addEventListener('beforeunload', e => { if(Q.jobs.some(j => j.st === 'wait' || j.st === 'run')){ e.preventDefault(); e.returnValue = ''; } });
+  function cqQDraw(){
+    const box = document.getElementById('cqQBox'); if(!box) return;
+    if(!Q.jobs.length){ box.innerHTML = ''; return; }
+    const lab = { wait:'⏳ অপেক্ষায়', run:'🔄 AI দেখছে...', ok:'✅ হয়েছে', fail:'❌ হয়নি' };
+    const left = Q.jobs.filter(j => j.st === 'wait' || j.st === 'run').length;
+    box.innerHTML = `<div style="margin-top:12px;padding:10px 12px;border-radius:10px;background:#F5F9FE;"><div style="font-weight:700;font-size:13.5px;">${left ? '🔄 ' + bn(left) + 'টা ব্যাকগ্রাউন্ডে হচ্ছে — তুমি আরও দিতে পারো বা অন্য পাতায় যেতে পারো (অ্যাপ বন্ধ কোরো না)' : '✅ সব আপলোড শেষ'}</div>`
+      + Q.jobs.map(j => `<div style="display:flex;align-items:center;gap:8px;margin-top:6px;">${j.thumb ? `<img src="${j.thumb}" style="width:34px;height:44px;object-fit:cover;border-radius:4px;">` : '<span>📝</span>'}<span style="font-size:13px;flex:1;">${lab[j.st]}${j.st === 'ok' && j.linked ? ' · 📌 ' + bn(j.linked) + 'টা মিল' : ''}${j.st === 'fail' ? ' · ' + esc(j.msg || '') : ''}</span>${j.st === 'fail' && j.msg !== 'আজকের সীমা শেষ' ? `<button class="info-btn" onclick="cqQRetry(${j.id})">🔁 আবার</button>` : ''}</div>`).join('')
+      + (left ? '' : '<button class="info-btn" style="margin-top:8px;" onclick="cqQClear()">পরিষ্কার করো</button>') + '</div>';
+  }
+  window.cqQClear = function(){ Q.jobs = Q.jobs.filter(j => j.st === 'wait' || j.st === 'run'); cqQDraw(); };
+  window.cqQRetry = function(id){ const j = Q.jobs.find(x => x.id === id); if(j){ j.st = 'wait'; j.tries = 0; cqQDraw(); cqQPump(); } };
+  let hT = null; const cqHistSoon = () => { clearTimeout(hT); hT = setTimeout(() => { if(document.getElementById('cqHist')) cqHist(); }, 800); };
+  async function cqQRun(j){
+    j.st = 'run'; Q.running++; cqQDraw();
+    try{
+      const res = await postToScriptRaw('revisionCollegeSubmit', { slug:j.slug, date:todayStr(), src:j.src, subject:j.sj, chapter:j.ch, text:j.text, answer:j.answer, images:JSON.stringify(j.img ? [j.img] : []), quiet:'1' });
+      if(res && res.status === 'success'){ j.st = 'ok'; j.linked = res.linked || 0; Q.done++; Q.matched += j.linked; j.img = null; }
+      else if(res && res.message === 'daily_limit'){ j.st = 'fail'; j.msg = 'আজকের সীমা শেষ'; Q.jobs.forEach(x => { if(x.st === 'wait'){ x.st = 'fail'; x.msg = 'আজকের সীমা শেষ'; } }); }
+      else throw new Error('x');
+    }catch(e){ if(++j.tries < 3) j.st = 'wait'; else { j.st = 'fail'; j.msg = 'নেট/সার্ভার ধীর'; } }
+    Q.running--; cqQDraw(); cqHistSoon(); cqQPump();
+  }
+  function cqQPump(){
+    while(Q.running < 2){ const j = Q.jobs.find(x => x.st === 'wait'); if(!j) break; cqQRun(j); }
+    if(!Q.running && !Q.jobs.some(x => x.st === 'wait') && Q.done > 0){
+      const n = Q.done, m = Q.matched, slug = (Q.jobs[0] || {}).slug; Q.done = 0; Q.matched = 0;
+      toast('✅ ' + bn(n) + 'টা আপলোড শেষ' + (m ? ' — ' + bn(m) + 'টা মিল পেয়েছি' : ''));
+      if(slug) postToScriptRaw('revisionCollegeBatchDone', { slug, n, matched:m }).catch(() => {});
+      cqHistSoon();
+    }
+  }
+  window.cqSubmit = function(){
     const st = getLoggedStudent(); if(!st) return;
     const g = id => (document.getElementById(id) || {}).value || '';
     const q = g('cqQ').trim(), a = g('cqA').trim(), files = window.__cqImgs.slice();
     if(!q && !files.length){ toast('প্রশ্ন লেখো বা ছবি দাও'); return; }
-    const btn = document.getElementById('cqSend'), out = document.getElementById('cqRes');
-    btn.disabled = true; out.innerHTML = '<p class="hint">আপলোড হচ্ছে... (১ মিনিটের মতো লাগতে পারে)</p>';
-    let imgs = []; try{ for(const f of files) imgs.push(f.c || await compressImageFile(f, 1400, 0.82)); }catch(e){ btn.disabled = false; out.innerHTML = '<p class="hint" style="color:var(--red);">ছবি পড়া যায়নি — আবার বাছো (JPG/PNG হলে ভালো)।</p>'; return; }
-    const res = await postToScriptRaw('revisionCollegeSubmit', { slug:st.slug, date:todayStr(), src:g('cqSrc'), subject:g('cqSj'), chapter:g('cqCh'), text:q, answer:a, images:JSON.stringify(imgs) });
-    btn.disabled = false;
-    if(!res || res.status !== 'success'){ out.innerHTML = `<p class="hint" style="color:var(--red);">${res && res.message === 'daily_limit' ? 'আজকের সীমা (১০টা) শেষ — কাল আবার দিও।' : 'জমা হয়নি, আবার চেষ্টা করো (নেট বা সার্ভার ধীর হতে পারে)।'}</p>`; return; }
+    const base = { slug:st.slug, src:g('cqSrc'), sj:g('cqSj'), ch:g('cqCh'), st:'wait', tries:0 };
+    if(!files.length) Q.jobs.push(Object.assign({ id:++Q.sid, text:q, answer:a, img:null, thumb:'' }, base));
+    files.forEach((f, k) => Q.jobs.push(Object.assign({ id:++Q.sid, text:k === 0 ? q : '', answer:k === 0 ? a : '', img:f.c || null, thumb:f.__u || '' }, base)));
     window.__cqImgs = []; cqPagesDraw(); const qe = document.getElementById('cqQ'), ae = document.getElementById('cqA'); if(qe) qe.value = ''; if(ae) ae.value = '';
-    if(res.linked){ toast('✅ আপলোড সফল'); go('collegePrac'); return; }   // মিল থাকলে সরাসরি পুরো প্রশ্ন (সমাধানসহ) খোলা অবস্থায় দেখায়
-    out.innerHTML = '<div class="rev-verdict good">✅ আপলোড সফল হয়েছে</div>';
-    cqHist();
+    const out = document.getElementById('cqRes'); if(out) out.innerHTML = '';
+    toast('📥 ' + bn(Math.max(files.length, 1)) + 'টা লাইনে দিলাম — ব্যাকগ্রাউন্ডে হবে');
+    cqQDraw(); cqQPump();
   };
   // ---------------- শিক্ষক ----------------
-  async function cqtRender(){
-    app.innerHTML = `${header('স্কুল/কলেজের প্রশ্ন')}<div class="card center">লোড হচ্ছে...</div>`;
-    const r = await tcall('revisionCollegeList');
+  const cqtCh = x => x.chapter || ((x.items || []).find(it => it && it.ch) || {}).ch || '';
+  window.__cqtSj = ''; window.__cqtAll = false;
+  window.cqtSjPick = function(k){ window.__cqtSj = k; cqtRender(true); };
+  window.cqtToggleAll = function(){ window.__cqtAll = !window.__cqtAll; cqtRender(); };
+  function cqtAnsHtml(x, i){
+    const opts = '<option value="-1">পুরো আপলোডের জন্য</option>' + (x.items || []).map((it, k) => it && it.verdict !== 'skip' ? `<option value="${k}">প্রশ্ন ${bn(k + 1)}: ${esc(String(it.q || '').slice(0, 40))}</option>` : '').join('');
+    return `<div style="margin-top:8px;padding:8px 10px;border-radius:10px;background:#FEF8EC;"><div style="font-weight:700;font-size:13px;">✍️ আমার উত্তর/সমাধান (ছাত্র দেখবে)</div>
+      ${(x.answers || []).length ? (x.answers || []).map(a => `<div class="meta" style="margin-top:4px;">${a.idx >= 0 ? 'প্রশ্ন ' + bn(a.idx + 1) : 'পুরো আপলোড'}</div>` + tansHtml([a], 't')).join('') : '<div class="meta">এখনো কোনো উত্তর দেওয়া হয়নি</div>'}
+      <select id="cqtAi${i}" style="width:100%;margin-top:6px;">${opts}</select>
+      <textarea id="cqtAt${i}" rows="3" placeholder="সমাধান লেখো (লেখা বা ছবি — যেকোনোটা)" style="width:100%;margin-top:6px;"></textarea>
+      <input type="file" id="cqtAf${i}" accept="image/*" multiple style="margin-top:6px;">
+      <button class="info-btn" id="cqtAb${i}" style="margin-top:6px;" onclick="cqtAns(${i})">📤 উত্তর যোগ করো</button></div>`;
+  }
+  function cqtTagHtml(x, i){
+    const opts = '<option value="">— বিষয় —</option>' + Object.keys(NOTES_SUBJECTS || {}).map(k => `<option value="${esc(k)}" ${k === (x.subject || '') ? 'selected' : ''}>${esc(sjLabel(k))}</option>`).join('');
+    return `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;"><select id="cqtTs${i}" style="flex:1;min-width:120px;">${opts}</select><input id="cqtTc${i}" type="text" value="${esc(cqtCh(x))}" placeholder="অধ্যায়" style="flex:1;min-width:100px;"><button class="info-btn" onclick="cqtTag(${i})">💾 বিষয়/অধ্যায় সেভ</button></div>`;
+  }
+  async function cqtRender(keep){
+    if(!keep) app.innerHTML = `${header('স্কুল/কলেজের প্রশ্ন')}<div class="card center">লোড হচ্ছে...</div>`;
+    const r = (keep && window.__cqtR) ? window.__cqtR : await tcall('revisionCollegeList', window.__cqtAll ? { all:'1' } : {});
     if(!r || r.status !== 'success'){ app.innerHTML = `${header('স্কুল/কলেজের প্রশ্ন')}<div class="card"><p class="hint" style="color:var(--red);">❌ তালিকা আনা যায়নি — Apps Script নতুন version Deploy করা আছে তো?</p></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>`; return; }
+    window.__cqtR = r;
+    r.items.sort((a, b) => String(a.subject || '').localeCompare(String(b.subject || '')) || cqtCh(a).localeCompare(cqtCh(b)));
     window.__cqtItems = r.items;
-    const rows = r.items.map((x, i) => { const v = VB[x.verdict] || VB.new;
-      return `<div class="exam-item"><div style="font-weight:700;">${esc(x.name)} <span class="meta">${esc(x.date)}</span></div>
-        <div class="meta">${x.src === 'school' ? '🏫 স্কুলে পড়ানো' : '🏫 কলেজে পড়ানো'} · ${esc([sjLabel(x.subject), x.chapter].filter(Boolean).join(' › '))}</div>
+    const sjF = window.__cqtSj || ''; let last = '';
+    const rows = r.items.map((x, i) => { if(sjF && (x.subject || '') !== sjF) return '';
+      const gk = (x.subject || '') + '|' + cqtCh(x), gh = gk !== last ? `<div style="font-weight:800;margin:14px 2px 6px;">${esc(sjLabel(x.subject))} › ${esc(cqtCh(x) || 'অধ্যায় জানা নেই')}</div>` : ''; last = gk;
+      const v = VB[x.verdict] || VB.new;
+      return gh + `<div class="exam-item"><div style="font-weight:700;">${esc(x.name)} <span class="meta">${esc(x.date)}</span></div>
+        <div class="meta">${x.src === 'school' ? '🏫 স্কুলে পড়ানো' : '🏫 কলেজে পড়ানো'} · ${esc([sjLabel(x.subject), cqtCh(x)].filter(Boolean).join(' › '))}</div>
         <div style="color:${v[1]};font-weight:700;margin:3px 0;">${v[0]}</div>${x.flag ? '<div style="color:#BF3A2C;font-weight:700;">❌ ছাত্র বলেছে ব্যাংকের মিল ঠিক হয়নি — সঠিক প্রশ্ন খুঁজে দেখাও</div>' : ''}
         ${(x.urls || []).map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${driveImg(u)}" style="width:70px;height:92px;object-fit:cover;border-radius:6px;margin:2px 6px 2px 0;border:1px solid var(--paper-edge);"></a>`).join('')}
         ${(x.items || []).map(matchHtml).join('') || `<div class="meta">${esc(x.text)}</div>`}
-        ${cqtLinksHtml(x, i)}<div style="margin-top:8px;"><button class="info-btn" onclick="cqtDone(${i})">✔️ দেখেছি / সম্পন্ন</button></div></div>`; }).join('') || '<div class="empty-state">নতুন কোনো আপলোড নেই।</div>';
-    app.innerHTML = `${header('স্কুল/কলেজের প্রশ্ন')}<div class="card"><h2>🏫 স্কুল/কলেজে পড়ানো প্রশ্ন (ছাত্রের আপলোড)</h2><p class="hint">আপনার নিজের পড়ানো না — ছাত্র স্কুল/কলেজে যা পেয়েছে। AI ব্যাংক ও সেটের সাথে মিলিয়েছে — মিলুক বা না মিলুক এখানে আসে (ইমেইলও যায়)।</p>${rows}<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('collegeQaT')">🔄 নতুন করো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+        ${cqtLinksHtml(x, i)}${cqtAnsHtml(x, i)}${cqtTagHtml(x, i)}<div style="margin-top:8px;">${x.status === 'done' ? '<span class="meta">✔️ সম্পন্ন করা</span>' : `<button class="info-btn" onclick="cqtDone(${i})">✔️ দেখেছি / সম্পন্ন</button>`}</div></div>`; }).join('') || '<div class="empty-state">কিছু নেই।</div>';
+    app.innerHTML = `${header('স্কুল/কলেজের প্রশ্ন')}<div class="card"><h2>🏫 স্কুল/কলেজে পড়ানো প্রশ্ন (ছাত্রের আপলোড)</h2><p class="hint">আপনার নিজের পড়ানো না — ছাত্র স্কুল/কলেজে যা পেয়েছে। বিষয়/অধ্যায় অনুযায়ী দেখুন, আর যেকোনো প্রশ্নে আপনার উত্তর (লেখা বা ছবি) যোগ করুন — ছাত্র নিজের আপলোডের নিচে সেটা দেখবে।</p>${chipsHtml(countBy(r.items, x => x.subject), sjF, 'cqtSjPick', r.items.length)}<button class="btn btn-outline btn-block" style="margin-bottom:8px;" onclick="cqtToggleAll()">${window.__cqtAll ? '🆕 শুধু নতুনগুলো দেখাও' : '🗂️ সম্পন্ন করাগুলোও দেখাও'}</button>${rows}<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('collegeQaT')">🔄 নতুন করো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+    renderAllMath(app);
+    if(window.__cqtY){ const y = window.__cqtY; window.__cqtY = 0; setTimeout(() => window.scrollTo(0, y), 30); }
   }
+  window.cqtAns = async function(i){
+    const x = (window.__cqtItems || [])[i]; if(!x) return;
+    const g = id => document.getElementById(id) || {}, text = String(g('cqtAt' + i).value || '').trim(), fs = Array.from(g('cqtAf' + i).files || []).slice(0, 3), idx = Number(g('cqtAi' + i).value);
+    if(!text && !fs.length){ toast('লেখো বা ছবি দাও'); return; }
+    const btn = g('cqtAb' + i); btn.disabled = true; btn.textContent = 'আপলোড হচ্ছে...';
+    let imgs = []; try{ for(const f of fs) imgs.push(await cqCompress(f)); }catch(e){ btn.disabled = false; btn.textContent = '📤 উত্তর যোগ করো'; toast('ছবি পড়া যায়নি'); return; }
+    const r = await tcall('revisionCollegeAnswer', { id:x.id, idx, text, images:JSON.stringify(imgs) });
+    if(r && r.status === 'success'){ toast('✅ ছাত্র এখন দেখতে পারবে'); window.__cqtY = window.scrollY; cqtRender(); } else { btn.disabled = false; btn.textContent = '📤 উত্তর যোগ করো'; toast('হয়নি, আবার চেষ্টা করো'); }
+  };
+  window.cqtAnsDel = async function(aid){
+    const r = await tcall('revisionCollegeAnswerDel', { aid });
+    if(r && r.status === 'success'){ toast('সরানো হয়েছে'); window.__cqtY = window.scrollY; cqtRender(); } else toast('হয়নি');
+  };
+  window.cqtTag = async function(i){
+    const x = (window.__cqtItems || [])[i]; if(!x) return;
+    const g = id => (document.getElementById(id) || {}).value || '';
+    const r = await tcall('revisionCollegeTag', { id:x.id, subject:g('cqtTs' + i), chapter:g('cqtTc' + i) });
+    if(r && r.status === 'success'){ toast('✅ সেভ হয়েছে'); window.__cqtY = window.scrollY; cqtRender(); } else toast('হয়নি, আবার চেষ্টা করো');
+  };
   window.cqtDone = async function(i){
     const x = (window.__cqtItems || [])[i]; if(!x) return;
     const r = await tcall('revisionCollegeDone', { id:x.id });
@@ -32018,26 +32136,31 @@ window.PagePicker = PagePicker;
       ${a.url ? `<div style="margin-top:6px;"><a href="${esc(a.url)}" target="_blank" rel="noopener"><img src="${driveImg(a.url)}" style="width:100%;height:auto;display:block;border-radius:8px;border:1px solid var(--paper-edge);"></a></div>` : ''}
       ${a.feedback ? `<div class="meta" style="margin-top:6px;white-space:pre-wrap;">💬 ${esc(a.feedback)}</div>` : ''}</div>`;
   }
-  async function cpRender(){
+  async function cpRender(keep){
     const st = getLoggedStudent(); if(!st){ toast('আগে লগইন করো'); go('studentDashboard'); return; }
     app.innerHTML = `${header('মিলে যাওয়া প্রশ্ন')}<div class="card center">লোড হচ্ছে...</div>`;
-    const r = await postToScriptRaw('revisionCollegeInbox', { slug:st.slug });
+    const r = (keep && window.__cpR) ? window.__cpR : await postToScriptRaw('revisionCollegeInbox', { slug:st.slug }); window.__cpR = r;
     if(!r || r.status !== 'success'){ app.innerHTML = `${header('মিলে যাওয়া প্রশ্ন')}<div class="card"><p class="hint" style="color:var(--red);">আনা যায়নি, আবার চেষ্টা করো।</p></div><div class="center"><a class="link-back" onclick="go('studentDashboard')">← ফিরে যাও</a></div>`; return; }
-    window.__cpItems = r.items;
+    r.items.sort((a, b) => String(a.q.subject || '').localeCompare(String(b.q.subject || '')) || String(a.q.chapter || '').localeCompare(String(b.q.chapter || '')));
+    window.__cpItems = r.items; let lastG = '';
     const LB = ['ক', 'খ', 'গ', 'ঘ'];
-    const cards = r.items.map((x, i) => { const q = x.q;
+    const sjF = window.__cpSj || '';
+    const cards = r.items.map((x, i) => { const q = x.q; if(sjF && (q.subject || '') !== sjF) return '';
+      const gk = (q.subject || '') + '|' + (q.chapter || ''), gh = gk !== lastG ? `<div style="font-weight:800;margin:14px 2px 6px;">${esc(sjLabel(q.subject))} › ${esc(q.chapter || 'অধ্যায় জানা নেই')}</div>` : ''; lastG = gk;
       const body = q.kind === 'mcq'
         ? (q.options || []).map((o, j) => `<div class="bubble-opt ${j === q.correct ? 'rev-right' : ''}" style="cursor:default;"><div class="bubble">${LB[j] || ''}</div><div class="opt-text">${esc(o)}</div></div>`).join('') + `<div class="meta" style="margin-top:6px;">✅ সঠিক উত্তর: ${LB[q.correct] || ''}</div>`
         : `<div style="margin-top:8px;font-weight:700;font-size:13px;">✍️ সমাধান</div><div style="white-space:pre-wrap;line-height:1.7;margin-top:4px;background:#F5F9FE;border-radius:10px;padding:12px;font-size:14px;">${esc(q.model || (q.modelImageUrl ? '' : 'মডেল উত্তর নেই'))}</div>${q.modelImageUrl ? `<img src="${driveImg(q.modelImageUrl)}" style="width:100%;height:auto;display:block;border-radius:8px;margin:8px 0;">` : ''}`;
-      return `<div class="exam-item" style="${x.status === 'nomatch' ? 'opacity:.55;' : ''}"><div class="meta">${x.by === 'teacher' ? '👨‍🏫 স্যার দেখিয়েছেন' : '🤖 তোমার স্কুল/কলেজের পড়ানো প্রশ্নের মতো'}${x.status === 'new' ? ' · <b style="color:#BF3A2C;">নতুন</b>' : ''}${q.chapter ? ' · ' + esc(q.chapter) : ''}</div>
+      return gh + `<div class="exam-item" style="${x.status === 'nomatch' ? 'opacity:.55;' : ''}"><div class="meta">${x.by === 'teacher' ? '👨‍🏫 স্যার দেখিয়েছেন' : '🤖 তোমার স্কুল/কলেজের পড়ানো প্রশ্নের মতো'}${x.status === 'new' ? ' · <b style="color:#BF3A2C;">নতুন</b>' : ''}${q.chapter ? ' · ' + esc(q.chapter) : ''}</div>
         ${x.note ? `<div style="margin:6px 0;padding:8px 10px;border-radius:8px;background:#FEF8EC;font-size:13.5px;">👨‍🏫 ${esc(x.note)}</div>` : ''}
         <div class="q-text" style="margin-top:6px;white-space:pre-wrap;">${esc(q.text)}</div>
         ${q.imageUrl ? `<img src="${driveImg(q.imageUrl)}" style="width:100%;height:auto;display:block;border-radius:8px;margin:8px 0;">` : ''}${body}${mineHtml(x)}${x.status === 'nomatch' ? '<div class="meta" style="color:#BF3A2C;margin-top:8px;font-weight:700;">❌ তুমি বলেছ এটা মিলছে না — স্যারকে জানানো হয়েছে</div>' : `<button class="info-btn" style="margin-top:10px;" onclick="cpNoMatch(${i})">❌ এটা আমার প্রশ্নের সাথে মিলছে না</button>`}</div>`; }).join('') || '<div class="empty-state">এখনো কোনো মিলে যাওয়া প্রশ্ন নেই। স্কুল/কলেজের প্রশ্ন আপলোড করলে এখানে আসবে।</div>';
-    app.innerHTML = `${header('মিলে যাওয়া প্রশ্ন')}<div class="card"><h2>📌 স্কুল/কলেজের প্রশ্নের মতো প্রশ্ন</h2><p class="hint">তোমার স্কুল/কলেজে যে ধরনের প্রশ্ন পড়ানো হয়েছে, সেই ধরনের প্রশ্ন ও সমাধান — পড়ে বোঝার জন্য, পরীক্ষা বা প্র্যাকটিস না।</p>${cards}</div><div class="center"><a class="link-back" onclick="go('collegeQa')">← আপলোড পাতা</a> · <a class="link-back" onclick="go('studentDashboard')">ড্যাশবোর্ড</a></div>${creditFooter()}`;
+    app.innerHTML = `${header('মিলে যাওয়া প্রশ্ন')}<div class="card"><h2>📌 স্কুল/কলেজের প্রশ্নের মতো প্রশ্ন</h2><p class="hint">তোমার স্কুল/কলেজে যে ধরনের প্রশ্ন পড়ানো হয়েছে, সেই ধরনের প্রশ্ন ও সমাধান — পড়ে বোঝার জন্য, পরীক্ষা বা প্র্যাকটিস না।</p>${chipsHtml(countBy(r.items, x => x.q.subject), sjF, 'cpSjPick', r.items.length)}${cards}</div><div class="center"><a class="link-back" onclick="go('collegeQa')">← আপলোড পাতা</a> · <a class="link-back" onclick="go('studentDashboard')">ড্যাশবোর্ড</a></div>${creditFooter()}`;
     renderAllMath(app);
     const nw = r.items.filter(x => x.status === 'new').map(x => x.lid);
     if(nw.length) postToScriptRaw('revisionCollegeSeen', { slug:st.slug, lids:JSON.stringify(nw) });
   }
+  window.__cpSj = '';
+  window.cpSjPick = function(k){ window.__cpSj = k; cpRender(true); };
   window.cpPick = function(i, j){
     const x = (window.__cpItems || [])[i]; if(!x || x.done) return; x.done = true;
     const c = document.getElementById(`cpO${i}_${x.q.correct}`), w = document.getElementById(`cpO${i}_${j}`);
