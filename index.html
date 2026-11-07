@@ -31888,7 +31888,7 @@ window.PagePicker = PagePicker;
   async function cqRender(){
     const st = getLoggedStudent(); if(!st){ toast('আগে লগইন করো'); go('studentDashboard'); return; }
     window.__cqImgs = [];
-    const opts = Object.keys(NOTES_SUBJECTS || {}).map(k => `<option value="${esc(k)}">${esc(sjLabel(k))}</option>`).join('');
+    const opts = '<option value="">— বিষয় (জানলে বাছো) —</option>' + Object.keys(NOTES_SUBJECTS || {}).map(k => `<option value="${esc(k)}">${esc(sjLabel(k))}</option>`).join('');
     app.innerHTML = `${header('স্কুল/কলেজে পড়ানো')}<div class="card"><h2>🏫 স্কুল/কলেজে যা পড়ানো হলো</h2>
       <label class="field-label">কোথায় পড়ানো হয়েছে</label><select id="cqSrc"><option value="college">🏫 কলেজ</option><option value="school">🏫 স্কুল</option></select>
       <label class="field-label">বিষয়</label><select id="cqSj">${opts}</select>
@@ -31897,7 +31897,7 @@ window.PagePicker = PagePicker;
       <label class="field-label">উত্তর (থাকলে)</label><textarea id="cqA" rows="3" style="width:100%;"></textarea>
       <label class="field-label">অথবা ছবি (সর্বোচ্চ ৪টা)</label>
       <input type="file" id="cqFile" accept="image/*" multiple onchange="cqAdd(this)"><div id="cqPages" style="margin:8px 0;"></div>
-      <button class="btn btn-primary btn-block" id="cqSend" onclick="cqSubmit()">📤 জমা দাও — AI মিলিয়ে দেখবে</button>
+      <button class="btn btn-primary btn-block" id="cqSend" onclick="cqSubmit()">📤 জমা দাও</button>
       <div id="cqRes" style="margin-top:12px;"></div></div>
       <div class="card"><h2>আমার আগের আপলোড</h2><div id="cqHist"><p class="hint">লোড হচ্ছে...</p></div></div>
       <div class="center"><a class="link-back" onclick="go('studentDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
@@ -31909,7 +31909,7 @@ window.PagePicker = PagePicker;
     if(!document.getElementById('cqHist')) return;
     if(!r || r.status !== 'success'){ el.innerHTML = '<p class="hint">তালিকা আনা যায়নি।</p>'; return; }
     window.__cqMine = r.items;
-    el.innerHTML = r.items.map((x, i) => { const v = VB[x.verdict] || VB.new; return `<div class="exam-item" style="cursor:pointer;" onclick="cqOpen(${i})"><div class="meta">${esc(x.date)} · ${esc(sjLabel(x.subject))}${x.chapter ? ' › ' + esc(x.chapter) : ''}</div><div style="font-size:13.5px;">${esc(x.first || '(ছবি)')}</div><div style="color:${v[1]};font-weight:700;font-size:13px;">${v[0]}${x.flag ? ' · <span style="color:#BF3A2C;">❌ মিলছে না বলেছ</span>' : ''} <span class="meta">(ট্যাপ করে মিলগুলো দেখো)</span></div><div id="cqD${i}" style="display:none;" onclick="event.stopPropagation()"></div></div>`; }).join('') || '<p class="hint">এখনো কিছু আপলোড করোনি।</p>';
+    el.innerHTML = r.items.map((x, i) => { const mc = (x.items || []).reduce((n, it) => n + (it.matches || []).filter(m => m.status !== 'nomatch').length, 0); return `<div class="exam-item"><div class="meta">${esc(x.date)} · ${esc(sjLabel(x.subject))}${x.chapter ? ' › ' + esc(x.chapter) : ''}</div><div style="font-size:13.5px;">${esc(x.first || '(ছবি)')}</div>${mc ? `<button class="info-btn" style="margin-top:6px;" onclick="go('collegePrac')">📌 মিলে যাওয়া প্রশ্ন দেখো</button>` : ''}</div>`; }).join('') || '<p class="hint">এখনো কিছু আপলোড করোনি।</p>';
   }
   function cqPagesDraw(){
     const box = document.getElementById('cqPages'); if(!box) return;
@@ -31955,14 +31955,14 @@ window.PagePicker = PagePicker;
     const q = g('cqQ').trim(), a = g('cqA').trim(), files = window.__cqImgs.slice();
     if(!q && !files.length){ toast('প্রশ্ন লেখো বা ছবি দাও'); return; }
     const btn = document.getElementById('cqSend'), out = document.getElementById('cqRes');
-    btn.disabled = true; out.innerHTML = '<p class="hint">ছবি পড়া ও স্যারের ব্যাংকের সাথে মেলানো হচ্ছে... (১ মিনিটের মতো লাগতে পারে)</p>';
+    btn.disabled = true; out.innerHTML = '<p class="hint">আপলোড হচ্ছে... (১ মিনিটের মতো লাগতে পারে)</p>';
     let imgs = []; try{ for(const f of files) imgs.push(f.c || await compressImageFile(f, 1400, 0.82)); }catch(e){ btn.disabled = false; out.innerHTML = '<p class="hint" style="color:var(--red);">ছবি পড়া যায়নি — আবার বাছো (JPG/PNG হলে ভালো)।</p>'; return; }
     const res = await postToScriptRaw('revisionCollegeSubmit', { slug:st.slug, date:todayStr(), src:g('cqSrc'), subject:g('cqSj'), chapter:g('cqCh'), text:q, answer:a, images:JSON.stringify(imgs) });
     btn.disabled = false;
     if(!res || res.status !== 'success'){ out.innerHTML = `<p class="hint" style="color:var(--red);">${res && res.message === 'daily_limit' ? 'আজকের সীমা (১০টা) শেষ — কাল আবার দিও।' : 'জমা হয়নি, আবার চেষ্টা করো (নেট বা সার্ভার ধীর হতে পারে)।'}</p>`; return; }
-    const v = VB[res.verdict] || VB.new;
-    out.innerHTML = `<div class="rev-verdict good">📨 স্যারের কাছে নোটিফিকেশন গেছে</div>${res.linked ? `<div style="margin-top:8px;padding:10px 12px;border-radius:10px;background:#F1FAF4;">📌 ব্যাংকের <b>${bn(res.linked)}টা</b> একই ধরনের প্রশ্ন (সমাধানসহ) তোমার অ্যাপে অটো দেখানো হবে। <button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="go('collegePrac')">মিলে যাওয়া প্রশ্নগুলো দেখো →</button></div>` : ''}<div style="font-weight:700;color:${v[1]};margin:8px 0;">${v[0]}</div>${(res.items || []).map(matchHtml).join('') || '<p class="hint">ছবি থেকে প্রশ্ন বের করা যায়নি — স্যার ছবিটা সরাসরি দেখবেন।</p>'}${res.linked ? `<button class="info-btn" style="margin-top:10px;" onclick="cqNoMatchUp('${esc(res.id)}')">❌ এগুলোর কোনোটাই আমার প্রশ্নের সাথে মিলছে না</button>` : ''}`;
     window.__cqImgs = []; cqPagesDraw(); const qe = document.getElementById('cqQ'), ae = document.getElementById('cqA'); if(qe) qe.value = ''; if(ae) ae.value = '';
+    if(res.linked){ toast('✅ আপলোড সফল'); go('collegePrac'); return; }   // মিল থাকলে সরাসরি পুরো প্রশ্ন (সমাধানসহ) খোলা অবস্থায় দেখায়
+    out.innerHTML = '<div class="rev-verdict good">✅ আপলোড সফল হয়েছে</div>';
     cqHist();
   };
   // ---------------- শিক্ষক ----------------
