@@ -31983,6 +31983,17 @@ window.PagePicker = PagePicker;
   }
   new MutationObserver(injectCqt).observe(document.getElementById('app'), { childList:true, subtree:true });
   injectCqt();
+  // [v53] ছাত্রের ড্যাশবোর্ডে আলাদা, বড় কার্ড — আপলোড অপশনটা যেন সহজে চোখে পড়ে
+  function injectCqBtn(){
+    if(state.screen !== 'studentDashboard' || !getLoggedStudent() || document.querySelector('[data-cqbtn]')) return;
+    const body = document.getElementById('dailyHwWidgetBody'); if(!body) return;
+    const host = body.closest('.card') || body.parentElement; if(!host || !host.parentElement) return;
+    const c = document.createElement('div'); c.className = 'card'; c.setAttribute('data-cqbtn', '1');
+    c.innerHTML = '<h2>🏫 স্কুল/কলেজে যা পড়ানো হলো</h2><p class="hint" style="margin-bottom:10px;">স্কুল/কলেজের ক্লাসে যে প্রশ্ন-উত্তর পড়ানো হয়েছে তার ছবি বা লেখা দাও — AI স্যারের ব্যাংকে একই ধরনের প্রশ্ন খুঁজে দেখাবে।</p><button class="btn btn-gold btn-block" onclick="go(\'collegeQa\')">📤 স্কুল/কলেজের প্রশ্ন-উত্তর আপলোড করো</button>';
+    host.parentElement.insertBefore(c, host);
+  }
+  new MutationObserver(injectCqBtn).observe(document.getElementById('app'), { childList:true, subtree:true });
+  injectCqBtn();
 
   // ---------- ছাত্র: মিলে যাওয়া / স্যারের দেখানো প্রশ্ন (স্যারের "পড়ানো" টিক বদলায় না) ----------
   function mineHtml(x){
