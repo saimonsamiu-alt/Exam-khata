@@ -5673,13 +5673,13 @@ const BN_WEEKDAYS = ['রবি','সোম','মঙ্গল','বুধ','ব�
 // [v49] ক্লাস-চক্র: প্রতিটা চক্রের (যেমন ১২ ক্লাস) নিজস্ব রঙ — শুরু থেকে শেষ (চলতি হলে আজ পর্যন্ত) প্রতিটা ঘরের ওপরে রঙিন দাগ। এক মাসে দুই চক্র মিশলে দুই রঙ।
 function cycBarFor(ds){
   const today = todayStr(), c = (window.__calCycles || []).find(x => x.start && ds >= x.start && ds <= (x.end || today));
-  return c ? `<i title="চক্র ${c.n}" style="position:absolute;left:0;right:0;top:0;height:5px;border-radius:7px 7px 0 0;background:${c.color};"></i>` : '';
+  return c ? `<i title="চক্র ${c.n}" style="position:absolute;left:0;right:0;top:0;height:8px;border-radius:7px 7px 0 0;background:${c.color};"></i><b style="position:absolute;right:2px;bottom:2px;font-size:9px;line-height:1;padding:1px 4px;border-radius:5px;background:#fff;color:${c.color};border:1.5px solid ${c.color};font-family:var(--font-body);">${String(c.n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d])}</b>` : '';
 }
 function cycLegendHtml(year, month){
   const bnN = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
   const ms = `${year}-${String(month + 1).padStart(2, '0')}-01`, me = `${year}-${String(month + 1).padStart(2, '0')}-31`;
   const rows = (window.__calCycles || []).filter(c => c.start && c.start <= me && (c.end || '9999-12-31') >= ms).map(c =>
-    `<div style="font-size:12px;margin-top:4px;"><i style="display:inline-block;width:16px;height:5px;border-radius:2px;background:${c.color};vertical-align:2px;"></i> <b>চক্র ${bnN(c.n)}</b> · ${bnN(c.held)}/${bnN(c.size)} ক্লাস · ${c.start} → ${c.end || 'চলছে'}${c.chapters && c.chapters.length ? ' · 🎯 ' + c.chapters.map(escapeHtml).join(', ') + (c.pct != null ? ' (' + bnN(c.pct) + '%)' : '') : ''}</div>`).join('');
+    `<div style="font-size:12.5px;margin-top:5px;border-left:4px solid ${c.color};padding-left:6px;"><i style="display:inline-block;width:20px;height:10px;border-radius:3px;background:${c.color};vertical-align:-1px;"></i> <b>চক্র ${bnN(c.n)}</b> · ${bnN(c.held)}/${bnN(c.size)} ক্লাস · ${c.start} → ${c.end || 'চলছে'}${c.chapters && c.chapters.length ? ' · 🎯 ' + c.chapters.map(escapeHtml).join(', ') + (c.pct != null ? ' (' + bnN(c.pct) + '%)' : '') : ''}</div>`).join('');
   return rows ? `<div style="margin-top:8px;border-top:1px dashed var(--rule);padding-top:6px;">${rows}</div>` : '';
 }
 function buildMiniCalendar(year, month, records, onDayClickFn, navTargetScreen, navCtx, hwMap){
@@ -5707,7 +5707,13 @@ function buildMiniCalendar(year, month, records, onDayClickFn, navTargetScreen, 
     const hw = hwMap && hwMap[dateStr];   // শিক্ষকের ক্যালেন্ডারে HW (গোলাপি) ও রিভিশন (বেগুনি) ফোঁটা; কিছু মিস হলে গাঢ় লাল দাগ
     const dotCss = c => `width:6px;height:6px;border-radius:50%;background:${c};border:1px solid #fff;`;
     const hwDot = hw ? `<span style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);display:flex;gap:2px;">${hw.hw ? `<i style="${dotCss('#EC4899')}"></i>` : ''}${hw.rev ? `<i style="${dotCss('#7C3AED')}"></i>` : ''}</span>` : '';
-    cells += `<div ${clickable} position:relative; background:${bg}; color:${color}; border:${border}; ${isToday?'outline:2px solid var(--margin-red);':''}${hw && hw.missed ? 'box-shadow:inset 0 0 0 2px #7F1D1D;' : ''} border-radius:7px; display:flex; align-items:center; justify-content:center; height:34px; font-size:13px; font-family:var(--font-mono);">${d}${hwDot}${cycBarFor(dateStr)}</div>`;
+    if(hw && (hw.hw || hw.rev)){   // [v49] শিক্ষকের ক্যালেন্ডারেও ছাত্রের মতো মিশ্র রঙ: ক্লাস + HW (গোলাপি) + রিভিশন (বেগুনি)
+      const base = rec ? (rec.source === 'exam' ? '#3B82F6' : rec.status === 'approved' ? 'var(--green)' : rec.status === 'pending' ? 'var(--gold)' : null) : null;
+      const cl = [base, hw.hw ? '#EC4899' : null, hw.rev ? '#7C3AED' : null].filter(Boolean);
+      bg = cl.length === 1 ? cl[0] : `linear-gradient(135deg,${cl.map((c, i) => `${c} ${Math.round(i * 100 / cl.length)}% ${Math.round((i + 1) * 100 / cl.length)}%`).join(',')})`;
+      color = (cl.length === 1 && base === 'var(--gold)') ? '#3a2a06' : '#fff'; border = 'none';
+    }
+    cells += `<div ${clickable} position:relative; background:${bg}; color:${color}; border:${border}; ${isToday?'outline:2px solid var(--margin-red);':''}${hw && hw.missed ? 'box-shadow:inset 0 0 0 2px #7F1D1D;' : ''} border-radius:7px; display:flex; align-items:center; justify-content:center; height:34px; font-size:13px; font-family:var(--font-mono);">${d}${cycBarFor(dateStr)}</div>`;
   }
 
   const prevM = month===0 ? 11 : month-1;
