@@ -19,6 +19,64 @@
 <!-- KaTeX for Math & Science LaTeX equations -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" media="print" onload="this.media='all'">
 <script>
+// [v50] ইউনিফাইড UI-স্কেজুলার + ডায়াগনস্টিক
+// (১) অ্যাপের ২৫+টা MutationObserver এখন একটা শেয়ার্ড কিউতে: সবার কলব্যাক জমে একসাথে, একটা টাইমারে, ৪০ms পরে একবার চলে।
+//     কোনো সেকেন্ডে ২০বারের বেশি চললে (cascade/লুপ) নিজে থেকে ৪০০ms-এ ধীর করে দেয়।
+// (২) ক্র্যাশ/ধীর হওয়ার প্রমাণ জমায় (error, ধীর কাজ, মেমরি, আগের সেশন হঠাৎ শেষ হয়েছিল কি না) — দেখতে: অ্যাপের লিংকের শেষে #diag, বা বাঁ-উপরের কোণায় ৬ বার চাপ।
+(function(){
+  var Orig = window.MutationObserver; if(!Orig || Orig.__batched) return;
+  var pending = [], tm = 0, flushes = [];
+  function schedule(){
+    if(tm) return; var now = Date.now(); flushes = flushes.filter(function(t){ return now - t < 1000; });
+    tm = setTimeout(flushAll, flushes.length > 20 ? 400 : 40);
+  }
+  function flushAll(){ tm = 0; flushes.push(Date.now()); var list = pending; pending = []; window.__bgFlush = true; try{ for(var i = 0; i < list.length; i++) list[i].run(); } finally { window.__bgFlush = false; } }
+  function Batched(cb){
+    var buf = [], queued = false, self = this;
+    var w = { run:function(){ queued = false; var r = buf; buf = []; if(r.length){ try{ cb.call(self, r, self); }catch(e){ try{ window.__diagAdd && window.__diagAdd('observer', e && e.message); }catch(_){} } } } };
+    var o = new Orig(function(r){ for(var i = 0; i < r.length; i++) buf.push(r[i]); if(!queued){ queued = true; pending.push(w); } schedule(); });
+    this.observe = function(t, opt){ return o.observe(t, opt); };
+    this.disconnect = function(){ o.disconnect(); buf = []; };
+    this.takeRecords = function(){ var r = buf.concat(o.takeRecords()); buf = []; return r; };
+  }
+  Batched.__batched = true; window.MutationObserver = Batched;
+
+  // ---------- ডায়াগনস্টিক ----------
+  var KEY = 'wd_diag', LAST = 'wd_last', log = [];
+  try{ log = JSON.parse(localStorage.getItem(KEY) || '[]'); }catch(e){}
+  function mem(){ try{ var m = performance.memory; return m ? Math.round(m.usedJSHeapSize / 1048576) : null; }catch(e){ return null; } }
+  function scr(){ try{ return (typeof state !== 'undefined' && state.screen) || ''; }catch(e){ return ''; } }
+  function save(){ try{ localStorage.setItem(KEY, JSON.stringify(log.slice(-40))); }catch(e){} }
+  window.__diagAdd = function(k, m){ log.push({ t:new Date().toLocaleTimeString('en-GB'), d:new Date().toLocaleDateString('en-CA'), k:k, m:String(m || '').slice(0, 160), s:scr(), mb:mem() }); if(log.length > 40) log = log.slice(-40); save(); };
+  try{
+    var prev = JSON.parse(localStorage.getItem(LAST) || 'null');
+    if(prev && prev.clean === false) window.__diagAdd('ABNORMAL_END', 'আগের সেশন হঠাৎ শেষ (ক্র্যাশ/কিল?) — শেষ পাতা: ' + prev.s + ', মেমরি: ' + prev.mb + 'MB, ' + prev.t);
+    localStorage.setItem(LAST, JSON.stringify({ clean:false, s:'', mb:mem(), t:new Date().toLocaleString('en-GB') }));
+  }catch(e){}
+  var lastSnap = '';
+  setInterval(function(){ try{ var s = scr(), mb = mem(), k = s + '|' + mb; if(k === lastSnap) return; lastSnap = k; localStorage.setItem(LAST, JSON.stringify({ clean:false, s:s, mb:mb, t:new Date().toLocaleString('en-GB') })); }catch(e){} }, 5000);
+  function clean(){ try{ var p = JSON.parse(localStorage.getItem(LAST) || '{}'); p.clean = true; localStorage.setItem(LAST, JSON.stringify(p)); }catch(e){} }
+  window.addEventListener('pagehide', clean);
+  document.addEventListener('visibilitychange', function(){ if(document.hidden) clean(); else { try{ var p = JSON.parse(localStorage.getItem(LAST) || '{}'); p.clean = false; localStorage.setItem(LAST, JSON.stringify(p)); }catch(e){} } });
+  window.addEventListener('error', function(e){ window.__diagAdd('error', (e.message || '') + ' @' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || '')); });
+  window.addEventListener('unhandledrejection', function(e){ window.__diagAdd('promise', e.reason && (e.reason.message || e.reason)); });
+  try{ new PerformanceObserver(function(l){ l.getEntries().forEach(function(en){ if(en.duration > 250) window.__diagAdd('slow', Math.round(en.duration) + 'ms'); }); }).observe({ entryTypes:['longtask'] }); }catch(e){}
+  window.__diag = function(){
+    var d = document.getElementById('__diagbox'); if(d){ d.remove(); return; }
+    d = document.createElement('div'); d.id = '__diagbox'; d.setAttribute('style', 'position:fixed;inset:0;z-index:2147483646;background:#fff;color:#111;overflow:auto;padding:14px;font:12px/1.5 monospace;');
+    var txt = log.map(function(x){ return x.d + ' ' + x.t + ' [' + x.k + '] ' + x.m + (x.s ? ' | screen=' + x.s : '') + (x.mb != null ? ' | ' + x.mb + 'MB' : ''); }).join('\n') || '(কিছু নেই — ভালো লক্ষণ)';
+    d.innerHTML = '<div style="margin-bottom:8px;"><button id="__dc" style="padding:8px 12px;">কপি</button> <button id="__dx" style="padding:8px 12px;">মুছে ফেলো</button> <button id="__dk" style="padding:8px 12px;">বন্ধ</button></div><pre style="white-space:pre-wrap;word-break:break-word;margin:0;"></pre>';
+    d.querySelector('pre').textContent = txt; document.body.appendChild(d);
+    d.querySelector('#__dk').onclick = function(){ d.remove(); };
+    d.querySelector('#__dx').onclick = function(){ log = []; save(); d.querySelector('pre').textContent = '(মুছে ফেলা হয়েছে)'; };
+    d.querySelector('#__dc').onclick = function(){ try{ navigator.clipboard.writeText(txt); this.textContent = 'কপি হয়েছে ✓'; }catch(e){ this.textContent = 'কপি হয়নি — লেখা চেপে ধরে কপি করো'; } };
+  };
+  window.addEventListener('DOMContentLoaded', function(){ if(/diag/.test(location.hash + location.search)) window.__diag(); });
+  var taps = [];
+  document.addEventListener('click', function(e){ if(e.clientX < 48 && e.clientY < 48){ var n = Date.now(); taps = taps.filter(function(t){ return n - t < 3000; }); taps.push(n); if(taps.length >= 6){ taps = []; window.__diag(); } } }, true);
+})();
+</script>
+<script>
 // [FIX v30] KaTeX CDN ধীর/ব্লক থাকলে আগে পুরো পেজ সাদা থেকে যেত (defer স্ক্রিপ্ট DOMContentLoaded আটকে রাখত)।
 // এখন পেজ লোড হওয়ার পরে আলাদাভাবে লোড হয় — CDN না এলেও অ্যাপ চলবে, শুধু গণিতের সূত্র সাধারণ লেখা থাকবে।
 (function(){
@@ -76,6 +134,82 @@
     var since = Math.max(t0, window.__wdWait || 0);
     if(Date.now() - since > 25000) showBox(true);
   }, 2000);
+})();
+</script>
+<script>
+// [v51] সাপ্লাই-চেইন লেয়ার — অ্যাপে কী, কখন, কতটা ঢুকবে তার একটা কেন্দ্রীয় নিয়ন্ত্রণ:
+//  ১) নেটওয়ার্ক: অ্যাপ নিজে থেকে (ছাত্র না চাপতেই) যা চায় — একসাথে ২টার বেশি না। ছাত্রের চাপা কাজ কখনো আটকায় না। উপরে পাতলা প্রগ্রেস বার।
+//  ২) ছবি: HTML বসার আগেই সব <img>-এ lazy+async — পর্দায় না আসা ছবি ডাউনলোড/ডিকোড হয় না। "লোড হচ্ছে..." এর বদলে সুন্দর স্কেলিটন।
+//  ৩) স্টোরেজ: জায়গা ভরে গেলে (QuotaExceeded) পুরনো ক্যাশ মুছে নিজে থেকে আবার চেষ্টা — ক্র্যাশ নয়।
+//  ৪) মেমরি পাহারা: মেমরি বেশি হলে বড় ক্যাশ ছেড়ে দেয় (আর লগে লেখে)।
+(function(){
+  if(window.__supplyOn) return; window.__supplyOn = true;
+  var st = document.createElement('style');
+  st.textContent = '#__bar{position:fixed;top:0;left:0;right:0;height:3px;z-index:2147483000;opacity:0;pointer-events:none;transition:opacity .25s;background:linear-gradient(90deg,transparent,#7A3DB8,#2F6FED,transparent) -40% 0/40% 100% no-repeat}#__bar.on{opacity:1;animation:__barmv 1.1s ease-in-out infinite}@keyframes __barmv{0%{background-position:-40% 0}100%{background-position:140% 0}}'
+    + '.sk{display:block;border-radius:10px;background:linear-gradient(90deg,#e9edf5 25%,#f6f8fc 37%,#e9edf5 63%);background-size:400% 100%;animation:__skm 1.3s ease infinite}body.dark .sk{background:linear-gradient(90deg,#2a3142 25%,#343d52 37%,#2a3142 63%);background-size:400% 100%}@keyframes __skm{0%{background-position:100% 50%}100%{background-position:0 50%}}@media (prefers-reduced-motion:reduce){.sk,#__bar.on{animation:none}}';
+  (document.head || document.documentElement).appendChild(st);
+
+  // ১) নেটওয়ার্ক
+  var _f = window.fetch;
+  if(_f){
+    var bgAct = 0, bgQ = [], fg = 0, barT = 0, bar = null;
+    var barUpd = function(){ if(!bar) return; clearTimeout(barT); if(fg > 0) barT = setTimeout(function(){ if(fg > 0) bar.className = 'on'; }, 350); else bar.className = ''; };
+    var next = function(){ while(bgAct < 2 && bgQ.length) bgQ.shift()(); };
+    var done = function(bg){ if(bg){ bgAct--; next(); } else { fg--; barUpd(); } };
+    var run = function(u, o, bg){
+      if(bg) bgAct++; else { fg++; barUpd(); }
+      var p; try{ p = _f.call(window, u, o); }catch(e){ done(bg); throw e; }
+      return p.then(function(r){ done(bg); return r; }, function(e){ done(bg); throw e; });
+    };
+    window.fetch = function(u, o){
+      var bg = window.__bgFlush === true;
+      if(bg && bgAct >= 2) return new Promise(function(res, rej){ bgQ.push(function(){ run(u, o, true).then(res, rej); }); });
+      return run(u, o, bg);
+    };
+    window.__supplyStat = function(){ return { bgActive:bgAct, bgQueued:bgQ.length, fgActive:fg }; };
+    document.addEventListener('DOMContentLoaded', function(){ bar = document.createElement('div'); bar.id = '__bar'; document.body.appendChild(bar); barUpd(); });
+  }
+
+  // ২) ছবি + স্কেলিটন — HTML বসানোর আগেই বদলে নেয়
+  try{
+    var d = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+    if(d && d.set){
+      var SK = '<div class="card"><div class="sk" style="height:22px;width:55%"></div><div class="sk" style="height:14px;margin-top:14px"></div><div class="sk" style="height:14px;width:80%;margin-top:9px"></div><div class="sk" style="height:96px;margin-top:16px"></div></div>';
+      Object.defineProperty(Element.prototype, 'innerHTML', { configurable:true, enumerable:d.enumerable, get:d.get, set:function(v){
+        if(typeof v === 'string' && v.length > 20){
+          if(v.indexOf('<img') !== -1) v = v.replace(/<img(?![^>]*\bloading=)/g, '<img loading="lazy" decoding="async"');
+          if(v.indexOf('লোড হচ্ছে...</div>') !== -1) v = v.replace(/<div class="card center">লোড হচ্ছে\.\.\.<\/div>/g, SK);
+        }
+        d.set.call(this, v);
+      } });
+    }
+  }catch(e){}
+
+  // ৩) স্টোরেজ ভরে গেলে ক্যাশ মুছে আবার চেষ্টা
+  try{
+    var _set = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(k, v){
+      try{ return _set.call(this, k, v); }
+      catch(e){
+        if(this !== window.localStorage) throw e;
+        try{ var ks = []; for(var i = 0; i < localStorage.length; i++){ var kk = localStorage.key(i); if(kk && (kk.indexOf('apic1:') === 0 || kk === 'apic1_idx')) ks.push(kk); } ks.forEach(function(x){ localStorage.removeItem(x); }); window.__diagAdd && window.__diagAdd('storage-full', 'ক্যাশ মুছে জায়গা করা হলো (' + ks.length + ')'); }catch(e2){}
+        return _set.call(this, k, v);
+      }
+    };
+  }catch(e){}
+
+  // ৪) মেমরি পাহারা (Chrome/Android-এ চলে)
+  var lastRelief = 0;
+  setInterval(function(){
+    try{
+      if(document.hidden) return; var m = performance.memory; if(!m) return;
+      var used = m.usedJSHeapSize / 1048576, lim = m.jsHeapSizeLimit / 1048576;
+      if((used > 320 || used > lim * 0.65) && Date.now() - lastRelief > 60000){
+        lastRelief = Date.now(); ['__cqMine', '__cpR', '__cqtR', '__cqtItems', '__cpItems', '__annCache'].forEach(function(k){ try{ if(window[k] !== undefined) window[k] = (Array.isArray(window[k]) ? [] : (k === '__annCache' ? {} : null)); }catch(e){} });
+        window.__diagAdd && window.__diagAdd('mem-relief', Math.round(used) + 'MB / limit ' + Math.round(lim) + 'MB');
+      }
+    }catch(e){}
+  }, 15000);
 })();
 </script>
 <script>
@@ -3794,6 +3928,7 @@ function driveImg(url){
   }
   return escapeHtml(s);
 }
+function driveThumb(url, w){ const s = driveImg(url); return s.replace(/sz=w\d+/, 'sz=w' + (w || 400)); }
 function linkifyText(s){
   const escaped = escapeHtml(s);
   return escaped.replace(/(https?:\/\/[^\s<]+)/g, url => `<a href="${url}" target="_blank" rel="noopener" style="color:var(--margin-red); text-decoration:underline;">${url}</a>`);
@@ -16538,7 +16673,7 @@ window.doSmartSearch = async function(){
       w.document.write('<!doctype html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(title) + '</title>' +
         '<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"><style>' + css + '</style></head><body>' +
         '<div class="bar"><button onclick="window.print()">📄 PDF হিসেবে সেভ করো</button><span id="ps">তৈরি হচ্ছে...</span></div><div id="lkPrint">' + bodyHtml + '</div>' +
-        '<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"><\/script><script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/mhchem.min.js"><\/script><script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"><\/script>' +
+        '<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"><\/script><script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/mhchem.min.js"><\/script><script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"><\/script>' +
         '<script>(' + boot.toString() + ')();<\/script></body></html>');
       w.document.close();
       return;
@@ -18661,6 +18796,16 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
       : `<div class="card"><h3>⚙️ গুরুত্ব ঠিক করো</h3>
         <p class="hint">AI ঠিক করে: বোর্ড/ভর্তি ট্যাগ ও সাল, একই ধরনের প্রশ্ন কতবার এসেছে, ধারণা অধ্যায়ের কেন্দ্রে কিনা। <b>তুমি নিজে যেটা বাছবে সেটা AI কখনো বদলাবে না।</b> রিভিশনে বেশি গুরুত্বপূর্ণ প্রশ্ন আগে আসে।</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="btn btn-primary" style="padding:8px 14px;" onclick="qbAi(false)">🤖 ঠিক হয়নি যেগুলো AI ঠিক করুক${QB.chapter && QB.chapter !== '__none' ? ' (এই অধ্যায়)' : ' (পুরো বিষয়)'}</button><button type="button" class="btn btn-outline" style="padding:8px 14px;" onclick="qbAi(true)">🔄 AI-র দেওয়াগুলো আবার যাচাই</button></div><div id="qbSt"></div></div>`;
+    const topicSet = [...new Set(QB.items.map(x => x.topic).filter(Boolean))].sort();
+    const weakN = QB.items.filter(x => !x.chapter || !x.topic || x.topic === '-').length;
+    const scopeTxt = QB.chapter && QB.chapter !== '__none' ? ' (এই অধ্যায়)' : ' (পুরো বিষয়)';
+    const retagCard = isRev ? '' : `<div class="card"><h3>🏷️ অধ্যায় / টপিক ঠিক করো</h3>
+        <p class="hint">${weakN ? `⚠️ এই ট্যাবে <b>${bnN(weakN)}</b>টা প্রশ্নের অধ্যায়/টপিক ফাঁকা। ` : '✅ সব প্রশ্নে অধ্যায়/টপিক আছে। '}ট্যাগ পরিষ্কার থাকলে ছাত্রের আপলোড করা প্রশ্ন ব্যাংকের সঠিক প্রশ্নের সাথে মেলে।</p>
+        <label class="field-label" style="font-size:12px;">অধ্যায় (বাছা প্রশ্নগুলোকে এই অধ্যায়ে নেবে)</label><input type="text" id="qrCh" list="qrChL" placeholder="যেমন: ১ম পত্র · অধ্যায়-০৮: রাসায়নিক পরিবর্তন" value="${QB.chapter && QB.chapter !== '__none' ? escapeHtml(QB.chapter) : ''}"><datalist id="qrChL">${QB.chs.filter(c => c !== '__none').map(c => `<option value="${escapeHtml(c)}">`).join('')}</datalist>
+        <label class="field-label" style="font-size:12px;">টপিক (ফাঁকা রাখলে আগেরটাই থাকবে)</label><input type="text" id="qrTp" list="qrTpL"><datalist id="qrTpL">${topicSet.map(c => `<option value="${escapeHtml(c)}">`).join('')}</datalist>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;"><button type="button" class="btn btn-primary" style="padding:8px 14px;" onclick="qbRetagManual()">✅ বাছা ${bnN(QB.sel.size)}টায় প্রয়োগ করো</button></div>
+        <p class="hint" style="margin-top:10px;">অথবা AI-কে হুকুম দাও — সে নিজে অধ্যায়/টপিক বেছে ট্যাগ করবে (বিষয় বদলাবে না):</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="btn btn-outline" style="padding:8px 14px;" onclick="qbRetagAi(false)">🤖 ফাঁকা/ঠিক-নেই গুলো ট্যাগ করো${scopeTxt}</button><button type="button" class="btn btn-outline" style="padding:8px 14px;" onclick="qbRetagAi(true)">🔄 সবগুলো আবার ট্যাগ করো${scopeTxt}</button></div><div id="qrSt"></div></div>`;
     const bar = QB.sel.size ? (isRev
       ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;padding:8px;background:rgba(128,128,128,.12);border-radius:10px;"><span style="font-size:13px;width:100%;">বাছা ${bnN(QB.sel.size)}টা:</span><button type="button" class="btn btn-primary" style="padding:6px 12px;font-size:12.5px;" onclick="qbRev('approve')">✅ অনুমোদন (যোগ করো)</button><button type="button" class="btn btn-outline" style="padding:6px 12px;font-size:12.5px;" onclick="qbRev('remove')">🗑️ মুছে ফেলো</button></div>`
       : `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;padding:8px;background:rgba(128,128,128,.12);border-radius:10px;"><span style="font-size:13px;width:100%;">বাছা ${bnN(QB.sel.size)}টার গুরুত্ব করো:</span>${[4, 3, 2, 1].map(impBtn).join('')}<button type="button" class="btn btn-outline" style="padding:6px 10px;font-size:12.5px;" onclick="qbSet(0)">↩︎ ঠিক হয়নি করো</button><button type="button" class="btn btn-outline" style="padding:6px 10px;font-size:12.5px;" onclick="qbRev('remove')">🗑️ ব্যাংক থেকে মুছো</button></div>`) : '';
@@ -18671,7 +18816,7 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
         ${QB.total > QB.items.length ? `<p class="hint">(প্রথম ${bnN(QB.items.length)}টা দেখানো হচ্ছে)</p>` : ''}
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${chips}</div></div>
       <div class="card"><h3>🔎 ফিল্টার</h3>${filters}</div>
-      ${aiCard}
+      ${aiCard}${retagCard}
       <div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;"><button class="info-btn" onclick="qbAll(true)">☑️ দেখানো সব বাছো (${bnN(list.length)})</button><button class="info-btn" onclick="qbAll(false)">⬜ বাদ দাও</button></div>
         ${bar}${rows}${list.length > QB.limit ? `<button class="btn btn-outline btn-block" onclick="qbMore()">আরও দেখাও (${bnN(list.length - QB.limit)}টা বাকি)</button>` : ''}</div>
       <div class="center"><a class="link-back" onclick="go('teacherDashboard')">← শিক্ষক প্যানেলে ফিরে যাও</a></div>${creditFooter()}`;
@@ -18893,6 +19038,31 @@ body.dark .trk-fb-saved{background:#3A2F12;color:#F5E6B8;}
     }
     QB.busy = false; toast('✅ ' + bnN(total) + 'টা প্রশ্নের গুরুত্ব ঠিক হয়েছে' + (rule ? ' (AI না পেয়ে সাল/সদৃশ নিয়মে)' : ''));
     renderQBank();
+  };
+  window.qbRetagManual = async function(){
+    const ids = [...QB.sel]; if(!ids.length){ toast('আগে প্রশ্ন বাছো (নিচের তালিকা থেকে, বা "দেখানো সব বাছো")'); return; }
+    const g = id => ((document.getElementById(id) || {}).value || '').trim(), ch = g('qrCh'), tp = g('qrTp');
+    if(!ch && !tp){ toast('অধ্যায় বা টপিক লেখো'); return; }
+    if(!confirm(bnN(ids.length) + 'টা প্রশ্নের ট্যাগ বদলাবে?' + (ch ? '\nঅধ্যায়: ' + ch : '') + (tp ? '\nটপিক: ' + tp : ''))) return;
+    toast('সেভ হচ্ছে...'); let n = 0;
+    for(let i = 0; i < ids.length; i += 400){
+      const r = await trkTeacherPost('qbRetag', { ids: JSON.stringify(ids.slice(i, i + 400)), chapter: ch, topic: tp });
+      if(!r || r.status !== 'success'){ toast('সেভ হয়নি — নতুন Code.gs ডিপ্লয় করেছো তো?'); return; }
+      n += r.changed || 0;
+    }
+    QB.sel = new Set(); toast('✅ ' + bnN(n) + 'টা প্রশ্নের ট্যাগ বদলেছে'); renderQBank();
+  };
+  window.qbRetagAi = async function(all){
+    if(QB.busy) return;
+    if(all && !confirm('সবগুলো প্রশ্নের অধ্যায়/টপিক AI আবার ঠিক করবে — আগের ট্যাগ বদলে যেতে পারে। চালাবে?')) return;
+    QB.busy = true; let done = 0, fail = 0, skip = 0; const st = () => document.getElementById('qrSt');
+    for(let n = 0; n < 150; n++){
+      if(st()) st().innerHTML = `<p class="hint">🤖 AI ট্যাগ করছে... ${bnN(done)}টা হয়েছে (বন্ধ কোরো না)</p>`;
+      const r = await trkTeacherPost('qbAiRetag', { subject: QB.subject, chapter: QB.chapter || '', mode: all ? 'all' : 'weak', skip: all ? done + fail : skip });
+      if(!r || r.status !== 'success'){ toast('AI চালানো যায়নি — আবার চেষ্টা করো'); break; }
+      done += r.changed || 0; fail += r.failed || 0; skip = r.skipNext || skip; if(!r.left) break;
+    }
+    QB.busy = false; toast('✅ ' + bnN(done) + 'টা ট্যাগ হয়েছে' + (fail ? ' · ' + bnN(fail) + 'টা AI ঠিক করতে পারেনি (নিজে বাছো)' : '')); renderQBank();
   };
   window.qbFeedToggle = async function(on){
     toast(on ? 'AI কাজ শুরু করছে...' : 'বন্ধ করা হচ্ছে...');
@@ -31877,11 +32047,12 @@ window.PagePicker = PagePicker;
     __c0();
   };
   function matchHtml(x){
-    const v = VB[x.verdict] || VB.new;
-    return `<div style="margin-top:8px;padding:10px 12px;border-radius:10px;background:${v[2]};border-left:5px solid ${v[1]};">
+    const ms = (x.matches || []).filter(m => m.status !== 'nomatch');
+    if(!ms.length) return '';   // [v56] মিল না থাকলে কিছুই দেখানো হয় না
+    return `<div style="margin-top:8px;padding:10px 12px;border-radius:10px;background:#F1FAF4;border-left:5px solid #1F7A4D;">
       <div style="font-size:13.5px;"><b>${esc(String(x.q || '').slice(0, 200))}</b></div>
-      <div style="font-weight:700;color:${v[1]};margin-top:3px;">${v[0]}</div>
-      ${(x.matches || []).map(m => `<div class="meta" style="margin-top:4px;">↳ ব্যাংক (${bn(m.score)}%): ${esc(m.text)}${m.chapter ? ' · ' + esc(m.chapter) : ''}${m.why ? '<br>💬 ' + esc(m.why) : ''}${(m.sets || []).length ? '<br>🗂️ সেট: ' + esc(m.sets.join(', ')) : ''}${m.status === 'nomatch' ? '<br><span style="color:#BF3A2C;font-weight:700;">❌ তুমি বলেছ এটা মিলছে না — স্যারকে জানানো হয়েছে</span>' : (m.lid ? '<br><a onclick="cqNoMatchLink(\'' + esc(m.lid) + '\')" style="color:#BF3A2C;cursor:pointer;font-weight:700;">❌ এটা মিলছে না</a>' : '')}</div>`).join('')}</div>`;
+      <div style="font-weight:700;color:#1F7A4D;margin-top:3px;">📌 একই ধরনের প্রশ্ন পড়ানো হয়েছে</div>
+      ${ms.map(m => `<div class="meta" style="margin-top:4px;">↳ ${esc(m.text)}${m.chapter ? ' · ' + esc(m.chapter) : ''}${(m.sets || []).length ? '<br>🗂️ সেট: ' + esc(m.sets.join(', ')) : ''}${m.lid ? '<br><a onclick="cqNoMatchLink(\'' + esc(m.lid) + '\')" style="color:#BF3A2C;cursor:pointer;font-weight:700;">❌ এটা মিলছে না</a>' : ''}</div>`).join('')}</div>`;
   }
   // ---------------- ছাত্র ----------------
   window.__cqImgs = [];
@@ -31904,7 +32075,7 @@ window.PagePicker = PagePicker;
     cqHist(); cqQDraw();
   }
   const LBL = ['ক', 'খ', 'গ', 'ঘ'];
-  const imgTag = u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${driveImg(u)}" style="width:100%;height:auto;display:block;border-radius:8px;margin:8px 0;border:1px solid var(--paper-edge);"></a>`;
+  const imgTag = u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img loading="lazy" decoding="async" src="${driveThumb(u, 900)}" style="width:100%;height:auto;display:block;border-radius:8px;margin:8px 0;border:1px solid var(--paper-edge);"></a>`;
   const countBy = (list, f) => { const c = {}; list.forEach(x => { const k = f(x) || ''; c[k] = (c[k] || 0) + 1; }); return c; };
   function chipsHtml(counts, cur, fn, total){
     return '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px;">' + [['', 'সব (' + bn(total) + ')']].concat(Object.keys(counts).map(k => [k, sjLabel(k) + ' (' + bn(counts[k]) + ')'])).map(a => `<button type="button" class="info-btn" style="${cur === a[0] ? 'background:#1F2A44;color:#fff;' : ''}" onclick="${fn}('${esc(a[0])}')">${esc(a[1])}</button>`).join('') + '</div>';
@@ -31919,27 +32090,54 @@ window.PagePicker = PagePicker;
   function tansHtml(list, who){
     return (list || []).map(a => `<div style="margin-top:8px;padding:10px 12px;border-radius:10px;background:#FEF8EC;border-left:5px solid #D9A441;"><b>👨‍🏫 স্যারের উত্তর</b>${a.text ? `<div style="white-space:pre-wrap;line-height:1.7;margin-top:4px;font-size:13.5px;">${esc(a.text)}</div>` : ''}${(a.imageUrls || []).map(u => imgTag(u)).join('')}${who === 't' ? `<a onclick="cqtAnsDel('${esc(a.aid)}')" style="color:#BF3A2C;cursor:pointer;font-size:13px;">✕ সরাও</a>` : ''}</div>`).join('');
   }
+  // [v56] LaTeX-এর কাঁচা লেখা ($ ছাড়া) থাকলে লাইন ধরে গণিত-মোড়ক দেওয়া — যাতে \frac, \Delta ইত্যাদি সুন্দর দেখায়
+  function mathify(t){
+    t = String(t == null ? '' : t);
+    if(t.indexOf('$') !== -1 || !/\\(frac|Delta|times|Rightarrow|therefore|sqrt|cdot|alpha|beta|theta|pi|sum|int|leq|geq|approx|vec)\b|[_^]\{/.test(t)) return t;
+    return t.split('\n').map(l => /\\[a-zA-Z]+|[_^]\{|[_^][0-9a-z]/.test(l) ? '$' + l.replace(/\$/g, '') + '$' : l).join('\n');
+  }
+  const mt = s => esc(mathify(s));
   function upCard(x){
     const its = x.items || [], tl = x.tans || [];
-    const nm = its.reduce((n, it) => n + (it.matches || []).filter(m => m.status !== 'nomatch').length, 0);
-    const badge = nm ? `<span style="color:#1F7A4D;font-weight:700;">📌 ${bn(nm)}টা মিল</span>` : '<span style="color:#7A3DB8;font-weight:700;">🆕 ব্যাংকে মিল নেই</span>';
-    const th = (x.urls || []).map(u => `<img src="${driveImg(u)}" style="width:44px;height:58px;object-fit:cover;border-radius:5px;border:1px solid var(--paper-edge);margin-right:4px;">`).join('');
+    const liveM = it => (it.matches || []).filter(m => m.status !== 'nomatch');
+    const nm = its.reduce((n, it) => n + liveM(it).length, 0);
+    const badge = nm ? `<span style="color:#1F7A4D;font-weight:700;">📌 ${bn(nm)}টা মিল</span>` : '';   // মিল না থাকলে কোনো লেবেল নয়
+    const th = (x.urls || []).map(u => `<img loading="lazy" decoding="async" src="${driveThumb(u, 160)}" style="width:44px;height:58px;object-fit:cover;border-radius:5px;border:1px solid var(--paper-edge);margin-right:4px;">`).join('');
     const itemsHtml = its.map((it, n) => `<div style="margin-top:10px;padding:10px 12px;border-radius:10px;background:#F6F1FC;border-left:5px solid #7A3DB8;">
         <div style="font-size:12px;color:#7A3DB8;font-weight:700;">প্রশ্ন ${bn(n + 1)}</div>
-        <div style="white-space:pre-wrap;font-size:13.5px;margin-top:2px;">${esc(it.q)}</div>
-        ${it.a ? `<div style="margin-top:6px;font-weight:700;font-size:13px;">✍️ তোমার সমাধান</div><div style="white-space:pre-wrap;font-size:13.5px;line-height:1.7;">${esc(it.a)}</div>` : ''}
+        <div style="white-space:pre-wrap;font-size:13.5px;margin-top:2px;">${mt(it.q)}</div>
+        ${it.a ? `<div style="margin-top:6px;font-weight:700;font-size:13px;">✍️ তোমার সমাধান</div><div style="white-space:pre-wrap;font-size:13.5px;line-height:1.7;">${mt(it.a)}</div>` : ''}
         ${tansHtml(tl.filter(a => a.idx === it.idx))}
-        ${(it.matches || []).map(m => `<details style="margin-top:8px;"><summary style="cursor:pointer;font-weight:700;font-size:13px;">📌 ব্যাংকের মিল প্রশ্ন (${bn(m.score)}%)${m.status === 'nomatch' ? ' ❌' : ''}</summary><div style="margin-top:6px;">${bankFull(m.bank)}${m.mine ? mineHtml({ mine:m.mine }) : ''}${m.lid && m.status !== 'nomatch' ? `<a onclick="cqNoMatchLink('${esc(m.lid)}')" style="color:#BF3A2C;cursor:pointer;font-weight:700;display:block;margin-top:8px;">❌ এটা মিলছে না</a>` : ''}</div></details>`).join('')}
+        ${liveM(it).map(m => `<div style="margin-top:10px;padding:10px 12px;border-radius:10px;background:#F1FAF4;border-left:5px solid #1F7A4D;"><div style="font-weight:700;font-size:13px;color:#1F7A4D;margin-bottom:6px;">📌 ব্যাংকের একই ধরনের প্রশ্ন</div>${bankFull(m.bank)}${m.mine ? mineHtml({ mine:m.mine }) : ''}${m.lid ? `<a onclick="cqNoMatchLink('${esc(m.lid)}')" style="color:#BF3A2C;cursor:pointer;font-weight:700;display:block;margin-top:8px;">❌ এটা মিলছে না</a>` : ''}</div>`).join('')}
       </div>`).join('') || `<div class="meta" style="white-space:pre-wrap;margin-top:8px;">${esc(x.text || '')}</div>`;
     return `<details class="exam-item" style="margin-bottom:10px;"><summary style="cursor:pointer;list-style:none;">
       <div class="meta">${esc(x.date)} · ${esc(sjLabel(x.subject))}${x.chapter ? ' › ' + esc(x.chapter) : ''}</div>
       <div style="display:flex;margin:6px 0;">${th}</div>
       <div style="font-size:13.5px;">${esc(String((its[0] && its[0].q) || x.text || '(ছবি)').slice(0, 110))}</div>
-      <div style="margin-top:4px;font-size:12.5px;">${badge}${tl.length ? ' · <span style="color:#9B6A15;font-weight:700;">👨‍🏫 স্যারের উত্তর আছে</span>' : ''} · <span class="meta">খুলে দেখো ▾</span></div></summary>
+      <div style="margin-top:4px;font-size:12.5px;">${badge}${badge && tl.length ? ' · ' : ''}${tl.length ? '<span style="color:#9B6A15;font-weight:700;">👨‍🏫 স্যারের উত্তর আছে</span>' : ''}${badge || tl.length ? ' · ' : ''}<span class="meta">খুলে দেখো ▾</span></div></summary>
       <div style="margin-top:8px;">${(x.urls || []).map(u => imgTag(u)).join('')}${itemsHtml}${tansHtml(tl.filter(a => a.idx < 0))}${nm ? `<button class="info-btn" style="margin-top:10px;" onclick="cqNoMatchUp('${esc(x.id)}')">❌ এগুলোর কোনোটাই মিলছে না</button>` : ''}</div></details>`;
   }
-  window.__cqSj = '';
-  window.cqSjPick = function(k){ window.__cqSj = k; cqHist(true); };
+  // [v56] হোম: 🕒 সাম্প্রতিক + বিষয়ভিত্তিক আলাদা বাক্স; বাক্সে ঢুকলে অধ্যায় › টপিক ধরে সাজানো
+  window.__cqView = window.__cqView || '';
+  window.cqView = function(k){ window.__cqView = k; window.__cqLimit = 12; cqHist(true); const e = document.getElementById('cqHist'); if(e && e.scrollIntoView) e.scrollIntoView({ block:'start' }); };
+  window.cqMore = function(){ window.__cqLimit = (window.__cqLimit || 12) + 12; cqHist(true); };
+  const SJ_ORDER = ['physics', 'chemistry', 'mathematics', 'biology', 'ict'];
+  const topicOf = x => { for(const it of (x.items || [])){ const m = (it.matches || []).find(mm => mm.status !== 'nomatch' && mm.bank && mm.bank.topic); if(m) return m.bank.topic; } return ''; };
+  const sortNew = l => l.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)) || (String(b.id) < String(a.id) ? -1 : 1));
+  window.cqRematch = async function(){
+    const st = getLoggedStudent(); if(!st || window.__cqRm) return; window.__cqRm = true;
+    const btn = document.getElementById('cqRmBtn'); let off = 0, linked = 0;
+    try{
+      for(let g = 0; g < 60; g++){
+        if(btn) btn.textContent = '🔄 মেলানো হচ্ছে... ' + bn(off) + ' টা হয়েছে (পাতা বন্ধ কোরো না)';
+        const r = await postToScriptRaw('revisionCollegeRematch', { slug:st.slug, offset:off });
+        if(!r || r.status !== 'success') throw new Error('x');
+        linked += r.linked || 0; off = r.next; if(r.done) break;
+      }
+      toast('✅ আবার মেলানো শেষ' + (linked ? ' — ' + bn(linked) + 'টা নতুন মিল' : ''));
+    }catch(e){ toast('মেলানো শেষ হয়নি, আবার চাপো'); }
+    window.__cqRm = false; cqHist();
+  };
   async function cqHist(keep){
     const st = getLoggedStudent(), el = document.getElementById('cqHist'); if(!st || !el) return;
     if(!keep || !window.__cqMine){
@@ -31948,11 +32146,26 @@ window.PagePicker = PagePicker;
       if(!r || r.status !== 'success'){ el.innerHTML = '<p class="hint">তালিকা আনা যায়নি।</p>'; return; }
       window.__cqMine = r.items;
     }
-    const all = window.__cqMine, sjF = window.__cqSj || '', list = all.filter(x => !sjF || (x.subject || '') === sjF);
-    const groups = {}, order = [];
-    list.forEach(x => { const k = (sjF ? '' : sjLabel(x.subject) + ' › ') + (x.chapter || 'অধ্যায় জানা নেই'); if(!groups[k]){ groups[k] = []; order.push(k); } groups[k].push(x); });
-    const body = order.map(k => `<div style="font-weight:800;margin:14px 2px 6px;">📖 ${esc(k)} <span class="meta">(${bn(groups[k].length)})</span></div>` + groups[k].map(upCard).join('')).join('');
-    el.innerHTML = (all.length ? chipsHtml(countBy(all, x => x.subject), sjF, 'cqSjPick', all.length) : '') + (body || '<p class="hint">এখনো কিছু আপলোড করোনি।</p>');
+    const all = window.__cqMine, v = window.__cqView || '';
+    if(!all.length){ el.innerHTML = '<p class="hint">এখনো কিছু আপলোড করোনি।</p>'; return; }
+    const bar = (t) => `<button type="button" class="info-btn" style="margin-bottom:8px;" onclick="cqView('')">← সব বিষয়</button><div style="font-weight:800;font-size:16px;margin:4px 2px 10px;">${t}</div>`;
+    if(!v){   // হোম
+      const cnt = countBy(all, x => x.subject);
+      const keys = SJ_ORDER.filter(k => cnt[k]).concat(Object.keys(cnt).filter(k => SJ_ORDER.indexOf(k) === -1 && cnt[k]));
+      el.innerHTML = `<button type="button" class="btn btn-block" style="margin-bottom:10px;background:#1F2A44;color:#fff;text-align:left;padding:14px;" onclick="cqView('__recent')">🕒 সাম্প্রতিক আপলোড <span style="float:right;opacity:.8;">${bn(all.length)}টা · নতুন থেকে পুরোনো ›</span></button>`
+        + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">` + keys.map(k => `<button type="button" onclick="cqView('${esc(k)}')" style="text-align:left;padding:14px 12px;border-radius:12px;border:1px solid var(--paper-edge);background:#fff;cursor:pointer;"><div style="font-size:22px;">${esc((NOTES_SUBJECTS[k] && NOTES_SUBJECTS[k].icon) || '📁')}</div><div style="font-weight:700;font-size:13.5px;margin-top:4px;">${esc(NOTES_SUBJECTS[k] ? NOTES_SUBJECTS[k].label : (k || 'বিষয় জানা নেই'))}</div><div class="meta" style="margin-top:2px;">${bn(cnt[k])}টা আপলোড</div></button>`).join('') + '</div>' + `<button type="button" id="cqRmBtn" class="info-btn" style="margin-top:12px;" onclick="cqRematch()">🔄 নতুন প্রশ্নের সাথে আবার মেলাও</button>`;
+      return;
+    }
+    if(v === '__recent'){
+      const full = sortNew(all), list = full.slice(0, window.__cqLimit || 12);
+      el.innerHTML = bar('🕒 সাম্প্রতিক আপলোড') + list.map(upCard).join('') + (full.length > list.length ? `<button class="btn btn-outline btn-block" onclick="cqMore()">আরও দেখাও (${bn(full.length - list.length)}টা বাকি)</button>` : '');
+      renderAllMath(el); return;
+    }
+    const full = sortNew(all.filter(x => (x.subject || '') === v)), list = full.slice(0, window.__cqLimit || 12);
+    const chs = {}, chOrder = [];
+    list.forEach(x => { const c = x.chapter || 'অধ্যায় জানা নেই', t = topicOf(x) || '__none'; if(!chs[c]){ chs[c] = { order:[], t:{} }; chOrder.push(c); } if(!chs[c].t[t]){ chs[c].t[t] = []; chs[c].order.push(t); } chs[c].t[t].push(x); });
+    const body = chOrder.map(c => `<div style="font-weight:800;margin:14px 2px 6px;">📖 ${esc(c)}</div>` + chs[c].order.map(t => (t === '__none' ? '' : `<div style="font-weight:700;font-size:13px;margin:8px 4px 4px;color:#1F2A44;">📂 ${esc(t)}</div>`) + chs[c].t[t].map(upCard).join('')).join('')).join('');
+    el.innerHTML = bar(esc(sjLabel(v)) + ` <span class="meta">(${bn(full.length)})</span>`) + body + (full.length > list.length ? `<button class="btn btn-outline btn-block" onclick="cqMore()">আরও দেখাও (${bn(full.length - list.length)}টা বাকি)</button>` : '');
     renderAllMath(el);
   }
   function cqPagesDraw(){
@@ -31968,11 +32181,18 @@ window.PagePicker = PagePicker;
     const cv = document.createElement('canvas'); cv.width = w; cv.height = hh; cv.getContext('2d').drawImage(bmp, 0, 0, w, hh);
     return { base64:cv.toDataURL('image/jpeg', 0.82).split(',')[1], mimeType:'image/jpeg' };
   }
+  async function cqThumb(f){
+    try{
+      let b; try{ b = await createImageBitmap(f, { resizeWidth:110 }); }catch(e){ b = await createImageBitmap(f); }
+      const w = 110, hh = Math.max(1, Math.round(b.height * w / b.width)), cv = document.createElement('canvas'); cv.width = w; cv.height = hh;
+      cv.getContext('2d').drawImage(b, 0, 0, w, hh); if(b.close) b.close(); const u = cv.toDataURL('image/jpeg', 0.6); cv.width = cv.height = 0; return u;
+    }catch(e){ return ''; }
+  }
   window.cqAdd = async function(inp){
     const fs = Array.from((inp && inp.files) || []);
     for(const f of fs){
       if(!f || (f.type && !/^image\//.test(f.type)) || window.__cqImgs.length >= 30) continue;
-      try{ const c = await cqCompress(f); window.__cqImgs.push({ c, __u:'data:image/jpeg;base64,' + c.base64 }); cqPagesDraw(); }
+      try{ const c = await cqCompress(f); window.__cqImgs.push({ c, __u:await cqThumb(f) }); cqPagesDraw(); await new Promise(r => setTimeout(r, 40)); }
       catch(e){ toast('এই ছবিটা পড়া যায়নি — আবার তোলো বা অন্য ছবি বাছো'); }
     }
     if(inp) inp.value = ''; cqPagesDraw();
@@ -32072,7 +32292,7 @@ window.PagePicker = PagePicker;
       return gh + `<div class="exam-item"><div style="font-weight:700;">${esc(x.name)} <span class="meta">${esc(x.date)}</span></div>
         <div class="meta">${x.src === 'school' ? '🏫 স্কুলে পড়ানো' : '🏫 কলেজে পড়ানো'} · ${esc([sjLabel(x.subject), cqtCh(x)].filter(Boolean).join(' › '))}</div>
         <div style="color:${v[1]};font-weight:700;margin:3px 0;">${v[0]}</div>${x.flag ? '<div style="color:#BF3A2C;font-weight:700;">❌ ছাত্র বলেছে ব্যাংকের মিল ঠিক হয়নি — সঠিক প্রশ্ন খুঁজে দেখাও</div>' : ''}
-        ${(x.urls || []).map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${driveImg(u)}" style="width:70px;height:92px;object-fit:cover;border-radius:6px;margin:2px 6px 2px 0;border:1px solid var(--paper-edge);"></a>`).join('')}
+        ${(x.urls || []).map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img loading="lazy" decoding="async" src="${driveThumb(u, 200)}" style="width:70px;height:92px;object-fit:cover;border-radius:6px;margin:2px 6px 2px 0;border:1px solid var(--paper-edge);"></a>`).join('')}
         ${(x.items || []).map(matchHtml).join('') || `<div class="meta">${esc(x.text)}</div>`}
         ${cqtLinksHtml(x, i)}${cqtAnsHtml(x, i)}${cqtTagHtml(x, i)}<div style="margin-top:8px;">${x.status === 'done' ? '<span class="meta">✔️ সম্পন্ন করা</span>' : `<button class="info-btn" onclick="cqtDone(${i})">✔️ দেখেছি / সম্পন্ন</button>`}</div></div>`; }).join('') || '<div class="empty-state">কিছু নেই।</div>';
     app.innerHTML = `${header('স্কুল/কলেজের প্রশ্ন')}<div class="card"><h2>🏫 স্কুল/কলেজে পড়ানো প্রশ্ন (ছাত্রের আপলোড)</h2><p class="hint">আপনার নিজের পড়ানো না — ছাত্র স্কুল/কলেজে যা পেয়েছে। বিষয়/অধ্যায় অনুযায়ী দেখুন, আর যেকোনো প্রশ্নে আপনার উত্তর (লেখা বা ছবি) যোগ করুন — ছাত্র নিজের আপলোডের নিচে সেটা দেখবে।</p>${chipsHtml(countBy(r.items, x => x.subject), sjF, 'cqtSjPick', r.items.length)}<button class="btn btn-outline btn-block" style="margin-bottom:8px;" onclick="cqtToggleAll()">${window.__cqtAll ? '🆕 শুধু নতুনগুলো দেখাও' : '🗂️ সম্পন্ন করাগুলোও দেখাও'}</button>${rows}<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('collegeQaT')">🔄 নতুন করো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
@@ -32495,5 +32715,15 @@ window.PagePicker = PagePicker;
 })();
 </script>
 
+<script>window.addEventListener('load', function(){ try{ var a = document.getElementById('app'); if(a && typeof renderAllMath === 'function') renderAllMath(a); }catch(e){} });</script>
+<script>
+(function(){ try{
+  if(typeof render !== 'function' || render.__guard) return; var __r = render;
+  render = function(){ try{ return __r.apply(this, arguments); }catch(e){
+    try{ window.__diagAdd && window.__diagAdd('render', e && e.message); }catch(_){}
+    var a = document.getElementById('app'); if(a) a.innerHTML = '<div class="card center"><h2>😕 পাতাটা খুলতে একটু সমস্যা হলো</h2><p class="hint">আবার চেষ্টা করলে ঠিক হয়ে যাওয়ার কথা।</p><button class="btn btn-primary btn-block" onclick="location.reload()">🔄 আবার চেষ্টা করো</button></div>';
+  } }; render.__guard = true;
+}catch(e){} })();
+</script>
 </body>
 </html>
