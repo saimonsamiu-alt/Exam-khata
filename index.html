@@ -12872,7 +12872,7 @@ window.doSmartSearch = async function(){
     const it = R().cur, q = it.q || it;
     const opts = (q.options || []).map((o, j) => ['ক','খ','গ','ঘ'][j] + ') ' + o).join('\n');
     const sj = it.subject && NOTES_SUBJECTS[it.subject] ? NOTES_SUBJECTS[it.subject].label : '';
-    cfAskOpen({ kind:'REV', refId:String(it.key || ''), topic:[sj, it.topic].filter(Boolean).join(' › '), question:String(q.text || '') + (opts ? '\n' + opts : ''), aiAnswer:it.__exp || '' });
+    cfAskOpen({ kind:'REV', refId:String(it.key || ''), topic:[sj, it.topic].filter(Boolean).join(' › '), question:String(q.text || '') + (opts ? '\n' + opts : ''), aiAnswer:it.__exp || '', qImage:q.imageUrl || it.imageUrl || '' });
   };
   window.revVariant = async function(){
     const r = R(), it = r.cur, q = it.q || it, box = document.getElementById('revExp');
@@ -15489,7 +15489,7 @@ window.doSmartSearch = async function(){
   window.hrAsk = function(){
     const a = HR.cur; if(!a) return;
     const opts = a.kind === 'mcq' ? (a.options || []).map((o, j) => HRL[j] + ') ' + o).join('\n') : '';
-    cfAskOpen({ kind:'HW', refId:String(a.id), topic:hrTopic(a), question:(a.text || '') + (opts ? '\n' + opts : '') + (a.imageUrl ? '\n(প্রশ্নটা ছবিতে — স্যারের দেওয়া HW)' : ''), aiAnswer:a.__exp || '' });
+    cfAskOpen({ kind:'HW', refId:String(a.id), topic:hrTopic(a), question:(a.text || '') + (opts ? '\n' + opts : '') + (a.imageUrl ? '\n(প্রশ্নটা ছবিতে — স্যারের দেওয়া HW)' : ''), aiAnswer:a.__exp || '', qImage:a.imageUrl || '' });
   };
 
   // ---------- 🔁 একই ধরনের নতুন প্রশ্ন (প্র্যাকটিস — HW-র হিসাবে ঢোকে না, রিভিশনের লগে যায়) ----------
@@ -15754,7 +15754,7 @@ window.doSmartSearch = async function(){
   window.srAsk = function(id){   // [v19] রিভিশন সেটে না পারলে শিক্ষককে জানানো
     const it = (R.items || []).find(x => x.id === id); if(!it) return;
     const opts = (it.options || []).map((o, j) => ['ক','খ','গ','ঘ'][j] + ') ' + o).join('\n');
-    cfAskOpen({ kind:'REV', refId:(R.set ? R.set.id : '') + ':' + id, topic:[it.chapter, it.topic].filter(Boolean).join(' › '), question:String(it.text || '') + (opts ? '\n' + opts : '') });
+    cfAskOpen({ kind:'REV', refId:(R.set ? R.set.id : '') + ':' + id, topic:[it.chapter, it.topic].filter(Boolean).join(' › '), question:String(it.text || '') + (opts ? '\n' + opts : ''), qImage:it.imageUrl || '' });
   };
   window.srPgOp = function(id, i, d){ listOp(R.pages[id], i, d); srPg(id); };
   function srPg(id){ const el = document.getElementById('srP_' + id); if(el) el.innerHTML = pagesHtml(R.pages[id], `(function(i,d){srPgOp('${id}',i,d)})`); }
@@ -31215,6 +31215,7 @@ window.PagePicker = PagePicker;
   }
   const btn = (text, cls, fn) => { const b = h('button', { type:'button', class:'btn ' + (cls || 'btn-outline') + ' ab-sm', text:text }); if(fn) b.onclick = fn; return b; };
   function fmtDate(iso){ if(!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('bn-BD', { day:'numeric', month:'short', year:'numeric' }); }
+  const askImg = u => { const a = h('a', { href:u, target:'_blank', rel:'noopener' }); const im = h('img', { loading:'lazy', decoding:'async', src:driveThumb(u, 1400), style:'width:100%;height:auto;display:block;border-radius:8px;margin:8px 0;border:1px solid var(--paper-edge);' }); a.appendChild(im); return a; };   // [v61]
   function stu(){ try{ const s = getLoggedStudent(); return (s && s.slug) ? s : null; }catch(e){ return null; } }
   function errText(r){
     const m = r && r.message;
@@ -31255,6 +31256,7 @@ window.PagePicker = PagePicker;
       h('div', { class:'ab-hint', text:'প্রশ্নটা স্যারের কাছে চলে যাবে, উত্তর এলে "📨 স্যারের উত্তর" পাতায় দেখতে পাবে।' }),
       ctx.topic ? h('div', { class:'ab-meta', text:'📌 ' + ctx.topic }) : null,
       h('div', { class:'ab-q', text:ctx.question || '(প্রশ্ন নেই)' }),
+      ctx.qImage ? askImg(ctx.qImage) : null,
       note,
       ctx.aiAnswer ? h('label', { class:'ab-chk' }, withAi, h('span', { text:'AI-র ব্যাখ্যাটাও সাথে পাঠাও (স্যার দেখবেন AI কী বলেছিল)' })) : null,
       err,
@@ -31265,7 +31267,7 @@ window.PagePicker = PagePicker;
       if(!String(ctx.question || '').trim() && !text){ err.textContent = 'কিছু লিখে তারপর পাঠাও।'; return; }
       send.disabled = true; err.textContent = '';
       const r = await sapi('askSend', { kind:ctx.kind || 'OTHER', refId:ctx.refId || '', topic:ctx.topic || '', question:ctx.question || '', note:text,
-        aiAnswer: (ctx.aiAnswer && withAi.checked) ? ctx.aiAnswer : '' });
+        aiAnswer: (ctx.aiAnswer && withAi.checked) ? ctx.aiAnswer : '', qImage: ctx.qImage || '' });
       send.disabled = false;
       if(!r || r.status !== 'success'){ err.textContent = errText(r); return; }
       sheet.textContent = '';
@@ -31282,7 +31284,7 @@ window.PagePicker = PagePicker;
   // HW (শিক্ষকের দেওয়া) থেকে — hhAssigned() প্রশ্নটা রেজিস্টারে রেখে যায়
   window.hhAsk = function(id){
     const a = (window.__cfAskReg || {})[id]; if(!a){ say('প্রশ্ন পাওয়া যায়নি'); return; }
-    cfAskOpen({ kind:'HW', refId:String(a.id), topic:[a.chapter, a.topic, a.subtopic].filter(Boolean).join(' › '), question:(a.text || '') + (a.imageUrl ? '\n(প্রশ্নটা ছবিতে — স্যারের দেওয়া HW)' : '') });
+    cfAskOpen({ kind:'HW', refId:String(a.id), topic:[a.chapter, a.topic, a.subtopic].filter(Boolean).join(' › '), question:(a.text || '') + (a.imageUrl ? '\n(প্রশ্নটা ছবিতে — স্যারের দেওয়া HW)' : ''), qImage:a.imageUrl || '' });
   };
 
   /* ============================================================
@@ -31306,9 +31308,10 @@ window.PagePicker = PagePicker;
         h('div', {}, h('span', { class:'ab-tag', text:KIND[a.kind] || 'অন্যান্য' }), h('span', { class:'ab-tag ' + (rep ? 'ab-done' : 'ab-open'), text:rep ? '✅ স্যারের উত্তর এসেছে' : '⏳ স্যার দেখবেন' })),
         a.topic ? h('div', { class:'ab-meta', text:'📌 ' + a.topic }) : null,
         h('div', { class:'ab-q', text:a.question || '' }),
+        a.qImage ? askImg(a.qImage) : null,
         a.note ? h('div', { class:'ab-meta', text:'তোমার কথা: ' + a.note }) : null,
         h('div', { class:'ab-meta', text:'🗓️ ' + fmtDate(a.createdAt) }),
-        rep ? h('div', { class:'ab-reply' }, h('b', { text:'👨‍🏫 স্যারের উত্তর:' }), h('div', { text:a.reply })) : null);
+        rep ? h('div', { class:'ab-reply' }, h('b', { text:'👨‍🏫 স্যারের উত্তর:' }), a.reply ? h('div', { text:a.reply }) : null, ...(a.replyImages || []).map(askImg)) : null);
       box.appendChild(it);
     });
     math(box);
@@ -31349,22 +31352,34 @@ window.PagePicker = PagePicker;
     card.appendChild(h('div', {}, h('span', { class:'ab-tag', text:'👤 ' + a.name }), h('span', { class:'ab-tag', text:KIND[a.kind] || 'অন্যান্য' }), h('span', { class:'ab-tag ' + (rep ? 'ab-done' : 'ab-open'), text:rep ? '✅ উত্তর দেওয়া' : '⏳ অপেক্ষমাণ' })));
     if(a.topic) card.appendChild(h('div', { class:'ab-meta', text:'📌 ' + a.topic }));
     card.appendChild(h('div', { class:'ab-q', text:a.question || '' }));
+    if(a.qImage) card.appendChild(askImg(a.qImage));
     if(a.note) card.appendChild(h('div', { class:'ab-meta', text:'ছাত্রের কথা: ' + a.note }));
     if(a.aiAnswer){ const d = h('details', { style:'margin-top:6px;' }, h('summary', { text:'🤖 AI যা বলেছিল' }), h('div', { class:'ab-q', text:a.aiAnswer })); card.appendChild(d); }
     card.appendChild(h('div', { class:'ab-meta', text:'🗓️ ' + fmtDate(a.createdAt) }));
-    if(rep) card.appendChild(h('div', { class:'ab-reply' }, h('b', { text:'তোমার উত্তর:' }), h('div', { text:a.reply })));
+    if(rep) card.appendChild(h('div', { class:'ab-reply' }, h('b', { text:'তোমার উত্তর:' }), a.reply ? h('div', { text:a.reply }) : null, ...(a.replyImages || []).map(askImg)));
     const ta = h('textarea', { class:'ab-ta', placeholder:rep ? 'উত্তর বদলাতে চাইলে নতুন করে লেখো…' : 'ছাত্রকে উত্তর লেখো…' });
     const err = h('div', { class:'ab-err' });
+    const pics = [], prev = h('div', { style:'display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;' });
+    const drawPics = () => { prev.textContent = ''; pics.forEach((p, i) => { const w = h('div', { style:'position:relative;width:74px;' }); w.appendChild(h('img', { src:p.thumb, style:'width:74px;height:98px;object-fit:cover;border-radius:6px;border:1px solid var(--paper-edge);' })); const x = h('button', { type:'button', text:'✕', 'aria-label':'সরাও', style:'position:absolute;top:-7px;right:-7px;width:24px;height:24px;border-radius:50%;border:0;background:#BF3A2C;color:#fff;font-size:13px;line-height:1;padding:0;' }); x.onclick = () => { pics.splice(i, 1); drawPics(); }; w.appendChild(x); prev.appendChild(w); }); };
+    const fi = h('input', { type:'file', accept:'image/*', multiple:'multiple', style:'margin-top:6px;' });
+    fi.onchange = async () => {   // [v61] ছবি-উত্তর: ছোট করে (১৬০০px) রাখা হয়
+      for(const f of Array.from(fi.files || [])){
+        if(pics.length >= 4){ say('সর্বোচ্চ ৪টা ছবি'); break; }
+        try{ const c = await compressImageFile(f, 1600, 0.82); pics.push({ c, thumb:'data:' + (c.mimeType || 'image/jpeg') + ';base64,' + c.base64 }); drawPics(); }
+        catch(e){ say('এই ছবিটা পড়া যায়নি'); }
+      }
+      fi.value = '';
+    };
     const send = btn(rep ? '✏️ উত্তর বদলাও' : '✅ উত্তর পাঠাও', 'btn-primary', async () => {
       const text = String(ta.value || '').trim();
-      if(!text){ err.textContent = 'আগে উত্তর লেখো।'; return; }
+      if(!text && !pics.length){ err.textContent = 'আগে উত্তর লেখো বা ছবি দাও।'; return; }
       send.disabled = true; err.textContent = '';
-      const r = await tcall('askReply', { id:a.id, reply:text });
+      const r = await tcall('askReply', { id:a.id, reply:text, images:JSON.stringify(pics.map(p => p.c)) });
       send.disabled = false;
       if(!r || r.status !== 'success'){ err.textContent = errText(r); return; }
       say('উত্তর পাঠানো হয়েছে ✅'); renderAskInbox();
     });
-    card.appendChild(ta); card.appendChild(err); card.appendChild(h('div', { class:'ab-acts' }, send));
+    card.appendChild(ta); card.appendChild(h('div', { class:'ab-meta', style:'margin-top:6px;', text:'📷 উত্তরের ছবি (খাতার সমাধান ইত্যাদি, সর্বোচ্চ ৪টা)' })); card.appendChild(fi); card.appendChild(prev); card.appendChild(err); card.appendChild(h('div', { class:'ab-acts' }, send));
     return card;
   }
 
