@@ -5529,6 +5529,7 @@ function buildAnswerReview(exam, answers){
       <div class="q-text" style="font-size:14px;">${qi+1}. ${escapeHtml(q.text)}</div>
       <div class="review-ans ${isRight?'right':'wrong'}">তুমি দিয়েছিলে: ${givenLabel} ${isRight?'✓':'✗'}</div>
       ${!isRight ? `<div class="review-ans right">সঠিক উত্তর: ${correctLabel}</div>` : ''}
+      ${window.sqBtn ? `<div style="margin-top:6px;">${window.sqBtn({ source:'exam', kind:'mcq', topic:q.tag || '', text:q.text, options:q.options, correct:q.correct, imageUrl:q.imageUrl || q.image || '' })}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -9909,6 +9910,7 @@ function renderPastWrittenDetail(title, subs, examQuestions){
       <div class="q-text" style="font-size:14px;">প্রশ্ন ${s.questionIndex+1} · ${marks}/${maxMarks} নম্বর <span class="meta">(AI ${s.percent}%)</span>
         ${s.driveUrl ? ` · <a href="${escapeHtml(s.driveUrl)}" target="_blank" rel="noopener">তোমার খাতার ছবি</a>` : ''}</div>
       <div class="review-ans ${s.percent>=50?'right':'wrong'}">${fbHtml(s.aiFeedback||'')}</div>
+      ${window.sqBtn ? `<div style="margin-top:6px;">${window.sqBtn({ source:'written', kind:'cq', text:(examQuestions[s.questionIndex]||{}).text || '', imageUrl:(examQuestions[s.questionIndex]||{}).imageUrl || '', modelAnswerText:(examQuestions[s.questionIndex]||{}).modelAnswerText || '', modelAnswerImageUrl:(examQuestions[s.questionIndex]||{}).modelAnswerImageUrl || '' })}</div>` : ''}
     </div>`;
   }).join('');
   app.innerHTML = `
@@ -12331,8 +12333,8 @@ window.doSmartSearch = async function(){
     window.__rev = null; toast('ঠিক আছে 👍 — পরে "রিভিশন" খুলে "চালিয়ে যাও" চাপলেই এখান থেকে শুরু'); go('studentDashboard');
   };
   function revResumeBox(){
-    const o = revSavedInfo(); if(!o) return '';
-    return `<div style="border:1.5px solid #BFE3CC;border-radius:12px;padding:12px;margin:0 0 12px 0;background:#F1FAF4;color:#1E3A2C;"><b>⏸ আগের রিভিশন বাকি আছে</b><div class="meta" style="margin:4px 0 8px;">⏱ ${fmtTime(Math.max(0, o.remaining || 0))} সময় বাকি · যেখানে থেমেছিলে সেখান থেকেই শুরু হবে</div><button class="btn btn-primary btn-block" onclick="revResumeSaved()">▶️ চালিয়ে যাও</button></div>`;
+    const o = revSavedInfo(); if(!o) return bgSetupBox();
+    return bgSetupBox() + `<div style="border:1.5px solid #BFE3CC;border-radius:12px;padding:12px;margin:0 0 12px 0;background:#F1FAF4;color:#1E3A2C;"><b>⏸ আগের রিভিশন বাকি আছে</b><div class="meta" style="margin:4px 0 8px;">⏱ ${fmtTime(Math.max(0, o.remaining || 0))} সময় বাকি · যেখানে থেমেছিলে সেখান থেকেই শুরু হবে</div><button class="btn btn-primary btn-block" onclick="revResumeSaved()">▶️ চালিয়ে যাও</button></div>`;
   }
   document.addEventListener('visibilitychange', () => { if(document.hidden){ try{ revSaveSess(); }catch(e){} } });
   window.addEventListener('pagehide', () => { try{ revSaveSess(); }catch(e){} });
@@ -12402,7 +12404,7 @@ window.doSmartSearch = async function(){
     return '';
   }
 
-  window.revOpen = function(){ window.__rev = { phase: localStorage.getItem('rev_greet_' + todayStr()) ? 'setup' : 'greet' }; go('revision'); };
+  window.revOpen = function(){ try{ bgPrune(); }catch(e){} window.__rev = { phase: localStorage.getItem('rev_greet_' + todayStr()) ? 'setup' : 'greet' }; go('revision'); };
 
   // প্রতিদিনের প্রথমবার: শুভেচ্ছা + ছাত্রের সাড়া (App নিজে থেকে খোলে না, তাই এই ট্যাপটাই "আজকের দিন শুরু")
   function revGreet(){
@@ -12806,7 +12808,7 @@ window.doSmartSearch = async function(){
     const sj = it.subject && NOTES_SUBJECTS[it.subject] ? NOTES_SUBJECTS[it.subject].label : '';
     return `<div class="card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
       <div><span class="q-tag">${it.tier === 'weak' ? '🔴 দুর্বল জায়গা' : '🟢 সহজ'}</span>${it.teacher ? ' <span class="q-tag">👨‍🏫 স্যারের</span>' : ''} <span class="meta">${escapeHtml(sj)} ${escapeHtml(it.topic || '')}</span></div>
-      <div style="display:flex;align-items:center;gap:8px;"><button class="info-btn" style="background:#FEF6E8;border-color:var(--gold);color:#7B4F06;font-weight:700;" onclick="revPause()">⏸ রিভিশন নোট</button><button class="info-btn" style="font-weight:700;" onclick="revLater()">🕒 পরে করবো</button><div class="timer-chip" style="position:static;"><span class="timer-dot"></span><span id="revT">${fmtTime(Math.max(0, R().remaining))}</span></div></div></div>`;
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${bgBtnHtml()}<button class="info-btn" style="background:#FEF6E8;border-color:var(--gold);color:#7B4F06;font-weight:700;" onclick="revPause()">⏸ রিভিশন নোট</button><button class="info-btn" style="font-weight:700;" onclick="revLater()">🕒 পরে করবো</button><div class="timer-chip" style="position:static;"><span class="timer-dot"></span><span id="revT">${fmtTime(Math.max(0, R().remaining))}</span></div></div></div>`;
   }
 
   async function revWait(p){ const r = R(); if(r) r.busy = (r.busy || 0) + 1; try{ return await p; } finally{ if(r) r.busy = Math.max(0, (r.busy || 1) - 1); } }
@@ -12924,9 +12926,18 @@ window.doSmartSearch = async function(){
   window.revSkip = function(){ revNext(); };
 
   // [v43] "এই টপিক ভুলে গেছি / এখনো পড়ানো হয়নি" → শিক্ষকের কাছে নোটিফিকেশন
+  function revSqRow(it){   // [v62] 🔖 সেভ করা প্রশ্ন
+    try{
+      if(!it || !window.sqBtn) return '';
+      const q = it.q || {}, isM = it.kind === 'mcq';
+      const ref = isM ? { source:'rev', kind:'mcq', subject:it.subject, topic:it.topic, text:it.text, options:it.options, correct:it.correct, imageUrl:it.image || '' }
+                      : { source:'rev', kind:'cq', subject:it.subject, topic:it.topic, text:q.text, imageUrl:q.imageUrl, modelAnswerText:q.modelAnswerText, modelAnswerImageUrl:q.modelAnswerImageUrl };
+      const b = window.sqBtn(ref); return b ? `<div style="margin-top:12px;">${b}</div>` : '';
+    }catch(e){ return ''; }
+  }
   function revNrLink(it){
     const sent = it && it.nrSent, bt = 'flex:1;min-width:0;padding:10px 4px;font-size:13px;line-height:1.3;';
-    return `<div id="revNrRow" style="display:flex;gap:6px;margin-top:12px;">
+    return revSqRow(it) + `<div id="revNrRow" style="display:flex;gap:6px;margin-top:12px;">
         <button type="button" class="btn btn-outline" style="${bt}" ${sent ? 'disabled' : ''} onclick="revNotReadySend('forgot')">${sent === 'forgot' ? '✅' : '😵'} ভুলে গেছি</button>
         <button type="button" class="btn btn-outline" style="${bt}" ${sent ? 'disabled' : ''} onclick="revNotReadySend('notTaught')">${sent === 'notTaught' ? '✅' : '📚'} পড়ানো হয়নি</button>
         <button type="button" class="btn btn-outline" style="${bt}" onclick="revSkip()">⏭️ স্কিপ</button></div>
@@ -13008,24 +13019,168 @@ window.doSmartSearch = async function(){
   }
   const revMd = h => String(h).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
 
-  window.revSubmitCq = async function(){
-    const r = R(), it = r.cur;
+  // ===== [v62] ব্যাকগ্রাউন্ড AI চেক: জমা দিলেই ছাত্র পরের প্রশ্নে চলে যায়, চেক পেছনে চলে; "চেক রেডি" বাটনে বা শেষে ফল দেখা যায় =====
+  const BG_MAX = 2;
+  const bgBn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  function bgState(){ return window.__revBg || (window.__revBg = { jobs:[], seq:0 }); }
+  function bgFind(id){ return bgState().jobs.find(j => j.id === Number(id)); }
+  function bgCounts(){
+    let p = 0, d = 0, u = 0, e = 0; const J = bgState().jobs;
+    J.forEach(j => { if(j.status === 'pending' || j.status === 'running') p++; else if(j.status === 'done'){ d++; if(!j.seen) u++; } else e++; });
+    return { p, d, u, e, total:J.length };
+  }
+  function bgPrune(){ const B = bgState(); B.jobs = B.jobs.filter(j => j.status === 'pending' || j.status === 'running' || j.status === 'error' || (j.status === 'done' && !j.seen)); }
+  function bgBtnHtml(){
+    const c = bgCounts(); if(!c.total) return '';
+    const parts = [];
+    if(c.u) parts.push('✅ ' + bgBn(c.u) + 'টা রেডি');
+    if(c.p) parts.push('⏳ ' + bgBn(c.p) + 'টা চেক হচ্ছে');
+    if(c.e) parts.push('⚠️ ' + bgBn(c.e));
+    if(!parts.length) parts.push('🤖 চেক');
+    const hot = c.u > 0;
+    return `<button type="button" class="info-btn revBgBtn" style="font-weight:700;${hot ? 'background:#E8F7EE;border-color:#2E9E5B;color:#17663A;' : ''}" onclick="revBgOpen()">${parts.join(' · ')}</button>`;
+  }
+  function bgPaintBtns(){ document.querySelectorAll('.revBgBtn').forEach(b => { b.outerHTML = bgBtnHtml(); }); }
+  function bgQSnip(q){ const t = String((q && q.text) || '').replace(/\s+/g, ' ').trim(); return t ? (t.length > 90 ? t.slice(0, 90) + '…' : t) : '(ছবির প্রশ্ন)'; }
+  function bgFbHtml(fb){
+    const lines = String(revFixTex(fb) || '').split('\n').map(x => x.trim()).filter(Boolean);
+    const sty = { '❌':'border-left:3px solid #BF3A2C;background:#FDF1EF;', '✅':'border-left:3px solid #2E9E5B;background:#F1FAF4;', '➕':'border-left:3px solid #D79A1E;background:#FEF8EC;', '💡':'border-left:3px solid #3B7DD8;background:#F3F8FF;' };
+    return lines.map(l => { const k = l.slice(0, 1) === '❌' || l.slice(0, 1) === '✅' || l.slice(0, 1) === '➕' ? l.slice(0, 1) : (l.indexOf('💡') === 0 ? '💡' : ''); return `<div style="margin-top:6px;padding:6px 9px;border-radius:6px;line-height:1.65;font-size:14px;${k ? sty[k] : ''}">${revMd(escapeHtml(l))}</div>`; }).join('');
+  }
+  function bgEnqueue(r, it, files){
+    const B = bgState();
+    const job = { id:++B.seq, slug:r.slug, sess:r, item:it, date:todayStr(), key:(it.baseKey || it.key), tk:(it.subject || '') + '|' + (it.topic || ''), subject:it.subject || '', topic:it.topic || '', q:it.q || {}, files:files, img:null, status:'pending', seen:false, at:Date.now() };
+    B.jobs.push(job); bgPump(); bgPaintBtns(); return job;
+  }
+  function bgPump(){
+    const J = bgState().jobs; let run = J.filter(j => j.status === 'running').length;
+    J.forEach(j => { if(j.status === 'pending' && run < BG_MAX){ run++; bgRun(j); } });
+  }
+  async function bgRun(job){
+    job.status = 'running'; bgPaintBtns();
+    let res = null;
+    try{
+      if(!job.img) job.img = await revStitch(job.files);
+      res = await postToScriptRaw('revisionGradeCq', { slug:job.slug, date:job.date, itemKey:job.key, tk:job.tk, question:JSON.stringify(job.q), base64:job.img.base64, mimeType:job.img.mimeType });
+    }catch(e){ res = { status:'error', message: job.img ? 'network' : 'bad_image' }; }
+    if(res && res.status === 'success'){
+      job.status = 'done'; job.res = res; job.img = null; job.files = null; job.doneAt = Date.now();
+      try{ if(job.sess && job.sess.stats) job.sess.stats.cq.push(res.percent); }catch(e){}
+    } else { job.status = 'error'; job.err = res || { status:'error' }; }
+    bgPump(); bgPaint(job);
+  }
+  function bgPaint(job){
+    bgPaintBtns();
+    const ov = document.getElementById('revBgOv');
+    if(ov && state.screen !== 'revision'){ ov.remove(); }
+    else if(ov) bgDrawPanel();
+    const sm = document.getElementById('revBgSum');
+    if(sm){ sm.innerHTML = bgSummaryHtml(); renderAllMath(sm); bgMarkSeen(); const sl = document.getElementById('revStatLine'); if(sl) sl.innerHTML = revStatLine(); }
+    else if(job && job.status === 'done' && !document.getElementById('revBgOv') && state.screen === 'revision') toast('✅ একটা খাতার চেক রেডি — উপরের 🤖 বাটনে দেখো');
+    else if(job && job.status === 'error' && state.screen === 'revision') toast('⚠️ একটা খাতা চেক হয়নি — উপরের 🤖 বাটনে দেখো');
+  }
+  function bgMarkSeen(){ bgState().jobs.forEach(j => { if(j.status === 'done') j.seen = true; }); }
+  function bgCard(j, forceOpen){
+    const sj = j.subject && NOTES_SUBJECTS[j.subject] ? NOTES_SUBJECTS[j.subject].label : '';
+    const topic = escapeHtml([sj, j.topic].filter(Boolean).join(' › '));
+    const st = j.status, res = j.res || {}, pc = res.percent;
+    let badge = '', body = '';
+    if(st === 'pending' || st === 'running'){
+      badge = `<span class="q-tag">⏳ চেক হচ্ছে...</span>`;
+      body = `<p class="hint" style="margin-top:8px;">AI খাতা দেখছে — তুমি রিভিশন চালিয়ে যেতে পারো, শেষ হলেই এখানে আসবে।</p>`;
+    } else if(st === 'error'){
+      const irr = j.err && j.err.message === 'irrelevant';
+      badge = `<span class="q-tag" style="background:#FDF1EF;color:#BF3A2C;">⚠️ চেক হয়নি</span>`;
+      body = `<p class="hint" style="color:var(--red);margin-top:8px;">${gradeErrMsg(j.err)}</p>` + (irr
+        ? `<button class="btn btn-primary btn-block" style="margin-top:6px;" onclick="bgRedo(${j.id})">📷 এই প্রশ্নে আবার ছবি দিয়ে জমা দাও</button>`
+        : `<button class="btn btn-primary btn-block" style="margin-top:6px;" onclick="bgRetry(${j.id})">🔁 আবার চেক করো</button>`);
+    } else {
+      const good = pc >= 90, prev = res.prev, wrong = !good;
+      const openM = j.openM === undefined ? (wrong || !!forceOpen) : j.openM;
+      badge = `<span class="q-tag" style="${good ? 'background:#E8F7EE;color:#17663A;' : 'background:#FDF1EF;color:#BF3A2C;'}">${j.seen ? '' : '🆕 '}${bgBn(pc)}%</span>`;
+      body = `<div style="margin-top:8px;">${bgFbHtml(res.feedback)}</div>`;
+      if(wrong && prev && prev.url){
+        body += `<div style="margin-top:10px;border:1.5px solid #BFE3CC;background:#F1FAF4;border-radius:12px;padding:10px;"><b>${prev.teacher ? '👨‍🏫 স্যার দেখে দিয়েছেন — এটাই সঠিক উত্তর' : '✅ এই প্রশ্নে তোমার আগের সঠিক খাতা'}</b> <span class="meta">· ${bgBn(prev.percent)}%${prev.date ? ' · ' + escapeHtml(prev.date) : ''}${prev.src === 'hw' ? ' · হোমওয়ার্ক' : ''}</span><img src="${driveImg(prev.url)}" alt="আগের সঠিক খাতা" style="max-width:100%;border-radius:8px;margin-top:8px;"></div>`;
+      }
+      if(res.modelAnswerText || res.modelAnswerImageUrl){
+        body += `<details style="margin-top:10px;" ${openM ? 'open' : ''} ontoggle="bgTog(${j.id}, this.open)"><summary style="cursor:pointer;font-weight:700;">📘 স্যারের / মডেল উত্তর</summary>${res.modelAnswerText ? `<div class="meta" style="white-space:pre-wrap;margin-top:8px;">${revMd(escapeHtml(revFixTex(res.modelAnswerText)))}</div>` : ''}${res.modelAnswerImageUrl ? `<img src="${driveImg(res.modelAnswerImageUrl)}" style="max-width:100%;border-radius:8px;margin-top:8px;">` : ''}</details>`;
+      }
+      if(res.myUrl) body += `<details style="margin-top:8px;"><summary style="cursor:pointer;">📄 তোমার জমা দেওয়া খাতা</summary><img src="${driveImg(res.myUrl)}" style="max-width:100%;border-radius:8px;margin-top:8px;"></details>`;
+      body += `<div class="row" style="margin-top:10px;"><button class="btn btn-outline" onclick="bgExplain(${j.id})">💡 বুঝিয়ে দাও</button><button class="btn btn-outline" onclick="bgAsk(${j.id})">👨‍🏫 স্যারকে জানাও</button></div><div style="margin-top:8px;">${bgSqBtn(j)}</div><div id="bgEx${j.id}">${j.exp ? bgExpHtml(j.exp) : ''}</div>`;
+    }
+    return `<div class="card" style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div style="min-width:0;"><div class="meta">${topic}</div><div style="font-size:13.5px;line-height:1.5;margin-top:2px;">${escapeHtml(bgQSnip(j.q))}</div></div>${badge}</div>${body}</div>`;
+  }
+  function bgSqBtn(j){
+    try{ const q = j.q || {}, r = j.res || {}; return window.sqBtn ? window.sqBtn({ source:'rev', kind:'cq', subject:j.subject, topic:j.topic, text:q.text, imageUrl:q.imageUrl, modelAnswerText:r.modelAnswerText || q.modelAnswerText, modelAnswerImageUrl:r.modelAnswerImageUrl || q.modelAnswerImageUrl }) : ''; }catch(e){ return ''; }
+  }
+  const bgExpHtml = t => `<div style="white-space:pre-wrap;line-height:1.7;margin-top:10px;background:#F5F9FE;border-radius:10px;padding:12px;font-size:14px;">${escapeHtml(t)}</div>`;
+  window.bgTog = function(id, open){ const j = bgFind(id); if(j) j.openM = !!open; };
+  window.bgExplain = async function(id){
+    const j = bgFind(id), box = document.getElementById('bgEx' + id); if(!j || !box) return;
+    if(j.exp){ box.innerHTML = bgExpHtml(j.exp); renderAllMath(box); return; }
+    box.innerHTML = `<p class="hint">সহজ করে ভাবছি...</p>`;
+    const q = j.q || {};
+    const res = await postToScriptRaw('revisionExplain', { topic:j.topic || '', text:q.text || '', options:'[]', correct:'', model:q.modelAnswerText || '', pre:false, slug:j.slug, itemKey:String(j.key || '') });
+    if(res && res.status === 'success'){ j.exp = String(res.text || ''); const b2 = document.getElementById('bgEx' + id); if(b2){ b2.innerHTML = bgExpHtml(j.exp); renderAllMath(b2); } }
+    else { const b2 = document.getElementById('bgEx' + id); if(b2) b2.innerHTML = `<p class="hint" style="color:var(--red);">এখন বোঝাতে পারছি না, একটু পরে আবার চাপো।</p>`; }
+  };
+  window.bgAsk = function(id){
+    const j = bgFind(id); if(!j) return; const q = j.q || {};
+    const sj = j.subject && NOTES_SUBJECTS[j.subject] ? NOTES_SUBJECTS[j.subject].label : '';
+    cfAskOpen({ kind:'REV', refId:String(j.key || ''), topic:[sj, j.topic].filter(Boolean).join(' › '), question:String(q.text || ''), aiAnswer:j.exp || ((j.res && j.res.feedback) || ''), qImage:q.imageUrl || '' });
+  };
+  window.bgRetry = function(id){ const j = bgFind(id); if(!j) return; j.status = 'pending'; j.err = null; bgPump(); bgPaint(); };
+  window.bgRedo = function(id){
+    const j = bgFind(id), r = R(); if(!j) return;
+    if(!r || r.slug !== j.slug || r.phase === 'setup'){ toast('এখন ওই প্রশ্নে ফিরতে পারছি না — নতুন রিভিশনে আবার আসবে'); return; }
+    if(r.cur && !r.cur.answered && !r.cur.submitted && !confirm('এখনকার প্রশ্ন বাদ দিয়ে ওই প্রশ্নে ফিরে যাবে?')) return;
+    const B = bgState(); B.jobs = B.jobs.filter(x => x !== j);
+    revBgClose(); r.cur = Object.assign({}, j.item, { submitted:false, answered:false }); r.phase = 'item'; revRender();
+  };
+  function bgDrawPanel(){
+    const body = document.getElementById('revBgBody'); if(!body) return;
+    const J = bgState().jobs.slice().sort((a, b) => b.id - a.id), c = bgCounts();
+    body.innerHTML = J.length
+      ? (c.p ? `<div class="hint" style="margin:0 0 10px;">⏳ ${bgBn(c.p)}টা খাতা এখনো চেক হচ্ছে — শেষ হলে নিজে থেকেই এখানে আসবে।</div>` : '') + J.map(j => bgCard(j)).join('')
+      : `<div class="card center">এখনো কোনো খাতা জমা হয়নি।</div>`;
+    renderAllMath(body); bgMarkSeen(); bgPaintBtns();
+  }
+  window.revBgOpen = function(){
+    const old = document.getElementById('revBgOv'); if(old) old.remove();
+    const ov = document.createElement('div'); ov.id = 'revBgOv';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:150;background:#F5F7FB;overflow:auto;-webkit-overflow-scrolling:touch;';
+    ov.innerHTML = `<div style="position:sticky;top:0;z-index:3;background:#1F2A44;color:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><div><b>🤖 খাতা চেকের ফলাফল</b><div style="font-size:12px;opacity:.8;">রিভিশনের টাইমার চলছে — দেখে এসে চালিয়ে যাও</div></div><button class="btn btn-gold" onclick="revBgClose()">← রিভিশনে ফিরে যাও</button></div><div class="wrap" style="padding:14px 16px 50px;" id="revBgBody"></div>`;
+    document.body.appendChild(ov); bgDrawPanel();
+  };
+  window.revBgClose = function(){ const ov = document.getElementById('revBgOv'); if(ov) ov.remove(); bgPaintBtns(); };
+  function bgSetupBox(){
+    const c = bgCounts(); if(!(c.u || c.p || c.e)) return '';
+    const parts = []; if(c.u) parts.push('✅ ' + bgBn(c.u) + 'টা খাতার চেক রেডি'); if(c.p) parts.push('⏳ ' + bgBn(c.p) + 'টা চেক হচ্ছে'); if(c.e) parts.push('⚠️ ' + bgBn(c.e) + 'টা চেক হয়নি');
+    return `<div style="border:1.5px solid #BFD3F2;border-radius:12px;padding:12px;margin:0 0 12px 0;background:#F3F8FF;"><b>🤖 আগের রিভিশনের খাতা চেক</b><div class="meta" style="margin:4px 0 8px;">${parts.join(' · ')}</div><button class="btn btn-primary btn-block" onclick="revBgOpen()">ফলাফল দেখো</button></div>`;
+  }
+  function bgSummaryHtml(){
+    const J = bgState().jobs.slice().sort((a, b) => a.id - b.id), c = bgCounts(); if(!J.length) return '';
+    return `<div style="text-align:left;margin-top:14px;"><h3 style="font-size:16px;margin:0 0 6px;">🤖 খাতা চেকের ফলাফল</h3>${c.p ? `<div class="hint" style="margin:0 0 8px;">⏳ ${bgBn(c.p)}টা খাতা এখনো চেক হচ্ছে — শেষ হলে এখানেই দেখা যাবে (পাতা বন্ধ কোরো না)।</div>` : ''}${J.map(j => bgCard(j, true)).join('')}</div>`;
+  }
+  function revStatLine(){
+    const s = (R() && R().stats) || { m:0, mc:0, cq:[] }, avg = s.cq.length ? Math.round(s.cq.reduce((a, b) => a + b, 0) / s.cq.length) : null;
+    return `MCQ: <b>${s.mc}/${s.m}</b> সঠিক ${avg !== null ? `· CQ গড়: <b>${avg}%</b> (${s.cq.length}টা)` : ''}`;
+  }
+  window.addEventListener('beforeunload', e => { if(bgCounts().p){ e.preventDefault(); e.returnValue = ''; } });
+
+  // জমা দিলেই ছাত্র পরের প্রশ্নে — ছবি জোড়া লাগানো ও AI চেক দুটোই ব্যাকগ্রাউন্ডে হয়, টাইমার থামে না
+  window.revSubmitCq = function(){
+    const r = R(), it = r && r.cur; if(!it || it.submitted) return;
     const files = (window.__revPages || []).slice();
     const inp = document.getElementById('revFile');
     if(!files.length && inp && inp.files && inp.files.length) Array.from(inp.files).forEach(f => files.push(f));
     if(!files.length){ toast('আগে ছবি বাছো'); return; }
-    const out = document.getElementById('revRes'), btn = document.getElementById('revSend');
-    btn.disabled = true; out.innerHTML = `<p class="hint">${files.length > 1 ? files.length + 'টা পাতা জুড়ে ' : ''}চেক হচ্ছে...</p>`;
-    let c; try{ c = await revWait(revStitch(files)); }catch(e){ btn.disabled = false; out.innerHTML = `<p class="hint" style="color:var(--red);">ছবি পড়া যায়নি — আবার বাছো (ছবি JPG/PNG হলে ভালো)।</p>`; return; }
-    const res = await revWait(postToScriptRaw('revisionGradeCq', { slug:r.slug, date:todayStr(), itemKey:(it.baseKey || it.key), tk:(it.subject||'') + '|' + (it.topic||''), question:JSON.stringify(it.q), base64:c.base64, mimeType:c.mimeType }));
-    if(!res || res.status !== 'success'){ btn.disabled = false; out.innerHTML = `<p class="hint" style="color:var(--red);">${gradeErrMsg(res)}</p>`; return; }
-    r.stats.cq.push(res.percent);
-    out.innerHTML = `<div class="review-ans ${res.percent >= 90 ? 'right' : 'wrong'}">🤖 ${res.percent}% — ${revMd(escapeHtml(revFixTex(res.feedback)))}</div>
-      ${res.modelAnswerText ? `<div class="meta" style="white-space:pre-wrap;margin-top:8px;"><b>মডেল উত্তর:</b> ${revMd(escapeHtml(revFixTex(res.modelAnswerText)))}</div>` : ''}
-      ${res.modelAnswerImageUrl ? `<img src="${driveImg(res.modelAnswerImageUrl)}" style="max-width:100%;border-radius:8px;margin-top:8px;">` : ''}
-      <div id="revAct"></div>`;
-    it.submitted = true; revActions(res.percent >= 90);
-    renderAllMath(out);
+    it.submitted = true;
+    const btn = document.getElementById('revSend'); if(btn) btn.disabled = true;
+    bgEnqueue(r, it, files);
+    window.__revPages = [];
+    toast('📤 জমা হয়েছে — AI চেক করছে, তুমি পরের প্রশ্নে যাও');
+    revNext();
   };
   window.revNextBtn = function(){ revNext(); };
 
@@ -13035,12 +13190,13 @@ window.doSmartSearch = async function(){
     app.innerHTML = `${header('রিভিশন')}
       <div class="card center"><h2>🎉 আজকের রিভিশন শেষ</h2>
         <p class="hint">আজ মোট রিভিশন: <b>${Math.floor(doneSec() / 60)}</b> মিনিট (লক্ষ্য ${localStorage.getItem('rev_goal') || 10})</p>
-        <div class="meta">MCQ: <b>${s.mc}/${s.m}</b> সঠিক ${avg !== null ? `· CQ গড়: <b>${avg}%</b> (${s.cq.length}টা)` : ''}</div>
-        ${s.m + s.cq.length === 0 ? `<p class="hint" style="margin-top:10px;">এই বিষয়ে এখনো রিভিশন করার মতো কিছু জমেনি — আগে MCQ/Written/HW দাও।</p>` : ''}
+        <div class="meta" id="revStatLine">${revStatLine()}</div><div id="revBgSum">${bgSummaryHtml()}</div>
+        ${s.m + s.cq.length === 0 && !bgCounts().total ? `<p class="hint" style="margin-top:10px;">এই বিষয়ে এখনো রিভিশন করার মতো কিছু জমেনি — আগে MCQ/Written/HW দাও।</p>` : ''}
         ${wkSummaryNote()}
         ${(R().weekly && !R().catchup) ? `<div style="margin-top:10px;padding:10px 12px;border-radius:10px;background:${doneSec() >= wkSecNow() ? '#F1FAF4' : '#FEF8EC'};">📅 সাপ্তাহিক রিভিশন: আজ <b>${Math.floor(doneSec() / 60)}</b>/${wkMinBn()} মিনিট ${doneSec() >= wkSecNow() ? '✅ পূর্ণ!' : '— বাকি ' + Math.ceil((wkSecNow() - doneSec()) / 60) + ' মিনিট (এখন রিভিশন করার মতো প্রশ্ন শেষ হয়ে থাকলে পরে আবার চেষ্টা করো)'}</div>` : ''}
         <button class="btn btn-primary btn-block" style="margin-top:12px;" onclick="revOpen()">🔁 আবার রিভিশন</button>
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('studentDashboard')">ড্যাশবোর্ডে যাও</button></div>${creditFooter()}`;
+    try{ const sm0 = document.getElementById('revBgSum'); if(sm0){ renderAllMath(sm0); bgMarkSeen(); } }catch(e){}
   }
 
 
@@ -15417,6 +15573,9 @@ window.doSmartSearch = async function(){
   }
 
   // ---------- উত্তরের পরের অংশ (MCQ ও CQ দুটোর জন্যই এক) ----------
+  function hrSq(a){   // [v62] 🔖 সেভ করা প্রশ্ন (উত্তর জানার পরেই, যাতে সঠিক উত্তরসহ সেভ হয়)
+    try{ return window.sqBtn ? window.sqBtn({ source:'hw', kind:a.kind === 'mcq' ? 'mcq' : 'cq', subject:a.subject || '', chapter:a.chapter || '', topic:[a.topic, a.subtopic].filter(Boolean).join(' › '), text:a.text, options:a.options, correct:a.kind === 'mcq' ? a.correct : undefined, imageUrl:a.imageUrl, modelAnswerText:a.model || a.modelAnswerText || '', modelAnswerImageUrl:a.modelAnswerImageUrl || '' }) : ''; }catch(e){ return ''; }
+  }
   function hrAfter(a, r){
     HR.answered = true; a.status = 'checked'; a.percent = r.percent; a.feedback = r.feedback || ''; a.model = r.model || '';
     if(r.kind === 'mcq') a.correct = r.right;
@@ -15429,6 +15588,7 @@ window.doSmartSearch = async function(){
       : `<div class="stamp ${r.percent >= 50 ? '' : 'fail'}">${r.percent}%</div><div class="review-ans ${good ? 'right' : 'wrong'}" style="margin-top:8px;">🤖 ${esc(r.feedback || '')}</div>${r.model ? `<div class="meta" style="white-space:pre-wrap;margin-top:8px;"><b>মডেল উত্তর:</b> ${esc(r.model)}</div>` : ''}`;
     const out = hrEl('hrRes'); if(!out) return;
     out.innerHTML = `${verdict}<div class="row" style="margin-top:12px;"><button class="btn ${good ? 'btn-outline' : 'btn-gold'}" onclick="hrExplain()">💡 বুঝিয়ে দাও</button><button class="btn btn-outline" onclick="hrVariant(false)">🔁 একই ধরনের নতুন প্রশ্ন</button></div>
+      <div style="margin-top:8px;">${hrSq(a)}</div>
       <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="hrAsk()">👨‍🏫 পারলাম না — স্যারকে জানাও</button>
       <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="hrNext()">${HR.queue.length ? 'পরের প্রশ্ন →' : '🏁 শেষ করো'}</button>`;
     if(navigator.vibrate) try{ navigator.vibrate(good ? 40 : [60, 40, 60]); }catch(e){}
@@ -16104,6 +16264,136 @@ window.doSmartSearch = async function(){
 })();
 
 // ===== ড্যাশবোর্ডের হাব স্ক্রিন: স্টাডি · পরীক্ষা · রিওয়ার্ড =====
+// =====================================================================================
+// [v62] 🔖 সেভ করা প্রশ্ন — পরীক্ষার রিভিউ / HW / রিভিশনের প্রশ্নে "সেভ করো" বাটন; পরে স্টাডি → "সেভ করা প্রশ্ন"-এ দেখা যায়
+// ব্যাকএন্ড: revisionQSave / revisionQUnsave / revisionQSavedList (শিট SavedQuestions)
+// =====================================================================================
+(function(){
+  const esc = s => escapeHtml(String(s == null ? '' : s));
+  const bn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  const SQ = window.__sq = { set:null, items:null, refs:{}, seq:0, loading:null, f:{ subj:'', kind:'', q:'' } };
+  const stu = () => { try{ return getLoggedStudent(); }catch(e){ return null; } };
+  const isTeacher = () => { try{ return !!getLoggedTeacher(); }catch(e){ return false; } };
+  const SRC = { rev:'🔁 রিভিশন', hw:'📚 HW', exam:'📝 পরীক্ষা', written:'✍️ লিখিত পরীক্ষা' };
+  const LAB = ['ক', 'খ', 'গ', 'ঘ', 'ঙ', 'চ'];
+  function hash(s){ let h = 5381; s = String(s); for(let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+  function keyOf(ref){ return 'q' + hash((ref.kind || '') + '|' + String(ref.text || '').replace(/\s+/g, ' ').trim().slice(0, 400) + '|' + (ref.options || []).join('~') + '|' + (ref.imageUrl || '')); }
+  function payloadOf(ref){ return { text:ref.text || '', options:ref.options || undefined, correct:(ref.correct === undefined || ref.correct === null || ref.correct < 0) ? undefined : ref.correct, imageUrl:ref.imageUrl || '', modelAnswerText:ref.modelAnswerText || '', modelAnswerImageUrl:ref.modelAnswerImageUrl || '' }; }
+  const isSaved = k => !!(SQ.set && SQ.set.has(k));
+  const lbl = k => isSaved(k) ? '✅ সেভ করা আছে (সরাতে চাপো)' : '🔖 পরে দেখার জন্য সেভ করো';
+  const sty = k => 'font-weight:700;' + (isSaved(k) ? 'background:#E8F7EE;border-color:#2E9E5B;color:#17663A;' : '');
+
+  async function load(force){
+    const s = stu(); if(!s) return;
+    if(SQ.set && SQ.items && !force) return;
+    if(SQ.loading) return SQ.loading;
+    SQ.loading = (async () => {
+      const r = await postToScriptRaw('revisionQSavedList', { slug:s.slug });
+      if(r && r.status === 'success'){ SQ.items = r.items || []; SQ.set = new Set(SQ.items.map(x => x.key)); }
+      SQ.loading = null;
+    })();
+    return SQ.loading;
+  }
+  function paint(){
+    document.querySelectorAll('.sqBtn').forEach(b => { const k = b.getAttribute('data-k'); b.textContent = lbl(k); b.setAttribute('style', sty(k)); });
+  }
+  // বাটনের HTML — যেকোনো প্রশ্নের নিচে বসানো যায়। ref = { source, kind:'mcq'|'cq', subject, topic, chapter, text, options, correct, imageUrl, modelAnswerText, modelAnswerImageUrl }
+  window.sqBtn = function(ref){
+    try{
+      if(!ref || (!ref.text && !ref.imageUrl) || !stu() || isTeacher()) return '';
+      const t = ++SQ.seq; SQ.refs[t] = ref; delete SQ.refs[t - 300];
+      const k = keyOf(ref);
+      if(!SQ.set && !SQ.loading) load().then(paint);
+      return `<button type="button" class="info-btn sqBtn" data-k="${k}" style="${sty(k)}" onclick="sqToggle(${t})">${lbl(k)}</button>`;
+    }catch(e){ return ''; }
+  };
+  window.sqToggle = async function(t){
+    const s = stu(); if(!s){ toast('আগে লগইন করো'); return; }
+    const ref = SQ.refs[t]; if(!ref) return;
+    const k = keyOf(ref);
+    await load();
+    if(!SQ.set) SQ.set = new Set();
+    const was = SQ.set.has(k);
+    if(was) SQ.set.delete(k); else SQ.set.add(k);
+    paint();
+    const r = was
+      ? await postToScriptRaw('revisionQUnsave', { slug:s.slug, key:k })
+      : await postToScriptRaw('revisionQSave', { slug:s.slug, key:k, source:ref.source || '', kind:ref.kind === 'mcq' ? 'mcq' : 'cq', subject:ref.subject || '', topic:ref.topic || '', chapter:ref.chapter || '', payload:JSON.stringify(payloadOf(ref)) });
+    if(!r || r.status !== 'success'){
+      if(was) SQ.set.add(k); else SQ.set.delete(k); paint();
+      toast(r && r.message === 'limit' ? 'সেভ করার সীমা (৬০০টা) শেষ — কিছু সরিয়ে দাও' : 'সেভ করা যায়নি, আবার চেষ্টা করো'); return;
+    }
+    SQ.items = null;
+    toast(was ? 'সেভ থেকে সরানো হয়েছে' : '🔖 সেভ হয়েছে — স্টাডি → "সেভ করা প্রশ্ন"-এ পাবে');
+  };
+
+  // ---------- সেভ করা প্রশ্নের পাতা ----------
+  const subjLabel = k => (typeof NOTES_SUBJECTS !== 'undefined' && NOTES_SUBJECTS[k]) ? NOTES_SUBJECTS[k].icon + ' ' + NOTES_SUBJECTS[k].label : (k ? esc(k) : '📂 অন্যান্য');
+  function render_(){
+    const s = stu(); if(!s){ go('studentAuth'); return; }
+    SQ.f = { subj:'', kind:'', q:'' };
+    app.innerHTML = `${header('সেভ করা প্রশ্ন')}<div class="card"><div id="sqBody"><p class="hint">লোড হচ্ছে...</p></div></div><div class="center"><a class="link-back" onclick="go('studyHub')">← স্টাডিতে ফিরে যাও</a></div>${creditFooter()}`;
+    load(true).then(draw);
+  }
+  function draw(){
+    const body = document.getElementById('sqBody'); if(!body) return;
+    if(!SQ.items){ body.innerHTML = `<p class="hint" style="color:var(--red);">লোড করা যায়নি, ইন্টারনেট চেক করে আবার চেষ্টা করো।</p><button class="btn btn-outline btn-block" onclick="go('savedQ')">🔁 আবার চেষ্টা করো</button>`; return; }
+    if(!SQ.items.length){ body.innerHTML = `<div class="empty-state">এখনো কোনো প্রশ্ন সেভ করোনি।<br><span class="hint">পরীক্ষার রিভিউ, HW বা রিভিশনে প্রশ্নের নিচে <b>"🔖 পরে দেখার জন্য সেভ করো"</b> চাপলেই এখানে জমা হবে।</span></div>`; return; }
+    const subs = [...new Set(SQ.items.map(x => x.subject || ''))];
+    body.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+        <select id="sqSub" onchange="sqFilt()" style="flex:1;min-width:130px;margin:0;"><option value="">সব বিষয়</option>${subs.map(k => `<option value="${esc(k)}">${subjLabel(k).replace(/<[^>]+>/g, '')}</option>`).join('')}</select>
+        <select id="sqKind" onchange="sqFilt()" style="flex:1;min-width:110px;margin:0;"><option value="">MCQ + CQ</option><option value="mcq">শুধু MCQ</option><option value="cq">শুধু CQ</option></select></div>
+      <input type="text" id="sqQ" placeholder="প্রশ্নে খোঁজো..." oninput="sqFilt()" style="margin-bottom:8px;">
+      <div class="hint" id="sqCount" style="margin:0 0 8px;"></div><div id="sqList"></div>`;
+    list();
+  }
+  function card(x){
+    const p = x.payload || {}, isM = x.kind === 'mcq';
+    const sj = (typeof NOTES_SUBJECTS !== 'undefined' && NOTES_SUBJECTS[x.subject]) ? NOTES_SUBJECTS[x.subject].label : '';
+    const where = esc([sj, x.chapter, x.topic].filter(Boolean).join(' › '));
+    const img = u => u ? `<img src="${driveImg(u)}" style="max-width:100%;border-radius:8px;margin-top:8px;">` : '';
+    let ans = '';
+    if(isM){
+      const c = Number(p.correct);
+      ans = (p.options && p.options.length ? `<div style="margin-top:8px;">${p.options.map((o, j) => `<div style="margin:5px 0;line-height:1.6;"><b>${LAB[j] || ''})</b> ${esc(o)}</div>`).join('')}</div>` : '')
+        + (!isNaN(c) && p.correct !== undefined && p.options && p.options[c] != null ? `<details style="margin-top:8px;"><summary style="cursor:pointer;font-weight:700;">✅ সঠিক উত্তর দেখো</summary><div class="rev-verdict good" style="margin-top:6px;">${LAB[c] || ''}) ${esc(p.options[c])}</div></details>` : '');
+    } else if(p.modelAnswerText || p.modelAnswerImageUrl){
+      ans = `<details style="margin-top:8px;"><summary style="cursor:pointer;font-weight:700;">📘 উত্তর দেখো</summary>${p.modelAnswerText ? `<div class="meta" style="white-space:pre-wrap;margin-top:8px;line-height:1.7;">${esc(p.modelAnswerText)}</div>` : ''}${img(p.modelAnswerImageUrl)}</details>`;
+    } else ans = `<div class="hint" style="margin-top:8px;">এই প্রশ্নের উত্তর সেভ হয়নি — স্যারকে জিজ্ঞেস করো বা মাই নোটে দেখো।</div>`;
+    return `<div class="review-block" style="margin-bottom:12px;" data-k="${esc(x.key)}">
+      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span class="meta">${where || '—'}</span><span class="q-tag">${isM ? 'MCQ' : 'CQ'}${SRC[x.source] ? ' · ' + SRC[x.source] : ''}</span></div>
+      <div class="q-text" style="white-space:pre-wrap;line-height:1.8;margin-top:6px;">${esc(p.text)}</div>${img(p.imageUrl)}${ans}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;"><span class="meta">${esc(x.date || '')}</span><button type="button" class="info-btn" style="color:var(--red);" onclick="sqDel('${esc(x.key)}')">🗑 সরাও</button></div></div>`;
+  }
+  function list(){
+    const el = document.getElementById('sqList'); if(!el || !SQ.items) return;
+    const f = SQ.f, q = f.q.trim().toLowerCase();
+    const arr = SQ.items.filter(x => (!f.subj || (x.subject || '') === f.subj) && (!f.kind || x.kind === f.kind) && (!q || String((x.payload || {}).text || '').toLowerCase().indexOf(q) !== -1));
+    const c = document.getElementById('sqCount'); if(c) c.textContent = 'মোট ' + bn(arr.length) + 'টা প্রশ্ন' + (arr.length !== SQ.items.length ? ' (সেভ করা ' + bn(SQ.items.length) + 'টার মধ্যে)' : '');
+    el.innerHTML = arr.length ? arr.map(card).join('') : `<div class="empty-state">এই ফিল্টারে কোনো প্রশ্ন নেই।</div>`;
+    renderAllMath(el);
+  }
+  window.sqFilt = function(){
+    SQ.f = { subj:(document.getElementById('sqSub') || {}).value || '', kind:(document.getElementById('sqKind') || {}).value || '', q:(document.getElementById('sqQ') || {}).value || '' };
+    list();
+  };
+  window.sqDel = async function(k){
+    const s = stu(); if(!s || !SQ.items) return;
+    if(!confirm('এই প্রশ্নটা সেভ করা তালিকা থেকে সরাবে?')) return;
+    const r = await postToScriptRaw('revisionQUnsave', { slug:s.slug, key:k });
+    if(!r || r.status !== 'success'){ toast('সরানো যায়নি, আবার চেষ্টা করো'); return; }
+    SQ.items = SQ.items.filter(x => x.key !== k); if(SQ.set) SQ.set.delete(k);
+    if(!SQ.items.length) draw(); else list();
+    toast('সরানো হয়েছে');
+  };
+
+  const __sq0 = render;
+  render = function(){
+    if(state.screen === 'savedQ'){ syncLogoutFab(); render_(); return; }
+    __sq0();
+  };
+})();
+
 (function(){
   const __hb = render;
   render = function(){
@@ -16120,6 +16410,7 @@ window.doSmartSearch = async function(){
     big('📊','মাস্টারি','চ্যাপ্টার অনুযায়ী প্রোগ্রেস',"openMyMastery()") +
     big('📒','মাই নোট','',"go('myNote',{mnKind:'cq'})") +
     big('📝','মাই MCQ নোট','',"go('myNote',{mnKind:'mcq'})") +
+    big('🔖','সেভ করা প্রশ্ন','পরীক্ষা / HW / রিভিশন থেকে রাখা প্রশ্ন',"go('savedQ')") +
     big('📑','ক্লাস নোট ও স্লাইড','',"go('notesGate')") +
     big('🏫','স্কুল/কলেজে যা পড়ানো হলো','প্রশ্ন-উত্তর আপলোড করো',"go('collegeQa')") +
     big('🤖','AI ডাউট সমাধান','',"go('doubtEntry')")); }
@@ -29573,7 +29864,7 @@ window.voiceToggle = function(){
 
   // ---- ৫) সীমিত (বন্ধু) অ্যাকাউন্ট: studentCode ফাঁকা = বন্ধু ----
   const isFriendStud = s => !!(s && s.slug && !s.studentCode && localStorage.getItem('vk_notfriend_' + s.slug) !== '1');   // সার্ভার 'friend:false' বললে (পুরনো ফাঁকা-কোডের প্রাইভেট ছাত্র) আর বন্ধু ধরা হয় না
-  const FRIEND_DENY = /^(studyHub|examHub|rewardHub|progressHub|vorkuta|hwHub|hwSubmit2|dailyHw|myCal|revision|plan|mastery|notes|written|mistake|doubt|couponShop|withdraw)/i;
+  const FRIEND_DENY = /^(savedQ|studyHub|examHub|rewardHub|progressHub|vorkuta|hwHub|hwSubmit2|dailyHw|myCal|revision|plan|mastery|notes|written|mistake|doubt|couponShop|withdraw)/i;
   function renderFriendDashboard(){
     const stud = getLoggedStudent(), c = getCircle();
     app.innerHTML = `
