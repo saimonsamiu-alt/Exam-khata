@@ -5868,6 +5868,22 @@ function todayStr(){
 }
 function monthKeyOf(dateStr){ return dateStr.slice(0,7); }
 const BN_MONTHS = ['জানুয়ারি','ফেব্রুয়ারি','মার্চ','এপ্রিল','মে','জুন','জুলাই','আগস্ট','সেপ্টেম্বর','অক্টোবর','নভেম্বর','ডিসেম্বর'];
+// [v62] ব্যালেন্সের সামারি: Treat কুপনের সাথে মার্কেটিং বোনাস / শিক্ষকের বোনাস আলাদা লাইনে (শুধু বোনাস থাকলেই দেখায়)
+window.couponBreakdownHtml = function(history, balance){
+  const bn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  let treat = 0, mkt = 0, man = 0, cut = 0, earned = 0;
+  (history || []).forEach(h => {
+    if(h.status === 'settled') return;
+    const c = String(h.examCode), a = Number(h.amount) || 0; earned += a;
+    if(c.indexOf('MKT:') === 0) mkt += a; else if(c.indexOf('MAN:') === 0) man += a; else if(c.indexOf('CUT:') === 0) cut += a; else treat += a;
+  });
+  if(!mkt && !man) return '';
+  const spent = Math.max(0, earned - (Number(balance) || 0));
+  const line = (lbl, v, col) => v ? `<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--rule);"><span>${lbl}</span><b style="color:${col};">${v < 0 ? '−' : ''}৳${bn(Math.abs(v))}</b></div>` : '';
+  return `<div class="card" style="text-align:start;"><h3>📊 ব্যালেন্সের সামারি</h3>
+    ${line('🎁 Treat কুপন (পরীক্ষা থেকে)', treat, '#17663A')}${line('🤝 মার্কেটিং বোনাস (বন্ধু রেফার)', mkt, '#2563EB')}${line('➕ শিক্ষকের বোনাস', man, '#9B6A15')}${line('✂️ কাট', cut, '#BF3A2C')}${line('🛍️ শপে খরচ', -spent, '#BF3A2C')}
+    <div style="display:flex;justify-content:space-between;padding-top:10px;font-size:15px;"><b>মোট ব্যালেন্স</b><b>৳${bn(Number(balance) || 0)}</b></div></div>`;
+};
 function labelForCouponExamCode(examCode){
   if(String(examCode).indexOf('MONTHLY:') === 0){
     const monthKey = examCode.slice(8); // 'yyyy-MM'
@@ -5983,8 +5999,8 @@ async function renderAttendanceDashboard(){
       return `<div class="exam-item">
         <div class="row-top">
           <div><h3 style="margin-bottom:2px;">${escapeHtml(s.name)}</h3>
-            ${(()=>{ const c = sumBySlug[s.slug]; if(!c) return ''; if(!c.hasPlan) return `<div class="meta">এই মাসে ক্লাস: ${c.held} দিন · পরিকল্পনা ঠিক করা হয়নি</div>`;
-              return `<div class="meta">📘 এই মাস: <b>${c.held}/${c.planned}</b> দিন · ${c.remaining>0 ? `বাকি <b>${c.remaining}</b>` : (c.extraThisMonth>0 ? `extra <b>+${c.extraThisMonth}</b>` : '✓ সম্পূর্ণ')}${c.extraCarriedIn>0 ? ` · আগের extra <b>${c.extraCarriedIn}</b>` : ''}</div>`; })()}
+            ${(()=>{ const c = sumBySlug[s.slug]; if(!c) return ''; const bn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]); if(!c.hasPlan) return `<div class="meta">মোট ক্লাস: ${bn(c.totalHeld || 0)} দিন · প্রতি চক্রে কত ক্লাস সেটা ঠিক করা হয়নি</div>`;
+              const u = c.cur; return `<div class="meta">🔄 চক্র <b>${bn(u.n)}</b>: <b>${bn(u.held)}/${bn(u.size)}</b> ক্লাস · ${u.remaining > 0 ? `বাকি <b>${bn(u.remaining)}</b>` : '✓ সম্পূর্ণ'}</div>`; })()}
           </div>
         </div>
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="openAttendanceMark('${s.slug}')">📅 ক্যালেন্ডার খোলো</button>
@@ -7185,10 +7201,15 @@ function renderCouponBalance(){
   const __sortedHist = (history||[]).sort((a,b)=> b.createdAt - a.createdAt);
   window.__couponHist = __sortedHist; window.__couponSlug = slug;
   const rows = __sortedHist.map((h,hi)=> {
-    const __canRc = String(h.examCode).indexOf('CUT:') !== 0;
+    const __code = String(h.examCode), __isMkt = __code.indexOf('MKT:') === 0, __isMan = __code.indexOf('MAN:') === 0;
+    const __canRc = __code.indexOf('CUT:') !== 0 && !__isMkt && !__isMan;
     const statusLabel = h.status==='settled' ? 'পরিশোধিত ✓' : (h.status==='requested' ? 'Withdraw অনুরোধ — Pending ⏳' : 'জমা আছে');
+    const __title = __isMkt ? `🤝 মার্কেটিং বোনাস${h.friendName ? ' — ' + escapeHtml(h.friendName) + '-কে আনার জন্য' : ''}`
+      : (__isMan ? (h.amount < 0 ? '✏️ শিক্ষকের সংশোধন' : '🎁 শিক্ষকের বোনাস')
+      : `পরীক্ষা: ${escapeHtml(labelForCouponExamCode(h.examCode))}${__code.indexOf('CUT:') === 0 ? '' : ' · স্কোর: ' + h.percent + '%'}`);
     return `<div class="review-block" ${__canRc ? `onclick="openCouponReceipt(${hi})" style="cursor:pointer;"` : ''}>
-      <div class="q-text" style="font-size:14px;">পরীক্ষা: ${escapeHtml(labelForCouponExamCode(h.examCode))}${String(h.examCode).indexOf('CUT:') === 0 ? '' : ' · স্কোর: ' + h.percent + '%'}</div>
+      <div class="q-text" style="font-size:14px;">${__title}</div>
+      ${(__isMkt || __isMan) && h.note ? `<div class="meta" style="margin-top:2px;">${escapeHtml(h.note)}</div>` : ''}
       <div class="review-ans ${h.status==='settled'?'right':'wrong'}">৳${h.amount} — ${statusLabel}</div>
       ${__canRc ? `<div class="meta" style="margin-top:4px; color:var(--gold-dark,#9B6A15); font-weight:700;">🧾 কীভাবে এই টাকা হলো — চাপো</div>` : ''}
     </div>`;
@@ -7221,6 +7242,7 @@ function renderCouponBalance(){
           🎁 <b>আগের অনুরোধের কোড:</b> ${escapeHtml(oldRequest.requestCode)} — শিক্ষক এই কোড মিলিয়ে টাকা পাঠাবেন।
         </div>` : ''}
     </div>
+    ${couponBreakdownHtml(history, balance)}
     ${wdRows ? `<div class="card" style="text-align:start;"><h3>Withdraw ইতিহাস</h3>${wdRows}</div>` : ''}
     <div class="card" style="text-align:start;" id="monthlyPreviewSlot"></div>
     <div class="card" style="text-align:start;">
@@ -7273,6 +7295,7 @@ async function renderCouponManage(){
         </div>
         <div class="score-big score-pass">৳${b.balance}</div>
       </div>
+      ${b.marketing > 0 ? `<div class="meta" style="margin-top:6px;">🤝 এর মধ্যে মার্কেটিং বোনাস: <b>৳${b.marketing}</b></div>` : ''}
       ${b.hidden > 0 ? `<div class="meta" style="margin-top:6px;">🔒 লুকানো MCQ কুপন: ৳${b.hidden} (ছাত্র CQ শেষ করলে দেখাবে) <a class="link-back" onclick="rvRevealNow('${b.slug}')">👁️ এখনই দেখাও</a></div>` : ''}
       ${b.balance > 0 ? `<button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="settleCouponItem('${b.slug}')">✅ bKash/Nagad-এ পাঠিয়েছি, পরিশোধ করা হলো</button>` : ''}
     </div>`).join('');
@@ -7283,8 +7306,10 @@ async function renderCouponManage(){
       <h2>অপরিশোধিত ব্যালেন্স</h2>
       <p class="hint">নিয়ম: শুধু "🎁 Treat" হিসেবে চিহ্নিত পরীক্ষায় প্রথমবার ১%+ পেলেই কিছু কুপন পাবে, ৮০%-এর পর থেকে বাড়ার হার আরও দ্রুত হয়। পরীক্ষা বানানোর সময় "১০০% পেলে সর্বোচ্চ কত টাকা" ঠিক করে দেওয়া যায় — ডিফল্ট ৳৩০০, বদলালে সব স্কোরের টাকার পরিমাণ একই অনুপাতে scale হয়। যখন কেউ "ব্যবহার করবো" চাপবে, একটা কোড দেখাবে — bKash Request Money-তে সেই কোড রেফারেন্সে থাকবে, মিলিয়ে দেখে তুমি পাঠিয়ে "পরিশোধ করা হলো" চাপবে।</p>
       ${rows}
+      <div id="treatAddSlot"></div>
       <div id="rvCfgSlot"></div>
       <button class="btn btn-gold btn-block" style="margin-top:14px;" onclick="go('withdrawManage')">💸 Withdraw অনুরোধ (bKash / Nagad)</button>
+      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('referralManage')">🤝 রেফার কমিশন (মার্কেটিং বোনাস)</button>
       <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('monthlyReward')">📅 Code Exam রিওয়ার্ড</button>
       <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('shopManage')">🛍️ শপ প্রোডাক্ট ম্যানেজ করো</button>
       <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="go('writtenManage')">✍️ Written CQ ম্যানেজ করো (AI দিয়ে খাতা চেক)</button>
@@ -7293,6 +7318,7 @@ async function renderCouponManage(){
     ${creditFooter()}
   `;
   if(window.rvLoadCfg) window.rvLoadCfg();
+  if(window.treatAddLoad) window.treatAddLoad();   // [v62]
 }
 window.settleCouponItem = async function(slug){
   if(!confirm('তুমি কি নিশ্চিত যে bKash/Nagad দিয়ে টাকাটা পাঠিয়ে দিয়েছো? এই ব্যালেন্স এখন শূন্য করে দেওয়া হবে।')) return;
@@ -8325,7 +8351,7 @@ window.submitStudentRegister = async function(){
   const res = await postToScript('studentSignUp', { name, slug, password: pass, regCode });
   if(res && res.status === 'success'){
     setLoggedStudent({ slug, name, studentCode: res.studentCode||'', stok: res.stok||'' });
-    toast('🎉 অভিনন্দন! অ্যাকাউন্ট সফলভাবে তৈরি হয়েছে');
+    toast(res.refBy ? `🎉 অভিনন্দন! অ্যাকাউন্ট তৈরি হয়েছে — ${res.refBy}-এর রেফারে যুক্ত হলে` : '🎉 অভিনন্দন! অ্যাকাউন্ট সফলভাবে তৈরি হয়েছে');
     playSfx('victory');
     go('studentDashboard');
   } else if(res && res.message === 'missing_reg_code'){
@@ -8967,6 +8993,7 @@ async function renderTeacherRegCodes(){
   const res = await fetch(`${SCRIPT_URL}?action=listRegCodes`);
   const json = await res.json();
   teacherRegCodesCache = (json && json.status === 'success') ? json.data : [];
+  let __regStuds = []; try{ __regStuds = await listStudentsRemote(); }catch(e){}   // [v62] রেফারার বাছার তালিকা
 
   const listRows = teacherRegCodesCache.map(c => {
     const isUsed = c.status === 'used';
@@ -8977,7 +9004,7 @@ async function renderTeacherRegCodes(){
       <div class="exam-item" style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; padding:10px 14px;">
         <div>
           <div style="font-family:var(--font-mono); font-size:16px; font-weight:700; color:var(--ink); letter-spacing:1px;">${c.code}</div>
-          <div style="font-size:12px; color:var(--pencil); margin-top:2px;">ব্যাচ: ${escapeHtml(c.batch||'সাধারণ')} · <span style="color:${badgeColor}; font-weight:600;">${badgeText}</span></div>
+          <div style="font-size:12px; color:var(--pencil); margin-top:2px;">ব্যাচ: ${escapeHtml(c.batch||'সাধারণ')} · <span style="color:${badgeColor}; font-weight:600;">${badgeText}</span>${c.refSlug ? ` · 🤝 রেফার: <b>${escapeHtml(c.refName||c.refSlug)}</b>` : ''}</div>
         </div>
         <div style="display:flex; gap:6px;">
           ${!isUsed && !isRevoked ? `
@@ -9012,6 +9039,9 @@ async function renderTeacherRegCodes(){
           <input type="text" id="regGenBatch" placeholder="যেমন: ব্যাচ ২০২৫">
         </div>
       </div>
+      <label class="field-label" style="margin-top:6px;">🤝 কোন ছাত্র রেফার করেছে? (ঐচ্ছিক)</label>
+      <select id="regGenRef"><option value="">— কেউ না —</option>${__regStuds.map(s => `<option value="${escapeHtml(s.slug)}">${escapeHtml(s.name)}</option>`).join('')}</select>
+      <p class="hint" style="margin:0 0 10px;">কাউকে বাছলে এই কোডে যে নতুন ছাত্র সাইন-আপ করবে সে ওই ছাত্রের সাথে যুক্ত হয়ে যাবে — রেফার কমিশন তালিকায় আসবে আর দুজন একে অপরের "আমার গ্রুপ"-এ দেখবে।</p>
       <button class="btn btn-gold btn-block" onclick="generateNewTeacherCodes()">✨ কোড তৈরি করো</button>
     </div>
 
@@ -9032,7 +9062,9 @@ window.generateNewTeacherCodes = async function(){
   const count = (document.getElementById('regGenCount')||{}).value || 5;
   const batch = ((document.getElementById('regGenBatch')||{}).value || '').trim() || 'সাধারণ ব্যাচ';
   toast('কোড তৈরি হচ্ছে...');
-  const res = await postToScript('generateRegCodes', { count, batch, teacherId: (currentTeacher && currentTeacher.name) || 'Teacher' });
+  const refSlug = ((document.getElementById('regGenRef')||{}).value || '').trim();
+  const res = await postToScript('generateRegCodes', { count, batch, refSlug, teacherId: (currentTeacher && currentTeacher.name) || 'Teacher' });
+  if(res && res.status === 'error' && res.message === 'invalid_referrer'){ toast('এই রেফারার বাছা যাচ্ছে না — তার অ্যাকাউন্ট আছে কি না দেখো'); return; }
   if(res && res.status === 'success'){
     playSfx('combo');
     toast(`🎉 ${res.codes.length}টি নতুন কোড তৈরি হয়েছে!`);
@@ -9932,36 +9964,33 @@ window.openMyMastery = function(){
 };
 
 // ---------------- Class plan: days per month, remaining / extra ----------------
-function classSummaryHtml(cs){
+function classSummaryHtml(cs){   // [v62] চক্রভিত্তিক ক্লাস হিসাব (মাসের জায়গায় চক্র)
   if(!cs) return '';
-  const monthName = BN_MONTHS[Number(String(cs.month).slice(5,7)) - 1] || '';
+  const bn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  const dm = d => d ? (bn(String(d).slice(8, 10)) + ' ' + (BN_MONTHS[Number(String(d).slice(5, 7)) - 1] || '')) : '';
   if(!cs.hasPlan){
     return `<div style="margin-top:12px; background:#F5F9FE; border:1px solid var(--paper-edge); border-radius:10px; padding:10px 12px; font-size:13.5px;">
-      📚 ${monthName} মাসে মোট ক্লাস হয়েছে: <b>${cs.held}</b> দিন</div>`;
+      📚 এ পর্যন্ত মোট ক্লাস হয়েছে: <b>${bn(cs.totalHeld || 0)}</b> দিন</div>`;
   }
-  const done = cs.held + cs.extraApplied;
-  const pct = cs.planned > 0 ? Math.min(100, Math.round((done / cs.planned) * 100)) : 100;
-  let third;
-  if(cs.remaining > 0)          third = `<div class="cls-chip" style="background:#FEF6E8; color:#9B6A15;"><b>${cs.remaining}</b><span>⏳ বাকি (দিন)</span></div>`;
-  else if(cs.extraThisMonth > 0) third = `<div class="cls-chip" style="background:#E8F6EF; color:var(--green);"><b>+${cs.extraThisMonth}</b><span>➕ Extra (দিন)</span></div>`;
-  else                           third = `<div class="cls-chip" style="background:#E8F6EF; color:var(--green);"><b>✓</b><span>🎉 সম্পূর্ণ</span></div>`;
-  const notes = [];
-  if(cs.extraCarriedIn > 0) notes.push(`আগের মাস(গুলো) থেকে extra জমা আছে: <b>${cs.extraCarriedIn} দিন</b>`);
-  if(cs.extraApplied > 0)   notes.push(`extra থেকে <b>${cs.extraApplied} দিন</b> যোগ করে এই মাসের হিসাব মেলানো হয়েছে`);
-  if(cs.extraThisMonth > 0) notes.push(`এই মাসের বাড়তি <b>${cs.extraThisMonth} দিন</b> পরের মাসে extra হিসেবে যাবে`);
-  if(cs.deficitCarriedOut > 0) notes.push(`এই মাসের ঘাটতি <b>${cs.deficitCarriedOut} দিন</b> পরের মাসের লক্ষ্যের সাথে যোগ করে দেওয়া হয়েছে`);
+  const u = cs.cur, pct = u.size > 0 ? Math.min(100, Math.round((u.held / u.size) * 100)) : 100;
+  const third = u.remaining > 0
+    ? `<div class="cls-chip" style="background:#FEF6E8; color:#9B6A15;"><b>${bn(u.remaining)}</b><span>⏳ বাকি (ক্লাস)</span></div>`
+    : `<div class="cls-chip" style="background:#E8F6EF; color:var(--green);"><b>✓</b><span>🎉 চক্র সম্পূর্ণ</span></div>`;
+  const prev = (cs.prev || []).slice().reverse().map(c => `<div>✅ চক্র ${bn(c.n)}: ${bn(c.size)}/${bn(c.size)} ক্লাস <span style="opacity:.75;">(${dm(c.start)} – ${dm(c.end)})</span></div>`).join('');
   return `
     <div style="margin-top:12px; border:1px solid var(--paper-edge); border-radius:12px; padding:12px; background:#FCFDFE;">
-      <div style="font-weight:700; font-size:14px; margin-bottom:8px;">📘 ${monthName} মাসের ক্লাস হিসাব</div>
+      <div style="font-weight:700; font-size:14px; margin-bottom:8px;">🔄 চক্র ${bn(u.n)} — ক্লাসের হিসাব</div>
       <div class="cls-chips">
-        <div class="cls-chip" style="background:#EDF3FC; color:#2B5797;"><b>${cs.held}</b><span>✅ ক্লাস হয়েছে (দিন)</span></div>
-        <div class="cls-chip" style="background:#F1F3F8; color:var(--ink);"><b>${cs.planned}</b><span>🎯 পরিকল্পিত (দিন)</span></div>
+        <div class="cls-chip" style="background:#EDF3FC; color:#2B5797;"><b>${bn(u.held)}</b><span>✅ ক্লাস হয়েছে</span></div>
+        <div class="cls-chip" style="background:#F1F3F8; color:var(--ink);"><b>${bn(u.size)}</b><span>🎯 চক্রের ক্লাস</span></div>
         ${third}
       </div>
       <div class="hp-bar-wrap" style="max-width:100%; height:8px; margin:10px 0 0 0; background:#E3E8F1; border-color:#E3E8F1;">
         <div class="hp-bar-fill" style="width:${pct}%;"></div>
       </div>
-      ${notes.length ? `<div style="font-size:12.5px; color:var(--pencil); margin-top:8px; line-height:1.6;">${notes.map(n=> '• ' + n).join('<br>')}</div>` : ''}
+      <div style="font-size:12.5px; color:var(--pencil); margin-top:8px; line-height:1.7;">
+        ${u.start ? `এই চক্র শুরু: <b>${dm(u.start)}</b>` : 'এই চক্র শুরু হবে পরের ক্লাস থেকে'}${prev ? `<div style="margin-top:6px;">${prev}</div>` : ''}
+      </div>
     </div>`;
 }
 async function fillClassSummary(slug, monthKey, slotId){
@@ -9982,90 +10011,40 @@ async function refreshStudentDashboard(slug){
 }
 
 // teacher: card on a student's calendar page
-async function buildClassPlanCard(slug, monthKey, year, month){
+async function buildClassPlanCard(slug, monthKey, year, month){   // [v62] মাসিক পরিকল্পনার জায়গায় ক্লাস-চক্র
   const res = await getJson('getClassSummary', { slug, month: monthKey });
   const cs = (res && res.status === 'success') ? res.summary : null;
-  const title = `📘 মাসিক ক্লাস পরিকল্পনা — ${BN_MONTHS[month]} ${year}`;
+  const title = `🔄 ক্লাস চক্র`;
   if(!cs){
     return `<div class="card"><h3>${title}</h3><p class="hint">হিসাব লোড করা যায়নি, পেজ রিফ্রেশ করে দেখো।</p></div>`;
   }
+  const bnn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
   if(!cs.hasPlan){
     return `<div class="card">
       <h3>${title}</h3>
-      <p class="hint">এই স্টুডেন্টকে প্রতি মাসে কতদিন পড়ানোর কথা সেটা ঠিক করে দাও — তাহলে বাকি বা extra দিনের হিসাব নিজে থেকেই চলবে, আর স্টুডেন্টও তার ড্যাশবোর্ডে দেখতে পাবে। (এই মাসে এখন পর্যন্ত মার্ক করা ক্লাস: <b>${cs.held}</b> দিন)</p>
-      <div class="row">
-        <div><label class="field-label">প্রতি মাসে কত দিন?</label><input type="number" id="planDays" min="0" max="31" value="12"></div>
-        <div><label class="field-label">হিসাব শুরুর মাস</label><input type="month" id="planStart" value="${monthKey}"></div>
-      </div>
-      <button class="btn btn-primary btn-block" onclick="saveClassPlanUI()">✅ পরিকল্পনা সেভ করো</button>
+      <p class="hint">এই স্টুডেন্টের প্রতি চক্রে কতটা ক্লাস হবে সেটা ঠিক করে দাও (যেমন ১২)। মাসের তারিখ নয় — মার্ক করা ক্লাস গুনে চক্র পূর্ণ হয়, আর স্টুডেন্টও তার ড্যাশবোর্ডে চলতি চক্র দেখতে পাবে। (এ পর্যন্ত মার্ক করা ক্লাস: <b>${bnn(cs.totalHeld || 0)}</b> দিন)</p>
+      <label class="field-label">প্রতি চক্রে কত ক্লাস?</label><input type="number" id="planDays" min="1" max="60" value="12">
+      <button class="btn btn-primary btn-block" onclick="saveClassPlanUI()">✅ সেভ করো</button>
     </div>`;
   }
   return `<div class="card">
     <h3>${title}</h3>
     ${classSummaryHtml(cs)}
-
-    ${cs.remaining > 0 ? `
     <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--rule);">
-      ${cs.deficitCarriedOut > 0 ? `
-        <p class="hint" style="margin:0;">✅ এই মাসের <b>${cs.deficitCarriedOut} দিন</b> ঘাটতি পরের মাসের লক্ষ্যের সাথে যোগ করে দেওয়া হয়েছে — পরের মাসে সেই ${cs.deficitCarriedOut} দিন বাড়তি ক্লাস নিলে হিসাব মিলে যাবে।</p>
-      ` : `
-        <label class="field-label">⚠️ এই মাসে <b>${cs.remaining} দিন</b> কম হয়েছে (ঘাটতি)</label>
-        <button class="btn btn-outline btn-block" onclick="carryDeficitForwardUI()">➡️ এই ${cs.remaining} দিন পরের মাসের লক্ষ্যের সাথে যোগ করো</button>
-        <p class="hint" style="margin-top:6px;">চাপলে পরের মাসের পরিকল্পিত দিন-সংখ্যা ${cs.remaining} দিন বেড়ে যাবে, যাতে এই মাসের বাকি ক্লাসগুলো পরের মাসে পুষিয়ে নেওয়া যায়। ইচ্ছা না হলে কিছু না করলেই হয় — এই ঘাটতি এমনিতে পরের মাসে যোগ হয় না।</p>
-      `}
-    </div>` : ''}
-
-    <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--rule);">
-      <div class="row">
-        <div><label class="field-label">প্রতি মাসে কত দিন (ডিফল্ট)</label><input type="number" id="planDays" min="0" max="31" value="${cs.defaultPlanned}" style="margin-bottom:0;"></div>
-        <div><label class="field-label">হিসাব শুরুর মাস</label><input type="month" id="planStart" value="${cs.startMonth}" style="margin-bottom:0;"></div>
-      </div>
-      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="saveClassPlanUI()">💾 ডিফল্ট পরিকল্পনা আপডেট করো</button>
-    </div>
-
-    <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--rule);">
-      <label class="field-label">শুধু এই মাসের জন্য আলাদা দিন (ঐচ্ছিক, যেমন ছুটির মাস)</label>
-      <div class="row">
-        <input type="number" id="monthPlanDays" min="0" max="31" placeholder="${cs.planned}" value="${cs.hasOverride ? cs.planned : ''}" style="margin-bottom:0;">
-        <button class="btn btn-outline" onclick="saveMonthPlanUI(false)">সেট করো</button>
-        ${cs.hasOverride ? `<button class="btn btn-danger" onclick="saveMonthPlanUI(true)">মুছো</button>` : ''}
-      </div>
-      <p class="hint" style="margin-top:6px;">হিসাব: মার্ক করা প্রতিটা ক্লাস-দিন গোনা হয়। পরিকল্পিতের চেয়ে বেশি হলে বাড়তি দিন পরের মাসে extra হিসেবে জমা হয়।</p>
+      <label class="field-label">প্রতি চক্রে কত ক্লাস</label>
+      <input type="number" id="planDays" min="1" max="60" value="${cs.defaultPlanned}" style="margin-bottom:0;">
+      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="saveClassPlanUI()">💾 আপডেট করো</button>
+      <p class="hint" style="margin-top:6px;">হিসাব: মার্ক করা প্রতিটা ক্লাস-দিন গোনা হয়। কোনো মাসে কম হলে বাকি ক্লাস পরের মাসে গিয়েও একই চক্র শেষ করে — আলাদা ঘাটতি বা extra হিসাব রাখার দরকার নেই। সংখ্যা বদলালে সব চক্র নতুন সংখ্যায় আবার ভাগ হবে।</p>
     </div>
   </div>`;
 }
 window.saveClassPlanUI = async function(){
   const { slug, studentName } = state;
   const days = parseInt((document.getElementById('planDays')||{}).value, 10);
-  const start = (((document.getElementById('planStart')||{}).value) || '').trim();
-  if(isNaN(days) || days < 0 || days > 31){ toast('০ থেকে ৩১ এর মধ্যে দিন দাও'); return; }
-  if(start && !/^\d{4}-\d{2}$/.test(start)){ toast('শুরুর মাস 2026-09 এই ফরম্যাটে দাও'); return; }
+  if(isNaN(days) || days < 1 || days > 60){ toast('১ থেকে ৬০ এর মধ্যে ক্লাস-সংখ্যা দাও'); return; }
   toast('সেভ হচ্ছে...');
-  const res = await postToScript('saveClassPlan', { slug, planned: days, startMonth: start, month: monthKeyFromCal() });
-  if(res){ toast('পরিকল্পনা সেভ হয়েছে ✅'); go('attendanceMark', { slug, studentName }); }
-};
-window.saveMonthPlanUI = async function(clear){
-  const { slug, studentName } = state;
-  let planned = '';
-  if(!clear){
-    planned = parseInt((document.getElementById('monthPlanDays')||{}).value, 10);
-    if(isNaN(planned) || planned < 0 || planned > 31){ toast('০ থেকে ৩১ এর মধ্যে দিন দাও'); return; }
-  }
-  toast('সেভ হচ্ছে...');
-  const res = await postToScript('saveMonthPlan', { slug, month: monthKeyFromCal(), planned });
-  if(res){ toast(clear ? 'আলাদা দিন মুছে ফেলা হয়েছে' : 'এই মাসের দিন সেট হয়েছে ✅'); go('attendanceMark', { slug, studentName }); }
-};
-window.carryDeficitForwardUI = async function(){
-  const { slug, studentName } = state;
-  toast('যোগ করা হচ্ছে...');
-  const res = await postToScriptRaw('carryDeficitForward', { slug, month: monthKeyFromCal() });
-  if(res && res.status === 'success'){
-    toast(`✅ ${res.deficitAmount} দিন পরের মাসের লক্ষ্যের সাথে যোগ হয়েছে`);
-    go('attendanceMark', { slug, studentName });
-  } else {
-    const msgs = { no_deficit: 'এই মাসে কোনো ঘাটতি নেই', already_carried: 'এই মাসের ঘাটতি আগেই যোগ করা হয়ে গেছে', no_plan: 'আগে মাসিক পরিকল্পনা সেট করো' };
-    toast(msgs[res && res.message] || 'যোগ করা যায়নি, আবার চেষ্টা করো');
-  }
+  const res = await postToScript('saveClassPlan', { slug, planned: days });
+  if(res){ toast('চক্র সেভ হয়েছে ✅'); go('attendanceMark', { slug, studentName }); }
 };
 
 // ---------------- Withdraw (bKash / Nagad) — student ----------------
@@ -12954,11 +12933,18 @@ window.doSmartSearch = async function(){
       <button class="btn btn-outline btn-block" onclick="revNotReadySend('forgot')">😵 ভুলে গেছি — আবার বুঝিয়ে দিতে হবে</button>
       <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="revNotReadySend('notTaught')">📚 এটা এখনো পড়ানো/পড়া হয়নি</button></div>`;
   };
+  function revNrQ(it){   // [v62] যে প্রশ্নে বাটন চাপা হলো সেটা শিক্ষকের কাছেও যাবে
+    try{
+      const isM = it.kind === 'mcq', q = it.q || {};
+      return JSON.stringify({ k:isM ? 'mcq' : 'cq', t:String((isM ? it.text : q.text) || it.text || '').slice(0, 1500), i:String((isM ? it.image : q.imageUrl) || '').slice(0, 400),
+        o:isM ? (it.options || []).slice(0, 6).map(x => String(x).slice(0, 200)) : undefined, c:(isM && it.correct >= 0) ? it.correct : undefined });
+    }catch(e){ return ''; }
+  }
   window.revNotReadySend = async function(reason){
     const r = R(), it = r && r.cur, box = document.getElementById('revNrBox'); if(!it) return;
     if(box) box.innerHTML = `<p class="hint">স্যারকে জানানো হচ্ছে...</p>`;
     const chapter = it.chk ? String(it.chk).split('|').slice(1).join('|') : ((it.q && it.q.chapter) || it.chapterTag || '');
-    const res = await postToScriptRaw('revisionTopicNotReady', { slug:r.slug, subject:it.subject || '', chapter, topic:it.topic || '', reason, itemKey:String(it.key || '') });
+    const res = await postToScriptRaw('revisionTopicNotReady', { slug:r.slug, subject:it.subject || '', chapter, topic:it.topic || '', reason, itemKey:String(it.key || ''), q:revNrQ(it) });
     if(res && res.status === 'success'){
       it.nrSent = reason;
       if(box) box.innerHTML = `<div class="rev-verdict good">✅ স্যারের কাছে নোটিফিকেশন গেছে</div><button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="revSkip()">এটা বাদ দিয়ে পরের প্রশ্নে যাও →</button>`;
@@ -16264,6 +16250,141 @@ window.doSmartSearch = async function(){
 })();
 
 // ===== ড্যাশবোর্ডের হাব স্ক্রিন: স্টাডি · পরীক্ষা · রিওয়ার্ড =====
+// =====================================================================================
+// [v62] 🎁 শিক্ষক: পরীক্ষা ছাড়াই Treat ব্যালেন্স যোগ  +  🤝 বন্ধু-রেফার মার্কেটিং কমিশন (১০% বা নির্দিষ্ট টাকা)
+// ব্যালেন্স জমা হয় CouponLedger-এ (examCode 'MAN:' / 'MKT:') — ছাত্রের Treat পাতায় সামারিতে আলাদা লাইনে দেখায়
+// =====================================================================================
+(function(){
+  const esc = s => escapeHtml(String(s == null ? '' : s));
+  const bn = n => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
+  const T = (a, p) => postToScriptRaw(a, Object.assign({ tkey:TEACHER_PASSWORD }, p || {}));
+  const ERR = { not_allowed:'শুধু শিক্ষক পারবে', invalid_input:'সংখ্যাগুলো ঠিকভাবে দাও', unknown_student:'এই ছাত্র খুঁজে পাওয়া যায়নি', exceeds_balance:'মাইনাস সংখ্যা ছাত্রের বর্তমান ব্যালেন্সের চেয়ে বেশি', not_a_friend:'এই বন্ধুকে রেফারের তালিকায় পাওয়া যায়নি', invalid_referrer:'এই রেফারার বাছা যাচ্ছে না (অ্যাকাউন্ট থাকা পূর্ণ ছাত্র হতে হবে, নিজে নিজের রেফারার নয়)', is_friend:'এটা সীমিত বন্ধু-অ্যাকাউন্ট — আগে থেকেই রেফার কোডে যুক্ত' };
+  let STUDS = [];
+
+  // ---------- ➕ পরীক্ষা ছাড়াই Treat যোগ (Treat Coupon ম্যানেজ পাতার ভেতরে) ----------
+  window.treatAddLoad = async function(){
+    const slot = document.getElementById('treatAddSlot'); if(!slot) return;
+    let studs = []; try{ studs = await listStudentsRemote(); }catch(e){}
+    if(!document.getElementById('treatAddSlot')) return;
+    slot.innerHTML = `<div style="margin-top:16px;padding:12px;border:1.5px solid #BFD3F2;border-radius:12px;background:#F3F8FF;">
+      <h3 style="margin:0 0 6px;">➕ পরীক্ষা ছাড়াই Treat ব্যালেন্স যোগ করো</h3>
+      <p class="hint" style="margin:0 0 8px;">যেকোনো ছাত্রের Treat ব্যালেন্সে সরাসরি টাকা যোগ করতে পারবে — ছাত্রের অ্যাপে ইতিহাসে "🎁 শিক্ষকের বোনাস" হিসেবে দেখাবে। ভুল হলে মাইনাস সংখ্যা (যেমন -৫০) দিয়ে ঠিক করে নিতে পারবে।</p>
+      <select id="taSlug"><option value="">— ছাত্র বাছো —</option>${studs.map(s => `<option value="${esc(s.slug)}">${esc(s.name)}</option>`).join('')}</select>
+      <input type="number" id="taAmt" placeholder="টাকা (৳) — যেমন ১০০">
+      <input type="text" id="taNote" placeholder="কারণ / নোট (ঐচ্ছিক) — যেমন: ভালো প্রচেষ্টা">
+      <button class="btn btn-primary btn-block" onclick="treatAddSubmit()">✅ যোগ করো</button></div>`;
+  };
+  window.treatAddSubmit = async function(){
+    const slug = (document.getElementById('taSlug') || {}).value || '', amt = Number((document.getElementById('taAmt') || {}).value), note = ((document.getElementById('taNote') || {}).value || '').trim();
+    if(!slug){ toast('আগে ছাত্র বাছো'); return; }
+    if(!isFinite(amt) || !amt){ toast('টাকার পরিমাণ দাও'); return; }
+    const name = ((document.getElementById('taSlug').selectedOptions[0] || {}).textContent || slug);
+    if(!confirm(`${name}-এর Treat ব্যালেন্সে ${amt > 0 ? '+' : ''}৳${amt} ${amt > 0 ? 'যোগ' : 'কমানো'} হবে। ঠিক আছে?`)) return;
+    toast('হচ্ছে...');
+    const r = await T('revisionTreatAdd', { slug, amount:String(Math.round(amt)), note });
+    if(r && r.status === 'success'){ toast(`✅ হয়েছে — ${name}-এর নতুন ব্যালেন্স ৳${r.balance}`); renderCouponManage(); }
+    else toast(ERR[r && r.message] || 'করা যায়নি, আবার চেষ্টা করো');
+  };
+
+  // ---------- 🤝 রেফার কমিশন পাতা ----------
+  let DATA = null;
+  async function render_(){
+    app.innerHTML = `${header('রেফার কমিশন')}<div class="card center">লোড হচ্ছে...</div>`;
+    const r = await T('revisionMktList');
+    if(!r || r.status !== 'success'){
+      app.innerHTML = `${header('রেফার কমিশন')}<div class="card center"><p class="hint" style="color:var(--red);">লোড করা যায়নি।</p><button class="btn btn-outline" onclick="go('referralManage')">🔁 আবার চেষ্টা করো</button></div><div class="center"><a class="link-back" onclick="go('couponManage')">← ফিরে যাও</a></div>${creditFooter()}`;
+      return;
+    }
+    DATA = r; try{ STUDS = await listStudentsRemote(); }catch(e){ STUDS = []; } draw();
+  }
+  function draw(){
+    const groups = DATA.groups || [], dp = DATA.defaultPercent || 10;
+    const opts = groups.map(g => `<optgroup label="${esc(g.refName)}-এর আনা বন্ধু">${g.friends.map(f => `<option value="${esc(f.slug)}" data-ref="${esc(g.refName)}" data-fname="${esc(f.name)}">${esc(f.name)}</option>`).join('')}</optgroup>`).join('');
+    const form = groups.length ? `<div style="padding:12px;border:1.5px solid #BFE3CC;border-radius:12px;background:#F1FAF4;">
+        <label class="field-label">কোন বন্ধুর জন্য কমিশন?</label>
+        <select id="mkF" onchange="mkCalc()"><option value="">— বন্ধু বাছো —</option>${opts}</select>
+        <label class="field-label">কমিশনের ধরন</label>
+        <select id="mkMode" onchange="mkMode()"><option value="percent">শতাংশ (%) — বন্ধুর ফি/টাকার ওপর</option><option value="amount">নির্দিষ্ট টাকা</option></select>
+        <div id="mkPctBox"><div class="row"><div><label class="field-label">বন্ধু যত টাকা দিয়েছে (৳)</label><input type="number" id="mkBase" placeholder="যেমন ১০০০" oninput="mkCalc()"></div>
+          <div><label class="field-label">কমিশন %</label><input type="number" id="mkPct" value="${dp}" min="1" max="100" oninput="mkCalc()"></div></div></div>
+        <div id="mkAmtBox" style="display:none;"><label class="field-label">কমিশনের টাকা (৳)</label><input type="number" id="mkAmt" placeholder="যেমন ১০০" oninput="mkCalc()"></div>
+        <input type="text" id="mkNote" placeholder="নোট (ঐচ্ছিক)">
+        <div id="mkPrev" class="hint" style="margin:4px 0 8px;font-weight:700;"></div>
+        <button class="btn btn-primary btn-block" onclick="mkSubmit()">✅ কমিশন যোগ করো</button>
+        <p class="hint" style="margin-top:8px;">টাকাটা বন্ধুকে আনা ছাত্রের Treat ব্যালেন্সে "🤝 মার্কেটিং বোনাস" হিসেবে জমা হবে, আর তার ব্যালেন্সের সামারিতে Treat কুপনের পাশে আলাদা লাইনে দেখাবে।</p>
+      </div>` : `<div class="empty-state">এখনো কেউ বন্ধু রেফার করেনি।<br><span class="hint">ছাত্রের FR- কোডে সাইন-আপ করলে, অথবা রেজিস্ট্রেশন কোড বানানোর সময় রেফারার বেছে দিলে নতুন ছাত্র এখানে আসবে।</span></div>`;
+    const list = groups.map(g => `<div class="review-block" style="margin-top:12px;">
+        <div style="display:flex;justify-content:space-between;gap:8px;"><b>👤 ${esc(g.refName)}</b><span class="q-tag" style="background:#E8F7EE;color:#17663A;">মোট কমিশন ৳${bn(g.total)}</span></div>
+        ${g.friends.map(f => `<div style="margin-top:8px;padding:8px 10px;border-radius:10px;background:#F5F9FE;border:1px solid #D6E4F5;">
+            <div style="display:flex;justify-content:space-between;gap:8px;"><span>🤝 ${esc(f.name)} ${f.kind === 'student' ? '<span class="q-tag">কোডে যুক্ত</span>' : ''} <span class="meta">${f.joined ? '· যোগ দিয়েছে ' + esc(f.joined) : ''}</span></span><b>৳${bn(f.given)}</b></div>${f.kind === 'student' ? `<div style="text-align:right;margin-top:4px;"><button type="button" class="info-btn" style="color:var(--red);" onclick="rlUnlink('${esc(f.slug)}', '${esc(f.name)}')">✕ যুক্ততা সরাও</button></div>` : ''}
+            ${f.items.map(x => `<div class="meta" style="margin-top:3px;">${esc(x.date)} · ৳${bn(x.amount)}${x.percent ? ' (' + bn(x.percent) + '%)' : ''}${x.note ? ' — ' + esc(x.note) : ''}</div>`).join('')}
+          </div>`).join('')}
+      </div>`).join('');
+    app.innerHTML = `${header('রেফার কমিশন')}
+      <div class="card"><h2>🤝 বন্ধু-রেফার কমিশন</h2>
+        <p class="hint">কেউ বন্ধু আনলে তাকে ১০% (বা তোমার ঠিক করা টাকা) কমিশন দিতে পারো। কমিশনটা মার্কেটিং বোনাস কুপন হয়ে তার Treat ব্যালেন্সে যোগ হয়।</p>${form}${linkCard()}${list}</div>
+      <div class="center"><a class="link-back" onclick="go('couponManage')">← ফিরে যাও</a></div>${creditFooter()}`;
+  }
+  function linkCard(){   // আগে সাইন-আপ করা ছাত্রকে পরে রেফারারের সাথে যুক্ত করা
+    const o = STUDS.map(s => `<option value="${esc(s.slug)}">${esc(s.name)}</option>`).join('');
+    return `<div style="margin-top:14px;padding:12px;border:1.5px solid #BFD3F2;border-radius:12px;background:#F3F8FF;">
+      <h3 style="margin:0 0 6px;">🔗 আগে সাইন-আপ করা ছাত্রকে রেফারারের সাথে যুক্ত করো</h3>
+      <p class="hint" style="margin:0 0 8px;">কেউ আগেই অ্যাকাউন্ট খুলে ফেললেও পরে বলে দিতে পারো কে তাকে এনেছে — তখন সে ওই ছাত্রের তালিকায় আসবে (কমিশন দেওয়া যাবে, "আমার গ্রুপ"-এও যুক্ত হবে)। আবার বাছলে রেফারার বদলে যাবে।</p>
+      <label class="field-label">নতুন ছাত্র (যাকে আনা হয়েছে)</label><select id="rlS"><option value="">— ছাত্র বাছো —</option>${o}</select>
+      <label class="field-label">কোন ছাত্র রেফার করেছে?</label><select id="rlR"><option value="">— রেফারার বাছো —</option>${o}</select>
+      <button class="btn btn-primary btn-block" onclick="rlSubmit()">🔗 যুক্ত করো</button></div>`;
+  }
+  window.rlSubmit = async function(){
+    const s = (document.getElementById('rlS') || {}).value || '', r = (document.getElementById('rlR') || {}).value || '';
+    if(!s || !r){ toast('দুজনকেই বাছো'); return; }
+    if(s === r){ toast('একজন নিজেকে রেফার করতে পারে না'); return; }
+    const sn = document.getElementById('rlS').selectedOptions[0].textContent, rn = document.getElementById('rlR').selectedOptions[0].textContent;
+    if(!confirm(`${sn} কে ${rn} রেফার করেছে — যুক্ত করবে?`)) return;
+    toast('যুক্ত হচ্ছে...');
+    const res = await T('revisionRefLink', { slug:s, refSlug:r });
+    if(res && res.status === 'success'){ toast(`✅ ${res.name} এখন ${res.refName}-এর সাথে যুক্ত`); render_(); }
+    else toast(ERR[res && res.message] || 'যুক্ত করা যায়নি, আবার চেষ্টা করো');
+  };
+  window.rlUnlink = async function(slug, name){
+    if(!confirm(`${name}-এর রেফারার যুক্ততা সরাবে? (আগে দেওয়া কমিশন ব্যালেন্সে থেকে যাবে)`)) return;
+    const res = await T('revisionRefLink', { slug, refSlug:'' });
+    if(res && res.status === 'success'){ toast('যুক্ততা সরানো হয়েছে'); render_(); } else toast('সরানো যায়নি, আবার চেষ্টা করো');
+  };
+  window.mkMode = function(){
+    const m = (document.getElementById('mkMode') || {}).value;
+    document.getElementById('mkPctBox').style.display = m === 'percent' ? '' : 'none';
+    document.getElementById('mkAmtBox').style.display = m === 'amount' ? '' : 'none';
+    mkCalc();
+  };
+  function mkVals(){
+    const f = document.getElementById('mkF'), opt = f && f.selectedOptions[0];
+    const mode = (document.getElementById('mkMode') || {}).value || 'percent';
+    const base = Math.round(Number((document.getElementById('mkBase') || {}).value)), pct = Number((document.getElementById('mkPct') || {}).value), amt = Math.round(Number((document.getElementById('mkAmt') || {}).value));
+    const val = mode === 'percent' ? ((base > 0 && pct > 0 && pct <= 100) ? Math.round(base * pct / 100) : 0) : (amt > 0 ? amt : 0);
+    return { friend:(f || {}).value || '', ref:opt ? opt.getAttribute('data-ref') : '', fname:opt ? opt.getAttribute('data-fname') : '', mode, base, pct, amt, val };
+  }
+  window.mkCalc = function(){
+    const v = mkVals(), el = document.getElementById('mkPrev'); if(!el) return;
+    el.textContent = v.val > 0 ? `💰 কমিশন: ৳${bn(v.val)}${v.ref ? ' → ' + v.ref + '-এর ব্যালেন্সে যাবে' : ''}` : '';
+  };
+  window.mkSubmit = async function(){
+    const v = mkVals(), note = ((document.getElementById('mkNote') || {}).value || '').trim();
+    if(!v.friend){ toast('আগে বন্ধু বাছো'); return; }
+    if(!(v.val > 0)){ toast(v.mode === 'percent' ? 'টাকা আর কমিশন % ঠিকভাবে দাও' : 'কমিশনের টাকা দাও'); return; }
+    if(!confirm(`${v.ref}-কে ৳${v.val} মার্কেটিং বোনাস দেওয়া হবে (বন্ধু: ${v.fname})। ঠিক আছে?`)) return;
+    toast('যোগ হচ্ছে...');
+    const r = await T('revisionMktAdd', { friend:v.friend, mode:v.mode, base:String(v.base || ''), percent:String(v.pct || ''), amount:String(v.amt || ''), note });
+    if(r && r.status === 'success'){ toast(`✅ ${r.referrerName}-এর ব্যালেন্সে ৳${r.amount} যোগ হয়েছে`); render_(); }
+    else toast(ERR[r && r.message] || 'যোগ করা যায়নি, আবার চেষ্টা করো');
+  };
+
+  const __mk0 = render;
+  render = function(){
+    if(state.screen === 'referralManage'){ syncLogoutFab(); render_(); return; }
+    __mk0();
+  };
+})();
+
 // =====================================================================================
 // [v62] 🔖 সেভ করা প্রশ্ন — পরীক্ষার রিভিউ / HW / রিভিশনের প্রশ্নে "সেভ করো" বাটন; পরে স্টাডি → "সেভ করা প্রশ্ন"-এ দেখা যায়
 // ব্যাকএন্ড: revisionQSave / revisionQUnsave / revisionQSavedList (শিট SavedQuestions)
@@ -32300,17 +32421,27 @@ window.PagePicker = PagePicker;
   };
   // ---------------- শিক্ষক: টপিক রিকোয়েস্ট ----------------
   const RS = { forgot:'😵 ভুলে গেছে', notTaught:'📚 পড়ানো হয়নি' };
+  function trQs(x){   // [v62] ছাত্র কোন প্রশ্নে বাটন চেপেছিল
+    const L = ['ক', 'খ', 'গ', 'ঘ', 'ঙ', 'চ'];
+    return (x.questions || []).map(q => `<div style="margin-top:8px;padding:8px 10px;border-radius:10px;background:#F5F9FE;border:1px solid #D6E4F5;">
+        <div class="meta" style="margin-bottom:4px;">❓ প্রশ্ন · ${q.k === 'mcq' ? 'MCQ' : 'CQ'}</div>
+        ${q.t ? `<div style="white-space:pre-wrap;line-height:1.7;font-size:13.5px;max-height:170px;overflow:auto;">${esc(q.t)}</div>` : ''}
+        ${q.i ? `<img src="${driveImg(q.i)}" style="max-width:100%;max-height:220px;border-radius:8px;margin-top:6px;">` : ''}
+        ${q.o && q.o.length ? `<div style="margin-top:6px;font-size:13px;">${q.o.map((o, j) => `<div style="${q.c === j ? 'color:#17663A;font-weight:700;' : ''}">${L[j] || ''}) ${esc(o)}${q.c === j ? ' ✓' : ''}</div>`).join('')}</div>` : ''}
+      </div>`).join('') || '';
+  }
   async function trRender(){
     app.innerHTML = `${header('টপিক রিকোয়েস্ট')}<div class="card center">লোড হচ্ছে...</div>`;
     const r = await tcall('revisionTopicReqList');
     if(!r || r.status !== 'success'){ app.innerHTML = `${header('টপিক রিকোয়েস্ট')}<div class="card"><p class="hint" style="color:var(--red);">❌ তালিকা আনা যায়নি — Apps Script নতুন version Deploy করা আছে তো?</p></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>`; return; }
     window.__trItems = r.items;
     const rows = r.items.map((x, i) => `<div class="exam-item"><div style="font-weight:700;">${esc(x.name)} <span class="meta">${esc(x.date)}</span></div>
-        <div>${RS[x.reason] || esc(x.reason)}</div><div class="meta">${esc([sjLabel(x.subject), x.chapter, x.topic].filter(Boolean).join(' › '))}</div>
+        <div>${RS[x.reason] || esc(x.reason)}</div><div class="meta">${esc([sjLabel(x.subject), x.chapter, x.topic].filter(Boolean).join(' › '))}</div>${trQs(x)}
         <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">
           ${x.reason === 'notTaught' ? `<button class="info-btn" onclick="trDone(${i},1)">✅ পড়ানো হয়েছে — রিভিশনে খুলে দাও</button><button class="info-btn" onclick="trDone(${i},-1)">🚫 পড়ানো হয়নি — টিক তুলে নাও</button>` : ''}
           <button class="info-btn" onclick="trDone(${i},0)">✔️ দেখেছি / সম্পন্ন</button></div></div>`).join('') || `<div class="empty-state">নতুন কোনো রিকোয়েস্ট নেই।</div>`;
-    app.innerHTML = `${header('টপিক রিকোয়েস্ট')}<div class="card"><h2>🔔 ভুলে গেছি / পড়ানো হয়নি</h2><p class="hint">ছাত্র রিভিশনে বাটন চাপলে এখানে আসে (ইমেইলও যায়)।</p>${rows}<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('topicReqT')">🔄 নতুন করো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+    app.innerHTML = `${header('টপিক রিকোয়েস্ট')}<div class="card"><h2>🔔 ভুলে গেছি / পড়ানো হয়নি</h2><p class="hint">ছাত্র রিভিশনে বাটন চাপলে এখানে আসে, কোন প্রশ্নে চেপেছিল সেটাসহ (ইমেইলও যায়)।</p>${rows}<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="go('topicReqT')">🔄 নতুন করো</button></div><div class="center"><a class="link-back" onclick="go('teacherDashboard')">← ফিরে যাও</a></div>${creditFooter()}`;
+    try{ renderAllMath(app); }catch(e){}
   }
   window.trDone = async function(i, cover){
     const x = (window.__trItems || [])[i]; if(!x) return;
